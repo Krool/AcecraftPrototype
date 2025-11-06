@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { GameState, TutorialStep } from '../game/GameState'
+import { GameState } from '../game/GameState'
 import { Building, BuildingType } from '../game/Building'
 
 export default class BuildingMenuScene extends Phaser.Scene {
@@ -13,21 +13,6 @@ export default class BuildingMenuScene extends Phaser.Scene {
 
   create() {
     this.gameState = GameState.getInstance()
-
-    // Tutorial: Auto-unlock Market if in BUILD_MARKET step
-    if (this.gameState.getTutorialStep() === TutorialStep.BUILD_MARKET) {
-      const marketBuilding = this.gameState.getBuilding(BuildingType.MARKET)
-      if (!marketBuilding.isUnlocked()) {
-        // Upgrade hangar to level 1 if needed (Market requires Hangar level 1)
-        const hangar = this.gameState.getBuilding(BuildingType.HANGAR)
-        if (hangar.getLevel() === 0) {
-          this.gameState.upgradeBuilding(BuildingType.HANGAR)
-        }
-        // Now unlock Market
-        this.gameState.unlockBuilding(BuildingType.MARKET)
-        this.gameState.setTutorialStep(TutorialStep.OPEN_MARKET)
-      }
-    }
 
     // Add background
     this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x0a0a1e)

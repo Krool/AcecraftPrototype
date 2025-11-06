@@ -1,15 +1,6 @@
 import { Building, BuildingType, BuildingState, BUILDING_CONFIGS } from './Building'
 import { CharacterType } from './Character'
 
-export enum TutorialStep {
-  NOT_STARTED = 'NOT_STARTED',
-  FIRST_BATTLE = 'FIRST_BATTLE',
-  BUILD_MARKET = 'BUILD_MARKET',
-  OPEN_MARKET = 'OPEN_MARKET',
-  ROLL_GACHA = 'ROLL_GACHA',
-  COMPLETE = 'COMPLETE',
-}
-
 export interface CharacterStats {
   timesSelected: number
   totalDamageDealt: number
@@ -20,7 +11,6 @@ export interface CharacterStats {
 
 export interface GameStateData {
   credits: number
-  gems: number
   buildings: BuildingState[]
   unlockedCharacters: CharacterType[]
   selectedCharacter: CharacterType
@@ -28,15 +18,13 @@ export interface GameStateData {
   totalKills: number
   bestScore: number
   bestTime: number
-  tutorialComplete: boolean
-  tutorialStep: TutorialStep
+  unlockedLevels: number
   characterStats?: { [key: string]: CharacterStats }
 }
 
 export class GameState {
   private static instance: GameState
   private credits: number = 0
-  private gems: number = 400 // Premium currency for gacha
   private buildings: Map<BuildingType, Building> = new Map()
   private unlockedCharacters: Set<CharacterType> = new Set([CharacterType.ACE])
   private selectedCharacter: CharacterType = CharacterType.ACE
@@ -44,8 +32,7 @@ export class GameState {
   private totalKills: number = 0
   private bestScore: number = 0
   private bestTime: number = 0
-  private tutorialComplete: boolean = false
-  private tutorialStep: TutorialStep = TutorialStep.NOT_STARTED
+  private unlockedLevels: number = 1 // Start with level 1 unlocked (0-indexed)
   private characterStats: Map<CharacterType, CharacterStats> = new Map()
 
   private constructor() {
@@ -61,9 +48,7 @@ export class GameState {
   static getInstance(): GameState {
     if (!GameState.instance) {
       GameState.instance = new GameState()
-      console.log('GameState - Initial tutorial step:', GameState.instance.tutorialStep)
       GameState.instance.load()
-      console.log('GameState - After load tutorial step:', GameState.instance.tutorialStep)
     }
     return GameState.instance
   }
@@ -91,46 +76,18 @@ export class GameState {
     return false
   }
 
-  // Premium currency (Gems) management
-  getGems(): number {
-    return this.gems
+  // Level progression management
+  getUnlockedLevels(): number {
+    return this.unlockedLevels
   }
 
-  addGems(amount: number): void {
-    this.gems += amount
+  unlockNextLevel(): void {
+    this.unlockedLevels++
     this.save()
   }
 
-  spendGems(amount: number): boolean {
-    if (this.gems >= amount) {
-      this.gems -= amount
-      this.save()
-      return true
-    }
-    return false
-  }
-
-  // Tutorial management
-  isTutorialComplete(): boolean {
-    return this.tutorialComplete
-  }
-
-  completeTutorial(): void {
-    this.tutorialComplete = true
-    this.tutorialStep = TutorialStep.COMPLETE
-    this.save()
-  }
-
-  getTutorialStep(): TutorialStep {
-    return this.tutorialStep
-  }
-
-  setTutorialStep(step: TutorialStep): void {
-    this.tutorialStep = step
-    if (step === TutorialStep.COMPLETE) {
-      this.tutorialComplete = true
-    }
-    this.save()
+  isLevelUnlocked(levelIndex: number): boolean {
+    return levelIndex < this.unlockedLevels
   }
 
   // Building management
@@ -303,7 +260,6 @@ export class GameState {
 
     const data: GameStateData = {
       credits: this.credits,
-      gems: this.gems,
       buildings: Array.from(this.buildings.values()).map(b => b.serialize()),
       unlockedCharacters: Array.from(this.unlockedCharacters),
       selectedCharacter: this.selectedCharacter,
@@ -311,8 +267,7 @@ export class GameState {
       totalKills: this.totalKills,
       bestScore: this.bestScore,
       bestTime: this.bestTime,
-      tutorialComplete: this.tutorialComplete,
-      tutorialStep: this.tutorialStep,
+      unlockedLevels: this.unlockedLevels,
       characterStats: characterStatsObj,
     }
 
@@ -326,13 +281,11 @@ export class GameState {
     try {
       const data: GameStateData = JSON.parse(saved)
       this.credits = data.credits || 0
-      this.gems = data.gems !== undefined ? data.gems : 400 // Default to 400 gems if not set
       this.totalRuns = data.totalRuns || 0
       this.totalKills = data.totalKills || 0
       this.bestScore = data.bestScore || 0
       this.bestTime = data.bestTime || 0
-      this.tutorialComplete = data.tutorialComplete || false
-      this.tutorialStep = data.tutorialStep || TutorialStep.NOT_STARTED
+      this.unlockedLevels = data.unlockedLevels || 1
 
       // Load buildings
       if (data.buildings) {
@@ -363,7 +316,6 @@ export class GameState {
 
   reset(): void {
     this.credits = 0
-    this.gems = 400
     this.buildings.forEach(building => {
       this.buildings.set(building.getConfig().type, new Building(building.getConfig().type, 0, false))
     })
@@ -374,8 +326,7 @@ export class GameState {
     this.totalKills = 0
     this.bestScore = 0
     this.bestTime = 0
-    this.tutorialComplete = false
-    this.tutorialStep = TutorialStep.NOT_STARTED
+    this.unlockedLevels = 1
     this.characterStats = new Map()
     this.save()
   }

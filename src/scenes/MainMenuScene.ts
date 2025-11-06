@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { GameState, TutorialStep } from '../game/GameState'
+import { GameState } from '../game/GameState'
 import { BuildingType } from '../game/Building'
 
 export default class MainMenuScene extends Phaser.Scene {
@@ -11,26 +11,6 @@ export default class MainMenuScene extends Phaser.Scene {
 
   create() {
     this.gameState = GameState.getInstance()
-
-    // Check if tutorial should start
-    const tutorialStep = this.gameState.getTutorialStep()
-    console.log('MainMenuScene - Tutorial step:', tutorialStep)
-
-    if (tutorialStep === TutorialStep.NOT_STARTED) {
-      console.log('Starting tutorial battle...')
-      // Don't save state yet - let GameScene handle it
-      console.log('Attempting to start GameScene with isTutorial: true')
-      this.scene.stop('MainMenuScene')
-      this.scene.start('GameScene', { isTutorial: true })
-      return
-    }
-
-    // Handle tutorial progression
-    if (tutorialStep === TutorialStep.BUILD_MARKET) {
-      this.showTutorialPrompt('BUILD MARKET', 'Click BUILD and purchase the Market building (50 Credits)')
-    } else if (tutorialStep === TutorialStep.OPEN_MARKET) {
-      this.showTutorialPrompt('OPEN MARKET', 'Click MARKET to access the ship gacha system')
-    }
 
     // Add background
     this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x0a0a1e)
@@ -110,55 +90,6 @@ export default class MainMenuScene extends Phaser.Scene {
       })
     })
 
-    // Display gems if Market is unlocked
-    const marketBuilding = this.gameState.getBuilding(BuildingType.MARKET)
-    if (marketBuilding.isUnlocked()) {
-      const gemsText = this.add.text(
-        this.cameras.main.centerX,
-        250,
-        `◆ Gems: ${this.gameState.getGems()}`,
-        {
-          fontFamily: 'Courier New',
-          fontSize: '20px',
-          color: '#00ffff',
-        }
-      ).setOrigin(0.5)
-
-      // $ button to add 1000 gems (debug/cheat button)
-      const gemButton = this.add.text(
-        this.cameras.main.centerX + 120,
-        250,
-        '$',
-        {
-          fontFamily: 'Courier New',
-          fontSize: '24px',
-          color: '#00ff00',
-          fontStyle: 'bold',
-        }
-      ).setOrigin(0.5).setInteractive({ useHandCursor: true })
-
-      gemButton.on('pointerover', () => {
-        gemButton.setColor('#00ffaa')
-        gemButton.setScale(1.2)
-      })
-
-      gemButton.on('pointerout', () => {
-        gemButton.setColor('#00ff00')
-        gemButton.setScale(1)
-      })
-
-      gemButton.on('pointerdown', () => {
-        this.gameState.addGems(1000)
-        gemsText.setText(`◆ Gems: ${this.gameState.getGems()}`)
-        // Flash effect
-        this.tweens.add({
-          targets: gemsText,
-          scale: 1.3,
-          duration: 100,
-          yoyo: true,
-        })
-      })
-    }
 
     // Menu buttons
     const buttonWidth = 400
@@ -298,56 +229,8 @@ export default class MainMenuScene extends Phaser.Scene {
       this.scene.start('HangarScene')
     })
 
-    // Market Button (only if unlocked)
-    if (marketBuilding.isUnlocked()) {
-      const marketButton = this.add.rectangle(
-        this.cameras.main.centerX,
-        startY + (buttonHeight + buttonSpacing) * 3,
-        buttonWidth,
-        buttonHeight,
-        0x2a2a4a
-      ).setInteractive({ useHandCursor: true })
-
-      const marketIcon = this.add.text(
-        this.cameras.main.centerX - 150,
-        startY + (buttonHeight + buttonSpacing) * 3,
-        '◎',
-        {
-          fontFamily: 'Courier New',
-          fontSize: '48px',
-          color: '#ffaa00',
-        }
-      ).setOrigin(0.5)
-
-      const marketText = this.add.text(
-        this.cameras.main.centerX + 20,
-        startY + (buttonHeight + buttonSpacing) * 3,
-        'MARKET\nRoll for Ships',
-        {
-          fontFamily: 'Courier New',
-          fontSize: '24px',
-          color: '#ffaa00',
-          align: 'center',
-        }
-      ).setOrigin(0.5)
-
-      marketButton.on('pointerover', () => {
-        marketButton.setFillStyle(0x3a3a6a)
-      })
-
-      marketButton.on('pointerout', () => {
-        marketButton.setFillStyle(0x2a2a4a)
-      })
-
-      marketButton.on('pointerdown', () => {
-        this.scene.start('MarketScene')
-      })
-    }
-
     // Stats Button
-    const statsButtonY = marketBuilding.isUnlocked()
-      ? startY + (buttonHeight + buttonSpacing) * 4
-      : startY + (buttonHeight + buttonSpacing) * 3
+    const statsButtonY = startY + (buttonHeight + buttonSpacing) * 3
 
     const statsButton = this.add.rectangle(
       this.cameras.main.centerX,
@@ -480,51 +363,6 @@ export default class MainMenuScene extends Phaser.Scene {
           }
         })
       }
-    })
-  }
-
-  private showTutorialPrompt(title: string, message: string) {
-    // Create tutorial prompt overlay
-    const promptBg = this.add.rectangle(
-      this.cameras.main.centerX,
-      100,
-      500,
-      120,
-      0x1a1a3a
-    ).setDepth(1000).setStrokeStyle(3, 0xffaa00)
-
-    const promptTitle = this.add.text(
-      this.cameras.main.centerX,
-      70,
-      title,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '24px',
-        color: '#ffaa00',
-        fontStyle: 'bold',
-      }
-    ).setOrigin(0.5).setDepth(1001)
-
-    const promptText = this.add.text(
-      this.cameras.main.centerX,
-      105,
-      message,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '14px',
-        color: '#ffffff',
-        align: 'center',
-        wordWrap: { width: 480 }
-      }
-    ).setOrigin(0.5).setDepth(1001)
-
-    // Pulse animation
-    this.tweens.add({
-      targets: [promptBg, promptTitle, promptText],
-      alpha: 0.7,
-      duration: 800,
-      yoyo: true,
-      repeat: -1,
     })
   }
 }

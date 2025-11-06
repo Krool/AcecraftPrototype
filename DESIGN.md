@@ -1,5 +1,5 @@
 # Roguecraft – Vertical Roguelike Shooter
-## Design Case Study & Prototype Proposal
+## Design Document
 
 **Prepared by Kenneth Preston**
 
@@ -7,109 +7,101 @@
 
 ## 1. Overview
 
-Roguecraft is a vertical roguelike space shooter prototype built for web view on mobile and desktop, with optional standalone app support. The project serves as a case study for evaluating design thinking, rhythm refinement, and player experience flow in the vertical shooter genre.
+Roguecraft is a vertical roguelike space shooter prototype built for web view on mobile and desktop, with optional standalone app support. The game follows a Vampire Survivors-inspired formula: survive against endless waves of enemies for a set time period to achieve victory.
 
-**Primary Goal**: Redesign the traditional shoot-'em-up formula (Ace Craft / Galaga) into a cleaner, more readable, and rewarding experience optimized for fast onboarding and repeat play.
-
----
-
-## 2A. Market Context & Product Viability
-
-Ace Craft has maintained strong download velocity and visible ad placement across platforms for over a year, suggesting it's a financially viable live product with solid retention. Its Cuphead-inspired art direction, approachable gameplay loop, and roguelike systems appeal to the same hybrid casual-core audience that supports games like Survivor.io and Archero.
-
-This longevity indicates healthy DAU and consistent ad budget—meaning the product performs well commercially. **Our goal isn't to reinvent the formula but to streamline and evolve it**, addressing friction that prevents it from reaching broader audiences.
+**Primary Goal**: Create a streamlined, addictive survival shooter with progressive difficulty, meaningful upgrades, and a focus on moment-to-moment decision-making during intense combat.
 
 ---
 
-## 2B. Player Feedback & Pain Points
+## 2. Core Design Principles
 
-Community reviews and forum discussions highlight recurring issues that affect player experience even in a successful product:
-
-1. **Visual Clarity** – Hard to distinguish enemy vs friendly bullets during chaotic sequences
-2. **Input Friction** – The absorb mechanic interrupts control by requiring players to lift their finger mid-battle
-3. **UI & Meta Complexity** – Too many overlapping menus, currencies, and upgrade paths overwhelm new users
-4. **Weak Gacha Impact** – Early pulls feel meaningless; they rarely change gameplay
-5. **Tight Camera View** – The play area is too small for comfortable dodging
-6. **Weak Weapon Feedback** – Most weapons feel similar and lack satisfying sound or impact
-7. **Co-op Accessibility** – The feature is buried behind progress gates and lacks immediacy
-
-These issues form the basis for our redesign. **Each change we propose directly resolves a measurable player pain point** without discarding the systems that make Ace Craft commercially viable.
+1. **Immediate Action** – Drop players straight into gameplay, no tutorials
+2. **Clear Progression** – Linear level unlocks based on survival victories
+3. **Simple Economy** – Single currency (Credits) used for all purchases
+4. **Escalating Challenge** – Enemies start slow and ramp to overwhelming hordes
+5. **Satisfying Victories** – Clear win conditions with meaningful rewards
+6. **Compelling Loop** – Die/win → upgrade ship/buy new ships → try harder level → repeat
 
 ---
 
-## 3. Design Goals
+## 3. Core Gameplay Loop
 
-**Simplify** input, **improve** clarity, **enhance** weapon feedback, and **increase** early rewards.
-
-**Shift** gacha focus from gear to characters, **expand** the camera view, and **integrate** co-op accessibility from the first session.
-
-Each change is justified by user feedback and grounded in commercial performance insights.
-
----
-
-## 4. Core Experience
-
-### Target Player Feeling
-**"Tactile chaos under control."**
-
-Every tap, upgrade, and projectile should feel satisfying and legible.
-
-### Session Design
-- **Duration**: <5 minutes per level
-- **Level-ups**: ~15 per run
-- **Rewards**: Enemies drop XP and meta currency
-- **Spike Moments**: Mini-boss and boss encounters with reward bursts
+1. **Select Level** – Choose from unlocked campaign levels
+2. **Battle** – Survive against endless enemy spawns for 3-7 minutes
+3. **Level Up** – Collect XP, choose upgrades during battle
+4. **Win or Die** – Survive the timer to win credits, or die and earn nothing
+5. **Upgrade** – Spend credits on new ships or building upgrades
+6. **Repeat** – Tackle the next level with better stats
 
 ---
 
-## 5. Core Loop
+## 4. Victory & Defeat System
 
-1. **Battle Start** – Player spawns with default ship and base cannon
-2. **Combat Phase** – Continuous shooting, player dodges and collects XP orbs
-3. **Level-Up Phase** – Choose between 3 random upgrades
-4. **Mini-Boss / Boss Fights** – Short, high-reward pattern encounters
-5. **Reward Phase** – Treasure or meta gain
-6. **Meta Upgrade** – Upgrade ships, unlock evolutions
-7. **Next Mission** – Increased difficulty and variety
+### Win Condition
+- Survive for the level's required time (3-7 minutes depending on level)
+- Earn credits reward (100-400 depending on level)
+- Unlock next level (if not already unlocked)
+- Progress is saved
+
+### Defeat Condition
+- Health reaches zero
+- Return to main menu
+- No credits earned
+- Stats still recorded (kills, time survived)
+- Can retry immediately
+
+### Progression Philosophy
+- **You're not expected to win first try**
+- Each attempt makes you better at the game
+- Credits from wins let you buy new ships for variety
+- Buildings provide permanent stat boosts
 
 ---
 
-## 6. Key Redesign Features and Rationales
+## 5. Enemy Spawning System (Vampire Survivors Style)
 
-### Simplified Input (Remove Finger-Lift Absorb)
-**Problem**: Interrupts flow and control
-**Change**: Continuous drag; absorb becomes a companion ability
-**Rationale**: Maintains tension while eliminating frustration
+### Dynamic Spawning
+- Enemies spawn **continuously** throughout the level
+- No predetermined waves or patterns
+- Spawn rate **accelerates over time**:
+  - Starts at 1 enemy every 2 seconds
+  - Ramps to 1 enemy every 0.3 seconds by 2 minutes
+  - Creates natural difficulty curve
 
-### Character-Based Gacha
-**Problem**: Early pulls lack excitement
-**Change**: Ships/pilots instead of gear
-**Rationale**: Creates immediate gameplay impact and emotional engagement
+### Enemy Composition
+- **Early** (0-2 min): Mostly basic drones and wasps
+- **Mid** (2-4 min): Mix of drones, hunters, tanks
+- **Late** (4+ min): Heavy enemies, bombers, complex types
 
-### Vehicle Upgrades
-**Problem**: Gear meta is over-complicated
-**Change**: Ship-based upgrades only
-**Rationale**: Reduces cognitive load while enhancing clarity
+### Difficulty Scaling
+- Each level has a difficulty multiplier (1.0x to 2.5x)
+- Higher multipliers = slower spawn rate but tougher enemies
+- Creates distinct feel between levels
 
-### Expanded Camera View & Ricochet Projectiles
-**Problem**: Tight space and off-screen bullet loss
-**Change**: Pull camera back, add ricochet behavior
-**Rationale**: Improves visibility and engagement
+---
 
-### Weapon Feel Overhaul
-**Problem**: Weapons lack differentiation
-**Change**: Add unique visual, audio, and physical identity
-**Rationale**: Reinforces mastery and reward feedback
+## 6. Economy & Monetization
 
-### Co-op Onboarding
-**Problem**: Social play hidden late
-**Change**: Invite prompt post-tutorial
-**Rationale**: Boosts early retention and connection
+### Single Currency: Credits
+- Earned by **winning** levels (100-400 per victory)
+- Used to purchase new ships (250 credits each)
+- Used to upgrade buildings
 
-### Meta Simplification
-**Problem**: Too many currencies
-**Change**: Collapse into XP and Credits
-**Rationale**: Easier to follow progression and maintain pacing
+### No Premium Currency
+- Removed gems/gacha system
+- All ships purchaseable with credits
+- Clear, fair progression
+
+### Ship Unlocking
+- Start with Ace (Cannon ship)
+- 11 additional ships available for 250 credits each
+- Each ship has unique starting weapon and innate ability
+- Provides variety and replayability
+
+### Building Upgrades
+- Permanent stat boosts (HP, speed, weapon slots, etc.)
+- Costs increase per level
+- Provides long-term progression
 
 ---
 
@@ -177,18 +169,27 @@ Every tap, upgrade, and projectile should feel satisfying and legible.
 
 ## 10. Session & Screen Flow
 
-### First Launch Sequence
+### Game Flow (Revised - No Tutorial)
 
-1. **Loading Screen** – ASCII animation
-2. **Tutorial Battle** – Instant action (drop directly into combat)
-3. **Reward** – Unlock building → unlock new ship
-4. **Main Menu** – Hangar, Build, Campaign
-5. **Campaign Flow** – Centers camera on latest unlock
+1. **First Launch** → Main Menu
+2. **Start Campaign** → GameScene (Level 0)
+3. **Play** → Survive or die
+4. **Victory** → Credits earned, next level unlocked, return to menu
+5. **Defeat** → Return to menu
+6. **Upgrade** → Buy ships or upgrade buildings
+7. **Repeat** → Try next level
+
+### No Tutorial
+- Players learn by playing
+- First level (3 minutes) is forgiving
+- Natural difficulty ramp teaches mechanics
+- Death is cheap - just try again
 
 ### Main Menu Structure
-- **Hangar** – Upgrade/change ships
-- **Build** – City buildings menu
-- **Campaign** – Level selection path
+- **Campaign** – Start playing (shows current unlocked level)
+- **Build** – Upgrade buildings for permanent boosts
+- **Hangar** – Buy and select ships
+- **Stats** – View character performance stats
 
 ---
 
@@ -234,16 +235,21 @@ By addressing observed friction while keeping what works, Roguecraft strengthens
 
 ---
 
-## 14. Next Steps
+## 14. Campaign Levels
 
-1. ✅ Implement core mechanics and progression loop
-2. 🔨 Implement 3-4 weapons and passives in prototype
-3. 🔨 Add weapon evolution system
-4. 🔨 Add character selection and innate abilities
-5. 📋 Add visual feedback for upgrades
-6. 📋 Record demo footage
-7. 📋 Insert before/after comparisons from Ace Craft
-8. 📋 Submit final document + playable prototype link
+| Level | Name | Duration | Difficulty | Credits |
+|-------|------|----------|------------|---------|
+| 0 | First Contact | 3:00 | 1.0x | 100 |
+| 1 | Rising Storm | 4:00 | 1.3x | 150 |
+| 2 | Overwhelming Force | 5:00 | 1.6x | 200 |
+| 3 | Endless Swarm | 6:00 | 2.0x | 300 |
+| 4 | Inferno | 7:00 | 2.5x | 400 |
+
+### Level Unlock System
+- Start with Level 0 unlocked
+- Win a level to unlock the next
+- Can replay any unlocked level for practice (but no credit rewards on repeat wins)
+- Linear progression (no branching paths)
 
 ---
 
@@ -321,21 +327,32 @@ By addressing observed friction while keeping what works, Roguecraft strengthens
 
 ---
 
-## 18. Success Metrics
+## 18. Current Implementation Status
 
-**Core KPIs**
-- Session length: <5 minutes
-- Level-ups per run: ~15
-- Player comprehension time: <30 seconds
-- Retention D1/D7/D30
-- Average session count per day
+### ✅ Completed
+- Vampire Survivors-style enemy spawning (continuous, accelerating)
+- Win condition (survive for X time)
+- Victory screen with credit rewards
+- Defeat screen returning to menu
+- Level unlock progression
+- Single currency economy (Credits only)
+- Ship purchasing in Hangar (250 credits each)
+- Combo system that resets when hit
+- Campaign levels with difficulty scaling
+- No tutorial - direct gameplay
 
-**Engagement Metrics**
-- Weapon variety usage
-- Evolution unlock rate
-- Building upgrade progression
-- Co-op session frequency
+### 🔨 In Progress
+- Full weapon system (12 types planned)
+- Passive abilities (11 types planned)
+- Evolution system (weapon + passive combos)
+- Character innate abilities
+
+### 📋 Planned
+- Polish and balance
+- Additional visual/audio feedback
+- Building system expansion
+- More enemy types and behaviors
 
 ---
 
-This design document serves as the foundation for the Roguecraft prototype, ensuring every feature decision ties back to measurable player pain points and commercial viability insights from the vertical shooter genre.
+This design document reflects the current Vampire Survivors-inspired implementation of Roguecraft, focusing on immediate action, clear progression, and addictive gameplay loops.

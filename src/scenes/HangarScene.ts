@@ -44,6 +44,18 @@ export default class HangarScene extends Phaser.Scene {
       }
     ).setOrigin(0.5)
 
+    // Credits display
+    const creditsText = this.add.text(
+      this.cameras.main.centerX,
+      102,
+      `Credits: ${this.gameState.getCredits()} ¤`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '16px',
+        color: '#ffdd00',
+      }
+    ).setOrigin(0.5)
+
     // Back button
     const backButton = this.add.text(
       20,
@@ -78,11 +90,11 @@ export default class HangarScene extends Phaser.Scene {
     console.log('HangarScene - Unlocked characters:', unlockedCharacters)
 
     const cardWidth = 160
-    const cardHeight = 220
+    const cardHeight = 240
     const padding = 10
     const columns = 3
     const startX = (this.cameras.main.width - (cardWidth * columns + padding * (columns - 1))) / 2
-    const startY = 110
+    const startY = 130
 
     characters.forEach((type, index) => {
       const row = Math.floor(index / columns)
@@ -197,19 +209,48 @@ export default class HangarScene extends Phaser.Scene {
 
     container.add(abilityText)
 
-    // Lock indicator
+    // Lock indicator / Buy button
     if (!isUnlocked) {
-      const lockText = this.add.text(
-        width / 2, height - 5,
-        '🔒 LOCKED',
+      const SHIP_COST = 250
+      const canAfford = this.gameState.getCredits() >= SHIP_COST
+
+      const buyButton = this.add.rectangle(
+        width / 2, height - 20,
+        width - 10, 30,
+        canAfford ? 0x2a4a2a : 0x4a2a2a
+      ).setOrigin(0.5).setInteractive({ useHandCursor: canAfford })
+
+      const buyButtonText = this.add.text(
+        width / 2, height - 20,
+        `BUY: ${SHIP_COST}¤`,
         {
           fontFamily: 'Courier New',
           fontSize: '12px',
-          color: '#ff0000',
+          color: canAfford ? '#00ff00' : '#ff6666',
+          fontStyle: 'bold',
         }
-      ).setOrigin(0.5, 1)
+      ).setOrigin(0.5)
 
-      container.add(lockText)
+      container.add(buyButton)
+      container.add(buyButtonText)
+
+      if (canAfford) {
+        buyButton.on('pointerover', () => {
+          buyButton.setFillStyle(0x3a5a3a)
+        })
+
+        buyButton.on('pointerout', () => {
+          buyButton.setFillStyle(0x2a4a2a)
+        })
+
+        buyButton.on('pointerdown', () => {
+          if (this.gameState.spendCredits(SHIP_COST)) {
+            this.gameState.unlockCharacter(type)
+            // Refresh the scene
+            this.scene.restart()
+          }
+        })
+      }
     }
 
     // Make interactive if unlocked

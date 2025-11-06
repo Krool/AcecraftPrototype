@@ -9,12 +9,11 @@ import { Weapon, WeaponType, WeaponFactory, WeaponModifiers, DEFAULT_MODIFIERS }
 import { Passive, PassiveType, PassiveFactory, PlayerStats } from '../game/Passive'
 import { Character, CharacterType, CharacterFactory } from '../game/Character'
 import { EvolutionManager, EvolutionRecipe, EVOLUTION_RECIPES } from '../game/Evolution'
-import { GameState, TutorialStep } from '../game/GameState'
+import { GameState } from '../game/GameState'
 import { CampaignManager } from '../game/Campaign'
 
 export default class GameScene extends Phaser.Scene {
   private gameState!: GameState
-  private isTutorial: boolean = false
   private player!: Phaser.GameObjects.Text
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
   private playerSpeed: number = 300
@@ -109,17 +108,9 @@ export default class GameScene extends Phaser.Scene {
     super('GameScene')
   }
 
-  create(data?: { isTutorial?: boolean }) {
-    // Check if this is a tutorial run
-    this.isTutorial = data?.isTutorial || false
-    console.log('GameScene - isTutorial:', this.isTutorial, 'data:', data)
-
-    // If this is tutorial, set the tutorial step now
-    if (this.isTutorial) {
-      this.gameState = GameState.getInstance()
-      this.gameState.setTutorialStep(TutorialStep.FIRST_BATTLE)
-      console.log('Tutorial battle started - set step to FIRST_BATTLE')
-    }
+  create(data?: { levelIndex?: number }) {
+    // Initialize game state
+    this.gameState = GameState.getInstance()
 
     // Reset all game state variables (important for scene restart)
     this.totalXP = 0
@@ -379,12 +370,8 @@ export default class GameScene extends Phaser.Scene {
     this.powerUps = new PowerUpGroup(this, 20)
 
     // Initialize campaign manager
-    this.campaignManager = new CampaignManager()
-    // Start at level 0 for tutorial, level 1 for regular play
-    const campaignLevel = this.isTutorial ? 0 : 1
-    console.log('GameScene - Setting campaign level:', campaignLevel)
-    this.campaignManager.setLevel(campaignLevel)
-    console.log('GameScene - Current level:', this.campaignManager.getCurrentLevel())
+    const levelIndex = data?.levelIndex ?? this.gameState.getUnlockedLevels() - 1
+    this.campaignManager = new CampaignManager(levelIndex)
 
     // Create campaign level text (top left, under level)
     this.campaignLevelText = this.add.text(
@@ -397,10 +384,10 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setDepth(11)
 
-    // Enemies remaining text
+    // Time remaining text
     this.enemiesRemainingText = this.add.text(
       10, 65,
-      'Wave 1/1',
+      'Time to Victory: 0:00',
       {
         fontFamily: 'Courier New',
         fontSize: '11px',
@@ -823,33 +810,35 @@ export default class GameScene extends Phaser.Scene {
     if (this.level <= 2) {
       // Early game: mostly basic enemies
       if (rand < 70) {
-        type = EnemyType.BASIC
+        type = EnemyType.DRONE
       } else if (rand < 90) {
-        type = EnemyType.FAST
+        type = EnemyType.WASP
       } else {
-        type = EnemyType.ELITE
+        type = EnemyType.SWARMER
       }
     } else if (this.level <= 5) {
       // Mid game: more variety
       if (rand < 40) {
-        type = EnemyType.BASIC
+        type = EnemyType.DRONE
       } else if (rand < 65) {
-        type = EnemyType.FAST
+        type = EnemyType.WASP
       } else if (rand < 85) {
-        type = EnemyType.ELITE
+        type = EnemyType.HUNTER
       } else {
         type = EnemyType.TANK
       }
     } else {
       // Late game: harder enemies more common
       if (rand < 20) {
-        type = EnemyType.BASIC
-      } else if (rand < 45) {
-        type = EnemyType.FAST
-      } else if (rand < 70) {
-        type = EnemyType.ELITE
-      } else {
+        type = EnemyType.DRONE
+      } else if (rand < 40) {
+        type = EnemyType.WASP
+      } else if (rand < 60) {
+        type = EnemyType.HUNTER
+      } else if (rand < 80) {
         type = EnemyType.TANK
+      } else {
+        type = EnemyType.BOMBER
       }
     }
 
@@ -902,42 +891,39 @@ export default class GameScene extends Phaser.Scene {
       })
     }
 
-    // Spawn enemies from campaign (only if not paused)
+    // Spawn enemies dynamically (only if not paused)
     if (!this.isPaused) {
-      const nextEnemy = this.campaignManager.getNextEnemy(time)
-      if (nextEnemy) {
-        console.log('Spawning enemy:', nextEnemy.type, 'at time:', time)
+      // Calculate spawn rate based on time (ramps up)
+      const timeInSeconds = this.survivalTime
+      const baseSpawnDelay = 2000 // Start at 2 seconds
+      const minSpawnDelay = 300 // Minimum 0.3 seconds
+      const rampTime = 120 // Ramp up over 2 minutes
+
+      const currentSpawnDelay = Math.max(
+        minSpawnDelay,
+        baseSpawnDelay - (baseSpawnDelay - minSpawnDelay) * (timeInSeconds / rampTime)
+      )
+
+      // Adjust spawn delay by difficulty
+      const adjustedSpawnDelay = currentSpawnDelay * this.campaignManager.getDifficulty()
+
+      if (time >= this.nextEnemySpawnTime) {
         const randomX = Phaser.Math.Between(50, this.cameras.main.width - 50)
-
-        // Spawn in cluster if specified
-        if (nextEnemy.clustered) {
-          const clusterSize = 3
-          for (let i = 0; i < clusterSize; i++) {
-            const offsetX = (i - 1) * 30 // Spread them out
-            this.enemies.spawnEnemy(randomX + offsetX, -50, nextEnemy.type)
-          }
-        } else {
-          this.enemies.spawnEnemy(randomX, -50, nextEnemy.type)
-        }
+        this.spawnEnemyBasedOnDifficulty(randomX, -50)
+        this.nextEnemySpawnTime = time + adjustedSpawnDelay
       }
 
-      // Check for level completion
-      if (this.campaignManager.isLevelComplete() && this.enemies.getActiveCount() === 0) {
-        console.log('Level complete! All waves done and all enemies defeated.')
-        this.levelCompleted()
+      // Check for win condition
+      if (this.survivalTime >= this.campaignManager.getWinTime()) {
+        console.log('Victory! Survived the required time.')
+        this.levelWon()
       }
 
-      // Update campaign progress display
-      const progress = this.campaignManager.getProgress()
-      this.enemiesRemainingText.setText(`Wave ${progress.wave}/${progress.totalWaves}`)
-
-      // Debug: Log when waves complete
-      if (this.campaignManager.isLevelComplete()) {
-        const activeEnemies = this.enemies.getActiveCount()
-        if (activeEnemies > 0 && time % 1000 < 16) { // Log once per second
-          console.log(`All waves complete! Waiting for ${activeEnemies} enemies to be defeated...`)
-        }
-      }
+      // Update time remaining display
+      const timeRemaining = this.campaignManager.getWinTime() - this.survivalTime
+      const minutes = Math.floor(timeRemaining / 60)
+      const seconds = timeRemaining % 60
+      this.enemiesRemainingText.setText(`Time to Victory: ${minutes}:${seconds.toString().padStart(2, '0')}`)
     }
 
     // Update projectiles, enemies, and XP drops (only if not paused)
@@ -946,19 +932,11 @@ export default class GameScene extends Phaser.Scene {
       this.enemies.update(time, delta)
       this.enemyProjectiles.update()
 
-      // Update XP drops with magnet effect if active
-      if (this.hasMagnet) {
-        this.xpDrops.update(this.player.x, this.player.y, 300) // Larger attraction radius
-      } else {
-        this.xpDrops.update(this.player.x, this.player.y)
-      }
+      // Update XP drops (magnet power-up handled internally by XPDrop class)
+      this.xpDrops.update(this.player.x, this.player.y)
 
-      // Update credit drops with same magnet effect
-      if (this.hasMagnet) {
-        this.creditDrops.update(this.player.x, this.player.y, 300)
-      } else {
-        this.creditDrops.update(this.player.x, this.player.y)
-      }
+      // Update credit drops
+      this.creditDrops.update(this.player.x, this.player.y)
 
       this.powerUps.update()
 
@@ -1468,6 +1446,9 @@ export default class GameScene extends Phaser.Scene {
     this.health = Math.max(0, this.health)
     this.updateHealthDisplay()
 
+    // Reset combo when hit
+    this.resetCombo()
+
     // Screen shake on damage
     this.cameras.main.shake(200, 0.01)
 
@@ -1621,6 +1602,128 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
+  private levelWon() {
+    this.isPaused = true
+    this.physics.pause()
+    // Pause star field
+    this.starFieldTweens.forEach(tween => tween.pause())
+
+    // Award credits
+    const creditsReward = this.campaignManager.getCreditsReward()
+    this.gameState.addCredits(creditsReward)
+
+    // Unlock next level if available
+    const currentLevel = this.campaignManager.getCurrentLevelIndex()
+    if (currentLevel + 1 < this.campaignManager.getLevelCount()) {
+      if (this.gameState.getUnlockedLevels() <= currentLevel + 1) {
+        this.gameState.unlockNextLevel()
+      }
+    }
+
+    // Record stats
+    this.gameState.recordRun(this.score, this.survivalTime, this.killCount)
+
+    // Record character-specific stats
+    const timePlayed = this.time.now - this.runStartTime
+    this.gameState.recordCharacterRun(
+      this.character.getConfig().type,
+      this.totalDamageDealt,
+      timePlayed,
+      this.killCount
+    )
+
+    // Save high score if beaten
+    if (this.score > this.highScore) {
+      this.highScore = this.score
+      localStorage.setItem('roguecraft_highscore', this.highScore.toString())
+    }
+
+    // Show victory overlay
+    this.showVictoryOverlay(creditsReward)
+  }
+
+  private showVictoryOverlay(creditsEarned: number) {
+    // Create victory overlay
+    const overlay = this.add.rectangle(
+      0, 0,
+      this.cameras.main.width,
+      this.cameras.main.height,
+      0x000000,
+      0.8
+    ).setOrigin(0, 0).setDepth(200)
+
+    const victoryText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY - 150,
+      'VICTORY!',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '64px',
+        color: '#00ff00',
+      }
+    ).setOrigin(0.5).setDepth(201)
+
+    const minutes = Math.floor(this.survivalTime / 60)
+    const seconds = this.survivalTime % 60
+
+    const statsText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY - 50,
+      `Time Survived: ${minutes}:${seconds.toString().padStart(2, '0')}\nKills: ${this.killCount}\nScore: ${this.score}`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '24px',
+        color: '#ffffff',
+        align: 'center'
+      }
+    ).setOrigin(0.5).setDepth(201)
+
+    // Credits earned display
+    const creditsText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 50,
+      `Credits Earned: ${creditsEarned} ¤`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '20px',
+        color: '#ffdd00',
+      }
+    ).setOrigin(0.5).setDepth(201)
+
+    const continueButton = this.add.rectangle(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 120,
+      300,
+      80,
+      0x2a4a2a
+    ).setDepth(201).setInteractive({ useHandCursor: true })
+
+    const continueText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 120,
+      'CONTINUE',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '32px',
+        color: '#00ff00',
+      }
+    ).setOrigin(0.5).setDepth(202)
+
+    // Hover effects
+    continueButton.on('pointerover', () => {
+      continueButton.setFillStyle(0x3a5a3a)
+    })
+
+    continueButton.on('pointerout', () => {
+      continueButton.setFillStyle(0x2a4a2a)
+    })
+
+    // Continue handler
+    continueButton.on('pointerdown', () => {
+      this.scene.start('MainMenuScene')
+    })
+  }
+
   private handleEnemyProjectileHit(
     playerObj: Phaser.GameObjects.GameObject,
     projectileObj: Phaser.GameObjects.GameObject
@@ -1664,174 +1767,6 @@ export default class GameScene extends Phaser.Scene {
     const nearbyEnemies = this.enemies.getNearbyEnemies(data.x, data.y, data.radius)
     nearbyEnemies.forEach(enemy => {
       enemy.heal(data.amount)
-    })
-  }
-
-  private levelCompleted() {
-    console.log('levelCompleted() called')
-    this.isPaused = true
-    this.physics.pause()
-    this.starFieldTweens.forEach(tween => tween.pause())
-
-    const currentLevel = this.campaignManager.getCurrentLevel()
-    console.log('Current level:', currentLevel.levelNumber, currentLevel.name)
-    console.log('Is tutorial?', this.isTutorial)
-
-    // Award credits and bonus XP
-    this.gameState.addCredits(currentLevel.creditsReward)
-
-    // Record character-specific stats
-    const timePlayed = this.time.now - this.runStartTime
-    const enemyKills = this.killCount
-    this.gameState.recordCharacterRun(
-      this.character.getConfig().type,
-      this.totalDamageDealt,
-      timePlayed,
-      enemyKills
-    )
-
-    // Tutorial: Complete first battle and move to BUILD_MARKET step
-    if (this.isTutorial && currentLevel.levelNumber === 0) {
-      console.log('Tutorial complete! Setting BUILD_MARKET step and returning to menu...')
-      this.gameState.setTutorialStep(TutorialStep.BUILD_MARKET)
-      // Short delay then return to main menu
-      this.time.delayedCall(2000, () => {
-        console.log('Transitioning to MainMenuScene...')
-        this.scene.start('MainMenuScene')
-      })
-
-      // Show tutorial completion message
-      const overlay = this.add.rectangle(
-        0, 0,
-        this.cameras.main.width,
-        this.cameras.main.height,
-        0x000000,
-        0.7
-      ).setOrigin(0, 0).setDepth(200)
-
-      const titleText = this.add.text(
-        this.cameras.main.centerX,
-        this.cameras.main.centerY - 50,
-        'TUTORIAL COMPLETE!',
-        {
-          fontFamily: 'Courier New',
-          fontSize: '48px',
-          color: '#00ff00',
-        }
-      ).setOrigin(0.5).setDepth(201)
-
-      const instructionText = this.add.text(
-        this.cameras.main.centerX,
-        this.cameras.main.centerY + 20,
-        `Credits Earned: ${currentLevel.creditsReward} ¤\n\nReturning to Main Menu...`,
-        {
-          fontFamily: 'Courier New',
-          fontSize: '24px',
-          color: '#ffffff',
-          align: 'center'
-        }
-      ).setOrigin(0.5).setDepth(201)
-
-      return
-    }
-
-    // Create level complete overlay
-    const overlay = this.add.rectangle(
-      0, 0,
-      this.cameras.main.width,
-      this.cameras.main.height,
-      0x000000,
-      0.7
-    ).setOrigin(0, 0).setDepth(200)
-
-    const titleText = this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY - 120,
-      'LEVEL COMPLETE!',
-      {
-        fontFamily: 'Courier New',
-        fontSize: '48px',
-        color: '#00ff00',
-      }
-    ).setOrigin(0.5).setDepth(201)
-
-    const statsText = this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY - 40,
-      `${currentLevel.name}\n\nScore: ${this.score}\nCredits Earned: ${currentLevel.creditsReward} ¤`,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '24px',
-        color: '#ffffff',
-        align: 'center'
-      }
-    ).setOrigin(0.5).setDepth(201)
-
-    // Continue button (if more levels available)
-    if (this.campaignManager.getLevelCount() > currentLevel.levelNumber) {
-      const continueButton = this.add.rectangle(
-        this.cameras.main.centerX,
-        this.cameras.main.centerY + 80,
-        300,
-        70,
-        0x2a4a2a
-      ).setDepth(201).setInteractive({ useHandCursor: true })
-
-      const continueText = this.add.text(
-        this.cameras.main.centerX,
-        this.cameras.main.centerY + 80,
-        'NEXT LEVEL',
-        {
-          fontFamily: 'Courier New',
-          fontSize: '28px',
-          color: '#00ff00',
-        }
-      ).setOrigin(0.5).setDepth(202)
-
-      continueButton.on('pointerover', () => {
-        continueButton.setFillStyle(0x3a5a3a)
-      })
-
-      continueButton.on('pointerout', () => {
-        continueButton.setFillStyle(0x2a4a2a)
-      })
-
-      continueButton.on('pointerdown', () => {
-        this.campaignManager.nextLevel()
-        this.scene.restart()
-      })
-    }
-
-    // Main menu button
-    const menuButton = this.add.rectangle(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY + 160,
-      300,
-      70,
-      0x2a2a4a
-    ).setDepth(201).setInteractive({ useHandCursor: true })
-
-    const menuText = this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY + 160,
-      'MAIN MENU',
-      {
-        fontFamily: 'Courier New',
-        fontSize: '28px',
-        color: '#00ffff',
-      }
-    ).setOrigin(0.5).setDepth(202)
-
-    menuButton.on('pointerover', () => {
-      menuButton.setFillStyle(0x3a3a6a)
-    })
-
-    menuButton.on('pointerout', () => {
-      menuButton.setFillStyle(0x2a2a4a)
-    })
-
-    menuButton.on('pointerdown', () => {
-      this.scene.start('MainMenuScene')
     })
   }
 }

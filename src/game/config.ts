@@ -1,11 +1,10 @@
 import Phaser from 'phaser'
 import LoadingScene from '../scenes/LoadingScene'
+import GameScene from '../scenes/GameScene'
 import MainMenuScene from '../scenes/MainMenuScene'
 import BuildingMenuScene from '../scenes/BuildingMenuScene'
 import HangarScene from '../scenes/HangarScene'
-import MarketScene from '../scenes/MarketScene'
 import StatsScene from '../scenes/StatsScene'
-import GameScene from '../scenes/GameScene'
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -19,7 +18,7 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [MainMenuScene, BuildingMenuScene, HangarScene, MarketScene, StatsScene, GameScene],
+  scene: [GameScene, MainMenuScene, BuildingMenuScene, HangarScene, StatsScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
