@@ -22,11 +22,9 @@ export default class HangarScene extends Phaser.Scene {
   }
 
   create() {
-    console.log('[HangarScene] create() called')
     this.gameState = GameState.getInstance()
     this.selectedCharacter = this.gameState.getSelectedCharacter()
     this.viewingCharacter = this.selectedCharacter // Start by viewing the selected ship
-    console.log('[HangarScene] Selected character:', this.selectedCharacter)
 
     // Add background
     this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x0a0a1e)
@@ -155,8 +153,8 @@ export default class HangarScene extends Phaser.Scene {
 
     const listX = 20
     const itemWidth = 220
-    const itemHeight = 60
-    const padding = 5
+    const itemHeight = 45 // Reduced from 60 to fit more ships
+    const padding = 3 // Reduced from 5 for tighter spacing
 
     characters.forEach((type, index) => {
       const y = index * (itemHeight + padding)
@@ -223,7 +221,7 @@ export default class HangarScene extends Phaser.Scene {
       config.symbol,
       {
         fontFamily: 'Courier New',
-        fontSize: '24px',
+        fontSize: '20px', // Reduced from 24px
         color: isUnlocked ? config.color : '#555555',
       }
     ).setOrigin(0, 0.5)
@@ -232,11 +230,11 @@ export default class HangarScene extends Phaser.Scene {
 
     // Ship name
     const nameText = this.add.text(
-      isSelected ? 90 : 75, height / 2 - 10,
+      isSelected ? 75 : 60, height / 2 - 8, // Adjusted x positions
       config.name,
       {
         fontFamily: 'Courier New',
-        fontSize: '14px',
+        fontSize: '12px', // Reduced from 14px
         color: isUnlocked ? '#ffffff' : '#888888',
         fontStyle: 'bold',
       }
@@ -248,11 +246,11 @@ export default class HangarScene extends Phaser.Scene {
     if (!isUnlocked) {
       // Check if ship can be purchased (unlocked but not purchased)
       const lockText = this.add.text(
-        isSelected ? 90 : 75, height / 2 + 5,
+        isSelected ? 75 : 60, height / 2 + 4, // Adjusted x positions and y offset
         canPurchase ? `${config.cost}¤` : `Unlock: Lv${config.unlockLevel}`,
         {
           fontFamily: 'Courier New',
-          fontSize: '11px',
+          fontSize: '10px', // Reduced from 11px
           color: canPurchase ? '#ffdd00' : '#ff6666',
         }
       ).setOrigin(0, 0)
@@ -275,11 +273,11 @@ export default class HangarScene extends Phaser.Scene {
     } else {
       const weaponConfig = WEAPON_CONFIGS[config.startingWeapon]
       const weaponText = this.add.text(
-        isSelected ? 90 : 75, height / 2 + 5,
+        isSelected ? 75 : 60, height / 2 + 4, // Adjusted x positions and y offset
         `${weaponConfig.icon} ${weaponConfig.name}`,
         {
           fontFamily: 'Courier New',
-          fontSize: '11px',
+          fontSize: '10px', // Reduced from 11px
           color: '#ffaa00',
         }
       ).setOrigin(0, 0)
@@ -690,8 +688,8 @@ export default class HangarScene extends Phaser.Scene {
 
   private setupScrolling() {
     const characters = Object.values(CharacterType)
-    const itemHeight = 60
-    const padding = 5
+    const itemHeight = 45 // Match createShipList
+    const padding = 3 // Match createShipList
     const totalContentHeight = characters.length * (itemHeight + padding)
     const visibleHeight = this.cameras.main.height - 140
 
@@ -713,7 +711,8 @@ export default class HangarScene extends Phaser.Scene {
       this.dragStartY = pointer.y
     })
 
-    dragZone.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+    // Use global input for move to capture drags that go outside the zone
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       if (this.isDragging) {
         const dragDelta = pointer.y - this.dragStartY
 
@@ -730,12 +729,18 @@ export default class HangarScene extends Phaser.Scene {
       }
     })
 
-    dragZone.on('pointerup', () => {
-      this.isDragging = false
+    // Use global input for pointerup to ensure drag ends even if outside zone
+    this.input.on('pointerup', () => {
+      if (this.isDragging) {
+        this.isDragging = false
+      }
     })
 
-    dragZone.on('pointerout', () => {
-      this.isDragging = false
+    // Also handle pointerupoutside for when pointer is released outside the game
+    this.input.on('pointerupoutside', () => {
+      if (this.isDragging) {
+        this.isDragging = false
+      }
     })
 
     // Add mouse wheel scrolling
