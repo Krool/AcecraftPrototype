@@ -212,22 +212,6 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
       movementPattern: 'charge',
     },
   },
-  [EnemyType.MINI_BOSS]: {
-    symbol: '{◉}',
-    color: '#ff3333',
-    fontSize: '96px',
-    health: 800, // Doubled again from 400
-    speed: 56, // Reduced by 30% (was 80)
-    xpValue: 100,
-    scoreValue: 200,
-    name: 'DEVASTATOR',
-    behavior: {
-      shootsBack: true,
-      shootInterval: 800,
-      movementPattern: 'sinwave',
-      specialAbility: 'multi_pattern',
-    },
-  },
   [EnemyType.SPIRAL_SHOOTER]: {
     symbol: '@*@',
     color: '#ff3333',

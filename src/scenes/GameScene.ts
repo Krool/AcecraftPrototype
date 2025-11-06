@@ -1,6 +1,6 @@
 import Phaser from 'phaser'
 import { ProjectileGroup, ProjectileType } from '../game/Projectile'
-import { EnemyGroup, EnemyType, ENEMY_CONFIGS } from '../game/Enemy'
+import { EnemyGroup, EnemyType, ENEMY_CONFIGS, Enemy } from '../game/Enemy'
 import { EnemyProjectileGroup } from '../game/EnemyProjectile'
 import { XPDropGroup } from '../game/XPDrop'
 import { CreditDropGroup } from '../game/CreditDrop'
@@ -101,6 +101,7 @@ export default class GameScene extends Phaser.Scene {
   private creditsCollectedThisRun: number = 0
   private creditsCollectedText!: Phaser.GameObjects.Text
   private lastEngineTrailTime: number = 0
+  private lastHitTime: number = 0
   private gameOverUI: Phaser.GameObjects.GameObject[] = []
 
   // New weapon/passive/character system
@@ -1597,23 +1598,28 @@ export default class GameScene extends Phaser.Scene {
       case 'line':
         // Horizontal line of 9 enemies (was 5)
         for (let i = -4; i <= 4; i++) {
-          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.spawnEnemyBasedOnDifficulty(spawnX, y)
         }
         break
 
       case 'v':
         // V formation (5-7-5-3 pattern - was 3-5-3)
         for (let i = -2; i <= 2; i++) {
-          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.spawnEnemyBasedOnDifficulty(spawnX, y)
         }
         for (let i = -3; i <= 3; i++) {
-          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y - 40)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.spawnEnemyBasedOnDifficulty(spawnX, y - 40)
         }
         for (let i = -2; i <= 2; i++) {
-          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y - 80)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.spawnEnemyBasedOnDifficulty(spawnX, y - 80)
         }
         for (let i = -1; i <= 1; i++) {
-          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y - 120)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.spawnEnemyBasedOnDifficulty(spawnX, y - 120)
         }
         break
 
@@ -1623,7 +1629,8 @@ export default class GameScene extends Phaser.Scene {
           const angle = (i / 10) * Math.PI * 2
           const offsetX = Math.cos(angle) * 80
           const offsetY = Math.sin(angle) * 40
-          this.spawnEnemyBasedOnDifficulty(centerX + offsetX, y + offsetY)
+          const spawnX = this.clampSpawnX(centerX + offsetX)
+          this.spawnEnemyBasedOnDifficulty(spawnX, y + offsetY)
         }
         break
 
@@ -1631,7 +1638,8 @@ export default class GameScene extends Phaser.Scene {
         // Wave pattern (11 enemies - was 7)
         for (let i = -5; i <= 5; i++) {
           const waveOffset = Math.sin((i / 5) * Math.PI) * 30
-          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y + waveOffset)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.spawnEnemyBasedOnDifficulty(spawnX, y + waveOffset)
         }
         break
     }
@@ -1684,6 +1692,12 @@ export default class GameScene extends Phaser.Scene {
     this.updateWaveUI()
   }
 
+  private clampSpawnX(x: number): number {
+    // Clamp spawn X position to be within game bounds with padding
+    const padding = 20 // Keep enemies at least 20px from edges
+    return Phaser.Math.Clamp(x, padding, this.cameras.main.width - padding)
+  }
+
   private spawnWaveFormation(formation: any, enemyType: EnemyType) {
     const centerX = this.cameras.main.centerX
     const y = -50 // Spawn above the screen
@@ -1694,28 +1708,34 @@ export default class GameScene extends Phaser.Scene {
         const count = formation.count || 1
         for (let i = 0; i < count; i++) {
           const offsetX = (i - (count - 1) / 2) * 100
-          this.enemies.spawnEnemy(centerX + offsetX, y, enemyType)
+          const spawnX = this.clampSpawnX(centerX + offsetX)
+          this.enemies.spawnEnemy(spawnX, y, enemyType)
         }
         break
 
       case 'line':
         for (let i = -4; i <= 4; i++) {
-          this.enemies.spawnEnemy(centerX + i * spacing, y, enemyType)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.enemies.spawnEnemy(spawnX, y, enemyType)
         }
         break
 
       case 'v':
         for (let i = -2; i <= 2; i++) {
-          this.enemies.spawnEnemy(centerX + i * spacing, y, enemyType)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.enemies.spawnEnemy(spawnX, y, enemyType)
         }
         for (let i = -3; i <= 3; i++) {
-          this.enemies.spawnEnemy(centerX + i * spacing, y - 40, enemyType)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.enemies.spawnEnemy(spawnX, y - 40, enemyType)
         }
         for (let i = -2; i <= 2; i++) {
-          this.enemies.spawnEnemy(centerX + i * spacing, y - 80, enemyType)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.enemies.spawnEnemy(spawnX, y - 80, enemyType)
         }
         for (let i = -1; i <= 1; i++) {
-          this.enemies.spawnEnemy(centerX + i * spacing, y - 120, enemyType)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.enemies.spawnEnemy(spawnX, y - 120, enemyType)
         }
         break
 
@@ -1724,14 +1744,16 @@ export default class GameScene extends Phaser.Scene {
           const angle = (i / 10) * Math.PI * 2
           const offsetX = Math.cos(angle) * 80
           const offsetY = Math.sin(angle) * 40
-          this.enemies.spawnEnemy(centerX + offsetX, y + offsetY, enemyType)
+          const spawnX = this.clampSpawnX(centerX + offsetX)
+          this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType)
         }
         break
 
       case 'wave':
         for (let i = -5; i <= 5; i++) {
           const waveOffset = Math.sin((i / 5) * Math.PI) * 30
-          this.enemies.spawnEnemy(centerX + i * spacing, y + waveOffset, enemyType)
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          this.enemies.spawnEnemy(spawnX, y + waveOffset, enemyType)
         }
         break
     }
@@ -2483,6 +2505,264 @@ export default class GameScene extends Phaser.Scene {
     })
 
     return 40 + (newlyUnlockedShips.length * 60)
+  }
+
+  private createWeaponPassiveDisplay(baseY: number): Phaser.GameObjects.GameObject[] {
+    // Create interactive weapon and passive displays with icons and pips
+    const elements: Phaser.GameObjects.GameObject[] = []
+    const centerX = this.cameras.main.centerX
+    const iconSize = 36
+    const pipSize = 6
+    const itemSpacing = 50
+
+    // Weapons Title
+    const weaponsTitle = this.add.text(
+      centerX,
+      baseY,
+      'WEAPONS',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '18px',
+        color: '#00ffff',
+        fontStyle: 'bold',
+      }
+    ).setOrigin(0.5).setDepth(201)
+    elements.push(weaponsTitle)
+
+    // Display each weapon
+    const maxWeapons = 6
+    const weaponsY = baseY + 30
+    const totalWeaponsWidth = Math.min(this.weapons.length, maxWeapons) * itemSpacing
+    const weaponsStartX = centerX - (totalWeaponsWidth / 2) + (itemSpacing / 2)
+
+    this.weapons.slice(0, maxWeapons).forEach((weapon, index) => {
+      const config = weapon.getConfig()
+      const x = weaponsStartX + index * itemSpacing
+      const y = weaponsY
+
+      // Background
+      const bg = this.add.rectangle(x, y, iconSize, iconSize, 0x1a3a3a, 0.8)
+        .setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true })
+      elements.push(bg)
+
+      // Icon
+      const icon = this.add.text(x, y, config.icon, {
+        fontFamily: 'Courier New',
+        fontSize: '24px',
+        color: config.color,
+      }).setOrigin(0.5).setDepth(202)
+      elements.push(icon)
+
+      // Level pips
+      const level = weapon.getLevel()
+      const maxLevel = config.maxLevel
+      const pipsY = y + iconSize / 2 + 10
+      const pipsWidth = maxLevel * (pipSize + 2)
+      const pipsStartX = x - (pipsWidth / 2) + (pipSize / 2)
+
+      for (let i = 0; i < maxLevel; i++) {
+        const pipX = pipsStartX + i * (pipSize + 2)
+        const pip = this.add.circle(pipX, pipsY, pipSize / 2, i < level ? 0x00ffaa : 0x333333)
+          .setDepth(202)
+        elements.push(pip)
+      }
+
+      // Hover effects
+      bg.on('pointerover', () => {
+        bg.setFillStyle(0x2a4a5a, 1)
+        icon.setScale(1.2)
+      })
+
+      bg.on('pointerout', () => {
+        bg.setFillStyle(0x1a3a3a, 0.8)
+        icon.setScale(1)
+      })
+
+      // Click to show detail
+      bg.on('pointerdown', () => {
+        this.showItemDetail(config, level, maxLevel, 'weapon')
+      })
+    })
+
+    // Passives Title
+    const passivesY = weaponsY + iconSize + 40
+    const passivesTitle = this.add.text(
+      centerX,
+      passivesY,
+      'PASSIVES',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '18px',
+        color: '#ffaa00',
+        fontStyle: 'bold',
+      }
+    ).setOrigin(0.5).setDepth(201)
+    elements.push(passivesTitle)
+
+    // Display each passive
+    const maxPassives = 6
+    const passivesDisplayY = passivesY + 30
+    const totalPassivesWidth = Math.min(this.passives.length, maxPassives) * itemSpacing
+    const passivesStartX = centerX - (totalPassivesWidth / 2) + (itemSpacing / 2)
+
+    this.passives.slice(0, maxPassives).forEach((passive, index) => {
+      const config = passive.getConfig()
+      const x = passivesStartX + index * itemSpacing
+      const y = passivesDisplayY
+
+      // Background
+      const bg = this.add.rectangle(x, y, iconSize, iconSize, 0x3a2a1a, 0.8)
+        .setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true })
+      elements.push(bg)
+
+      // Icon
+      const icon = this.add.text(x, y, config.icon, {
+        fontFamily: 'Courier New',
+        fontSize: '24px',
+        color: config.color,
+      }).setOrigin(0.5).setDepth(202)
+      elements.push(icon)
+
+      // Level pips
+      const level = passive.getLevel()
+      const maxLevel = config.maxLevel
+      const pipsY = y + iconSize / 2 + 10
+      const pipsWidth = maxLevel * (pipSize + 2)
+      const pipsStartX = x - (pipsWidth / 2) + (pipSize / 2)
+
+      for (let i = 0; i < maxLevel; i++) {
+        const pipX = pipsStartX + i * (pipSize + 2)
+        const pip = this.add.circle(pipX, pipsY, pipSize / 2, i < level ? 0xffaa00 : 0x333333)
+          .setDepth(202)
+        elements.push(pip)
+      }
+
+      // Hover effects
+      bg.on('pointerover', () => {
+        bg.setFillStyle(0x4a3a2a, 1)
+        icon.setScale(1.2)
+      })
+
+      bg.on('pointerout', () => {
+        bg.setFillStyle(0x3a2a1a, 0.8)
+        icon.setScale(1)
+      })
+
+      // Click to show detail
+      bg.on('pointerdown', () => {
+        this.showItemDetail(config, level, maxLevel, 'passive')
+      })
+    })
+
+    return elements
+  }
+
+  private showItemDetail(config: any, level: number, maxLevel: number, type: 'weapon' | 'passive') {
+    // Create detail panel overlay
+    const overlay = this.add.rectangle(
+      0, 0,
+      this.cameras.main.width,
+      this.cameras.main.height,
+      0x000000,
+      0.7
+    ).setOrigin(0, 0).setDepth(300).setInteractive()
+
+    const panelWidth = 400
+    const panelHeight = 300
+    const panelX = this.cameras.main.centerX
+    const panelY = this.cameras.main.centerY
+
+    const panel = this.add.rectangle(
+      panelX, panelY,
+      panelWidth, panelHeight,
+      0x1a1a3a
+    ).setDepth(301)
+
+    const border = this.add.rectangle(
+      panelX, panelY,
+      panelWidth, panelHeight
+    ).setStrokeStyle(2, type === 'weapon' ? 0x00ffff : 0xffaa00).setDepth(301)
+
+    // Icon
+    const icon = this.add.text(
+      panelX,
+      panelY - panelHeight / 2 + 60,
+      config.icon,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '48px',
+        color: config.color,
+      }
+    ).setOrigin(0.5).setDepth(302)
+
+    // Name
+    const name = this.add.text(
+      panelX,
+      panelY - panelHeight / 2 + 120,
+      config.name,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '20px',
+        color: '#ffffff',
+        fontStyle: 'bold',
+      }
+    ).setOrigin(0.5).setDepth(302)
+
+    // Level
+    const levelText = this.add.text(
+      panelX,
+      panelY - panelHeight / 2 + 150,
+      `Level: ${level}/${maxLevel}`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '16px',
+        color: '#aaaaaa',
+      }
+    ).setOrigin(0.5).setDepth(302)
+
+    // Description
+    const desc = this.add.text(
+      panelX,
+      panelY - panelHeight / 2 + 190,
+      config.description,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '14px',
+        color: '#cccccc',
+        align: 'center',
+        wordWrap: { width: panelWidth - 40 }
+      }
+    ).setOrigin(0.5, 0).setDepth(302)
+
+    // Close button
+    const closeButton = this.add.text(
+      panelX,
+      panelY + panelHeight / 2 - 40,
+      'CLOSE',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '18px',
+        color: '#00ff00',
+      }
+    ).setOrigin(0.5).setDepth(302).setInteractive({ useHandCursor: true })
+
+    // Close on click
+    const closePanel = () => {
+      overlay.destroy()
+      panel.destroy()
+      border.destroy()
+      icon.destroy()
+      name.destroy()
+      levelText.destroy()
+      desc.destroy()
+      closeButton.destroy()
+    }
+
+    overlay.on('pointerdown', closePanel)
+    closeButton.on('pointerdown', closePanel)
+
+    closeButton.on('pointerover', () => closeButton.setColor('#00ffff'))
+    closeButton.on('pointerout', () => closeButton.setColor('#00ff00'))
   }
 
   private showUpgradeOptions() {
@@ -3563,9 +3843,10 @@ export default class GameScene extends Phaser.Scene {
     let critChance = this.weaponModifiers.critChance
 
     // Tempest: +20% crit chance on Nature damage
-    if (this.character.getConfig().type === 'TEMPEST' && projectile.getDamageType() === 'NATURE') {
-      critChance += 20
-    }
+    // TODO: Implement getDamageType on Projectile class
+    // if (this.character.getConfig().type === 'TEMPEST' && projectile.getDamageType() === 'NATURE') {
+    //   critChance += 20
+    // }
 
     const isCritical = Math.random() * 100 < critChance
     if (isCritical) {
@@ -4241,7 +4522,7 @@ export default class GameScene extends Phaser.Scene {
 
     const statsText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 80,
+      this.cameras.main.centerY - 100,
       `Score: ${this.score}\nLevel: ${this.level}\nTime: ${minutes}:${seconds.toString().padStart(2, '0')}\nDPS: ${dps}\n\n${this.score === this.highScore && this.score > 0 ? 'NEW HIGH SCORE!' : `High Score: ${this.highScore}`}`,
       {
         fontFamily: 'Courier New',
@@ -4252,53 +4533,14 @@ export default class GameScene extends Phaser.Scene {
     ).setOrigin(0.5).setDepth(201)
     this.gameOverUI.push(statsText)
 
-    // Weapons and Passives display
-    const weaponsText = this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY + 30,
-      `Weapons: ${weaponNames || 'None'}`,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '16px',
-        color: '#00ffff',
-        align: 'center',
-        wordWrap: { width: this.cameras.main.width - 100 }
-      }
-    ).setOrigin(0.5).setDepth(201)
-    this.gameOverUI.push(weaponsText)
+    // Interactive Weapons and Passives display with icons and pips
+    const weaponPassiveElements = this.createWeaponPassiveDisplay(this.cameras.main.centerY + 30)
+    this.gameOverUI.push(...weaponPassiveElements)
 
-    const passivesText = this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY + 65,
-      `Passives: ${passiveNames || 'None'}`,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '16px',
-        color: '#ffaa00',
-        align: 'center',
-        wordWrap: { width: this.cameras.main.width - 100 }
-      }
-    ).setOrigin(0.5).setDepth(201)
-    this.gameOverUI.push(passivesText)
-
-    // Credits earned display
-    const creditsEarned = this.gameState.getCredits() // Show current total
-    const creditsText = this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY + 100,
-      `Credits Earned: ${creditsEarned} ¤`,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '20px',
-        color: '#ffdd00',
-      }
-    ).setOrigin(0.5).setDepth(201)
-    this.gameOverUI.push(creditsText)
-
-    // Revive button
+    // Revive button - positioned after weapons/passives display
     const reviveButton = this.add.rectangle(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 160,
+      this.cameras.main.centerY + 200,
       300,
       70,
       0x4a2a4a
@@ -4307,7 +4549,7 @@ export default class GameScene extends Phaser.Scene {
 
     const reviveText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 160,
+      this.cameras.main.centerY + 200,
       'Revive Watch Ad',
       {
         fontFamily: 'Courier New',
@@ -4331,10 +4573,10 @@ export default class GameScene extends Phaser.Scene {
       this.revivePlayer()
     })
 
-    // Main menu button (positioned lower now)
+    // Main menu button (positioned lower)
     const mainMenuButton = this.add.rectangle(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 250,
+      this.cameras.main.centerY + 290,
       300,
       70,
       0x2a2a4a
@@ -4343,7 +4585,7 @@ export default class GameScene extends Phaser.Scene {
 
     const mainMenuText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 250,
+      this.cameras.main.centerY + 290,
       'MAIN MENU',
       {
         fontFamily: 'Courier New',
@@ -4521,7 +4763,7 @@ export default class GameScene extends Phaser.Scene {
 
     const statsText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 80,
+      this.cameras.main.centerY - 100,
       `Time Survived: ${minutes}:${seconds.toString().padStart(2, '0')}\nKills: ${this.killCount}\nScore: ${this.score}\nDPS: ${dps}`,
       {
         fontFamily: 'Courier New',
@@ -4531,47 +4773,35 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5).setDepth(201)
 
-    // Weapons and Passives display
-    const weaponsText = this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY + 20,
-      `Weapons: ${weaponNames || 'None'}`,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '16px',
-        color: '#00ffff',
-        align: 'center',
-        wordWrap: { width: this.cameras.main.width - 100 }
-      }
-    ).setOrigin(0.5).setDepth(201)
+    // Interactive Weapons and Passives display with icons and pips
+    this.createWeaponPassiveDisplay(this.cameras.main.centerY + 20)
 
-    const passivesText = this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY + 55,
-      `Passives: ${passiveNames || 'None'}`,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '16px',
-        color: '#ffaa00',
-        align: 'center',
-        wordWrap: { width: this.cameras.main.width - 100 }
-      }
-    ).setOrigin(0.5).setDepth(201)
-
-    // Credits earned display
+    // Credits earned display - with more spacing
     const creditsText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 95,
-      `Credits Earned: ${creditsEarned} ¤`,
+      this.cameras.main.centerY + 180,
+      `REWARDS`,
       {
         fontFamily: 'Courier New',
         fontSize: '20px',
         color: '#ffdd00',
+        fontStyle: 'bold',
       }
     ).setOrigin(0.5).setDepth(201)
 
-    // Display newly unlocked ships
-    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, this.cameras.main.centerY + 130)
+    const creditsValue = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 210,
+      `${creditsEarned} ¤`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '28px',
+        color: '#ffdd00',
+      }
+    ).setOrigin(0.5).setDepth(201)
+
+    // Display newly unlocked ships - with more spacing
+    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, this.cameras.main.centerY + 250)
 
     // Position continue button below everything
     const continueButtonY = this.cameras.main.centerY + 165 + unlockSectionHeight
@@ -4653,7 +4883,7 @@ export default class GameScene extends Phaser.Scene {
       const angle = (i / data.count) * Math.PI * 2
       const offsetX = Math.cos(angle) * 40
       const offsetY = Math.sin(angle) * 40
-      this.enemies.spawnEnemy(data.x + offsetX, data.y + offsetY, EnemyType.SWARMER)
+      this.enemies.spawnEnemy(this.clampSpawnX(data.x + offsetX), data.y + offsetY, EnemyType.SWARMER)
       this.healthTrackingWindow.push({ timestamp: this.time.now, health: swarmerHealth })
     }
 

@@ -25,7 +25,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
   private selectedNode: BuildingType | null = null
   private treeContainer!: Phaser.GameObjects.Container
   private detailContainer!: Phaser.GameObjects.Container
-  private tabObjects: Map<TreeType, { bg: Phaser.GameObjects.Rectangle, border: Phaser.GameObjects.Rectangle, text: Phaser.GameObjects.Text, dot: Phaser.GameObjects.Circle }> = new Map()
+  private tabObjects: Map<TreeType, { bg: Phaser.GameObjects.Rectangle, border: Phaser.GameObjects.Rectangle, text: Phaser.GameObjects.Text, dot: Phaser.GameObjects.Arc }> = new Map()
 
   // Define all skill trees
   private skillTrees: Record<TreeType, SkillTree> = {

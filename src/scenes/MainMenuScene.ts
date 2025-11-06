@@ -107,12 +107,12 @@ export default class MainMenuScene extends Phaser.Scene {
           creditsText.setText(`${this.gameState.getCredits()} ¤`)
 
           // Update affordability indicators
-          const upgradeDot = this.children.getByName('upgradeDot') as Phaser.GameObjects.Circle
+          const upgradeDot = this.children.getByName('upgradeDot') as Phaser.GameObjects.Arc
           if (upgradeDot) {
             upgradeDot.setVisible(this.hasAffordableUpgrades())
           }
 
-          const hangarDot = this.children.getByName('hangarDot') as Phaser.GameObjects.Circle
+          const hangarDot = this.children.getByName('hangarDot') as Phaser.GameObjects.Arc
           if (hangarDot) {
             hangarDot.setVisible(this.hasAffordableShips())
           }
@@ -685,53 +685,32 @@ export default class MainMenuScene extends Phaser.Scene {
         }
       ).setOrigin(0, 0.5)
 
-      // Difficulty indicator and high score
+      // Difficulty indicator
       const difficultyText = this.add.text(
         centerX + (panelWidth - 60) / 2 - 15,
         yPos - 8,
-        isUnlocked ? `${level.difficulty.toFixed(1)}x` : '🔒',
+        isUnlocked ? `Difficulty: ${level.difficulty.toFixed(1)}x` : '🔒',
         {
           fontFamily: 'Courier New',
-          fontSize: '14px',
+          fontSize: '13px',
           color: isUnlocked ? '#ffaa00' : '#666666',
         }
       ).setOrigin(1, 0.5)
 
-      // High score display (below difficulty)
+      // High score display (below level name on the right)
       const highScore = this.gameState.getLevelHighScore(index)
       const highScoreText = this.add.text(
         centerX + (panelWidth - 60) / 2 - 15,
         yPos + 8,
-        isUnlocked && highScore > 0 ? `👑: ${highScore}` : '',
+        isUnlocked && highScore > 0 ? `High Score: ${highScore}` : (isUnlocked ? 'No score yet' : ''),
         {
           fontFamily: 'Courier New',
-          fontSize: '12px',
-          color: '#ffff00',
+          fontSize: '13px',
+          color: highScore > 0 ? '#ffff00' : '#666666',
         }
       ).setOrigin(1, 0.5)
 
-      // Description or unlock requirement
-      let descriptionText: string
-      if (isUnlocked) {
-        descriptionText = level.description
-      } else {
-        const previousLevel = CAMPAIGN_LEVELS[index - 1]
-        descriptionText = `Beat "${previousLevel.name}" to unlock`
-      }
-
-      const description = this.add.text(
-        centerX - (panelWidth - 60) / 2 + 15,
-        yPos + 10,
-        descriptionText,
-        {
-          fontFamily: 'Courier New',
-          fontSize: '12px',
-          color: isUnlocked ? '#aaaaaa' : '#555555',
-          fontStyle: isUnlocked ? 'normal' : 'italic',
-        }
-      ).setOrigin(0, 0.5)
-
-      this.levelSelectionOverlay!.add([levelBg, levelName, difficultyText, highScoreText, description])
+      this.levelSelectionOverlay!.add([levelBg, levelName, difficultyText, highScoreText])
     })
 
     // Set depth to be on top

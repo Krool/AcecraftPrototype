@@ -228,10 +228,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     baseMoveSpeed: 205,
     weaponSlots: 4,
     passiveSlots: 4,
-    unlockLevel: 6,
+    unlockLevel: 1, // Unlocked by beating level 1
     scale: 0.8,
     collisionRadius: 13,
-    cost: 4000,
+    cost: 250,
   },
   [CharacterType.ARSENAL]: {
     name: 'Arsenal',
@@ -245,10 +245,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     baseMoveSpeed: 160,
     weaponSlots: 4,
     passiveSlots: 4,
-    unlockLevel: 6,
+    unlockLevel: 2, // Unlocked by beating level 2
     scale: 0.8,
     collisionRadius: 13,
-    cost: 4500,
+    cost: 250,
   },
   [CharacterType.CORONA]: {
     name: 'Corona',
@@ -262,10 +262,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     baseMoveSpeed: 195,
     weaponSlots: 4,
     passiveSlots: 4,
-    unlockLevel: 7,
+    unlockLevel: 3, // Unlocked by beating level 3
     scale: 0.8,
     collisionRadius: 12,
-    cost: 5500,
+    cost: 250,
   },
   [CharacterType.REAPER]: {
     name: 'Reaper',
@@ -279,10 +279,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     baseMoveSpeed: 220,
     weaponSlots: 4,
     passiveSlots: 4,
-    unlockLevel: 7,
+    unlockLevel: 4, // Unlocked by beating level 4
     scale: 0.8,
     collisionRadius: 12,
-    cost: 6000,
+    cost: 250,
   },
   [CharacterType.SUPERNOVA]: {
     name: 'Supernova',
@@ -296,10 +296,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     baseMoveSpeed: 185,
     weaponSlots: 5,
     passiveSlots: 4,
-    unlockLevel: 8,
+    unlockLevel: 5, // Unlocked by beating level 5
     scale: 0.8,
     collisionRadius: 12,
-    cost: 7000,
+    cost: 250,
   },
   [CharacterType.CYCLONE]: {
     name: 'Cyclone',
@@ -313,10 +313,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     baseMoveSpeed: 210,
     weaponSlots: 4,
     passiveSlots: 4,
-    unlockLevel: 8,
+    unlockLevel: 6, // Unlocked by beating level 6
     scale: 0.8,
     collisionRadius: 12,
-    cost: 7500,
+    cost: 250,
   },
   [CharacterType.ZENITH]: {
     name: 'Zenith',
@@ -330,10 +330,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     baseMoveSpeed: 175,
     weaponSlots: 4,
     passiveSlots: 5,
-    unlockLevel: 9,
+    unlockLevel: 7, // Unlocked by beating level 7
     scale: 0.7,
     collisionRadius: 11,
-    cost: 8500,
+    cost: 250,
   },
   [CharacterType.HAVOC]: {
     name: 'Havoc',
@@ -347,10 +347,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     baseMoveSpeed: 205,
     weaponSlots: 5,
     passiveSlots: 3,
-    unlockLevel: 9,
+    unlockLevel: 8, // Unlocked by beating level 8
     scale: 0.7,
     collisionRadius: 11,
-    cost: 9000,
+    cost: 250,
   },
   [CharacterType.WARDEN]: {
     name: 'Warden',
@@ -364,10 +364,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     baseMoveSpeed: 165,
     weaponSlots: 4,
     passiveSlots: 5,
-    unlockLevel: 10,
+    unlockLevel: 9, // Unlocked by beating level 9
     scale: 0.7,
     collisionRadius: 10,
-    cost: 10000,
+    cost: 250,
   },
   [CharacterType.PHANTOM]: {
     name: 'Phantom',
@@ -381,10 +381,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     baseMoveSpeed: 225,
     weaponSlots: 3,
     passiveSlots: 5,
-    unlockLevel: 10,
+    unlockLevel: 10, // Unlocked by beating level 10 (final level)
     scale: 0.7,
     collisionRadius: 10,
-    cost: 12000,
+    cost: 250,
   },
 }
 

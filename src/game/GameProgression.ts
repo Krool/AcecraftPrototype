@@ -197,6 +197,28 @@ export class GameProgression {
       credits: this.data.totalCredits,
     }
   }
+
+  // Unlock and purchase Scattershot for free (first game reward)
+  unlockScattershot(): boolean {
+    // Check if already unlocked and purchased
+    if (this.data.unlockedShips.includes(CharacterType.SCATTERSHOT) &&
+        this.data.purchasedShips.includes(CharacterType.SCATTERSHOT)) {
+      return false // Already unlocked
+    }
+
+    // Unlock Scattershot
+    if (!this.data.unlockedShips.includes(CharacterType.SCATTERSHOT)) {
+      this.data.unlockedShips.push(CharacterType.SCATTERSHOT)
+    }
+
+    // Purchase Scattershot for free
+    if (!this.data.purchasedShips.includes(CharacterType.SCATTERSHOT)) {
+      this.data.purchasedShips.push(CharacterType.SCATTERSHOT)
+    }
+
+    this.saveProgression()
+    return true // Newly unlocked
+  }
 }
 
 // Singleton instance

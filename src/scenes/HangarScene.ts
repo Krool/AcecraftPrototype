@@ -3,6 +3,7 @@ import { GameState } from '../game/GameState'
 import { CharacterType, CHARACTER_CONFIGS } from '../game/Character'
 import { WEAPON_CONFIGS } from '../game/Weapon'
 import { soundManager, SoundType } from '../game/SoundManager'
+import { gameProgression } from '../game/GameProgression'
 
 export default class HangarScene extends Phaser.Scene {
   private gameState!: GameState
@@ -58,7 +59,7 @@ export default class HangarScene extends Phaser.Scene {
     const creditsText = this.add.text(
       this.cameras.main.width - 60,
       25,
-      `${this.gameState.getCredits()} ¤`,
+      `${gameProgression.getCredits()} ¤`,
       {
         fontFamily: 'Courier New',
         fontSize: '24px',
@@ -92,15 +93,16 @@ export default class HangarScene extends Phaser.Scene {
 
     creditButton.on('pointerdown', () => {
       soundManager.play(SoundType.BUTTON_CLICK)
-      this.gameState.addCredits(1000)
-      creditsText.setText(`${this.gameState.getCredits()} ¤`)
+      gameProgression.addCredits(1000)
+      this.gameState.addCredits(1000) // Sync with old system
+      creditsText.setText(`${gameProgression.getCredits()} ¤`)
       this.tweens.add({
         targets: creditsText,
         scale: 1.3,
         duration: 100,
         yoyo: true,
         onComplete: () => {
-          creditsText.setText(`${this.gameState.getCredits()} ¤`)
+          creditsText.setText(`${gameProgression.getCredits()} ¤`)
           this.refreshScene()
         }
       })
@@ -148,7 +150,6 @@ export default class HangarScene extends Phaser.Scene {
 
   private createShipList() {
     const characters = Object.values(CharacterType)
-    const unlockedCharacters = this.gameState.getUnlockedCharacters()
 
     const listX = 20
     const itemWidth = 220
@@ -163,8 +164,8 @@ export default class HangarScene extends Phaser.Scene {
 
   private createListItem(type: CharacterType, x: number, y: number, width: number, height: number) {
     const config = CHARACTER_CONFIGS[type]
-    const unlockedCharacters = this.gameState.getUnlockedCharacters()
-    const isUnlocked = unlockedCharacters.includes(type)
+    const isUnlocked = gameProgression.isShipUnlocked(type) && gameProgression.isShipPurchased(type)
+    const canPurchase = gameProgression.isShipUnlocked(type) && !gameProgression.isShipPurchased(type)
     const isSelected = this.selectedCharacter === type
     const isViewing = this.viewingCharacter === type
 
@@ -230,29 +231,31 @@ export default class HangarScene extends Phaser.Scene {
 
     // Lock indicator or weapon info
     if (!isUnlocked) {
+      // Check if ship can be purchased (unlocked but not purchased)
       const lockText = this.add.text(
         isSelected ? 90 : 75, height / 2 + 5,
-        'LOCKED',
+        canPurchase ? `${config.cost}¤` : `Unlock: Lv${config.unlockLevel}`,
         {
           fontFamily: 'Courier New',
           fontSize: '11px',
-          color: '#ff6666',
+          color: canPurchase ? '#ffdd00' : '#ff6666',
         }
       ).setOrigin(0, 0)
 
       container.add(lockText)
 
-      // Red dot indicator if affordable
-      const SHIP_COST = 250
-      const canAfford = this.gameState.getCredits() >= SHIP_COST
-      if (canAfford) {
-        const affordableDot = this.add.circle(
-          width - 10,
-          10,
-          5,
-          0xff0000
-        )
-        container.add(affordableDot)
+      // Red dot indicator if affordable and can purchase
+      if (canPurchase) {
+        const canAfford = gameProgression.getCredits() >= config.cost
+        if (canAfford) {
+          const affordableDot = this.add.circle(
+            width - 10,
+            10,
+            5,
+            0xff0000
+          )
+          container.add(affordableDot)
+        }
       }
     } else {
       const weaponConfig = WEAPON_CONFIGS[config.startingWeapon]
@@ -301,8 +304,8 @@ export default class HangarScene extends Phaser.Scene {
 
   private createDetailPanel() {
     const config = CHARACTER_CONFIGS[this.viewingCharacter]
-    const unlockedCharacters = this.gameState.getUnlockedCharacters()
-    const isUnlocked = unlockedCharacters.includes(this.viewingCharacter)
+    const isUnlocked = gameProgression.isShipUnlocked(this.viewingCharacter) && gameProgression.isShipPurchased(this.viewingCharacter)
+    const canPurchase = gameProgression.isShipUnlocked(this.viewingCharacter) && !gameProgression.isShipPurchased(this.viewingCharacter)
     const isSelected = this.selectedCharacter === this.viewingCharacter
 
     const panelX = 260
@@ -498,9 +501,24 @@ export default class HangarScene extends Phaser.Scene {
     // Action button at bottom
     const buttonY = panelHeight - 50
 
-    if (!isUnlocked) {
-      const SHIP_COST = 250
-      const canAfford = this.gameState.getCredits() >= SHIP_COST
+    if (!isUnlocked && !canPurchase) {
+      // Ship is locked - show unlock requirement
+      const lockedText = this.add.text(
+        panelWidth / 2, buttonY,
+        `🔒 LOCKED - Beat Level ${config.unlockLevel}`,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: '#ff6666',
+          fontStyle: 'bold',
+          align: 'center',
+        }
+      ).setOrigin(0.5)
+
+      container.add(lockedText)
+    } else if (canPurchase) {
+      // Ship is unlocked but not purchased - show buy button
+      const canAfford = gameProgression.getCredits() >= config.cost
 
       const buyButton = this.add.rectangle(
         panelWidth / 2, buttonY,
@@ -510,7 +528,7 @@ export default class HangarScene extends Phaser.Scene {
 
       const buyButtonText = this.add.text(
         panelWidth / 2, buttonY,
-        `BUY: ${SHIP_COST}¤`,
+        `BUY: ${config.cost}¤`,
         {
           fontFamily: 'Courier New',
           fontSize: '16px',
@@ -551,20 +569,23 @@ export default class HangarScene extends Phaser.Scene {
           return
         }
 
-        if (this.gameState.spendCredits(SHIP_COST)) {
+        // Purchase the ship using gameProgression
+        const result = gameProgression.purchaseShip(this.viewingCharacter)
+
+        if (result.success) {
           // Play triumphant sound
           soundManager.play(SoundType.SHIP_UNLOCK)
 
           // Create particle burst effect at button position
           this.createUnlockParticles(panelWidth / 2, buttonY)
 
-          // Unlock the ship
+          // Also unlock in old GameState system for backwards compatibility
           this.gameState.unlockCharacter(this.viewingCharacter)
 
           // Update credits display
           const creditsDisplay = this.children.getByName('creditsDisplay') as Phaser.GameObjects.Text
           if (creditsDisplay) {
-            creditsDisplay.setText(`${this.gameState.getCredits()} ¤`)
+            creditsDisplay.setText(`${gameProgression.getCredits()} ¤`)
           }
 
           // Delay refresh slightly so user sees the effect

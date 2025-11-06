@@ -31,17 +31,17 @@ const EASY_BUCKET: WaveBucket = {
   formations: [
     {
       type: 'line',
-      enemyTypes: [EnemyType.BASIC, EnemyType.FAST],
+      enemyTypes: [EnemyType.DRONE, EnemyType.WASP],
       spacing: 60,
     },
     {
       type: 'single',
-      enemyTypes: [EnemyType.BASIC, EnemyType.FAST],
+      enemyTypes: [EnemyType.DRONE, EnemyType.WASP],
       count: 5,
     },
     {
       type: 'wave',
-      enemyTypes: [EnemyType.BASIC],
+      enemyTypes: [EnemyType.DRONE],
       spacing: 60,
     },
   ],
@@ -53,22 +53,22 @@ const MEDIUM_BUCKET: WaveBucket = {
   formations: [
     {
       type: 'line',
-      enemyTypes: [EnemyType.BASIC, EnemyType.FAST, EnemyType.TANK],
+      enemyTypes: [EnemyType.DRONE, EnemyType.WASP, EnemyType.TANK],
       spacing: 60,
     },
     {
       type: 'v',
-      enemyTypes: [EnemyType.BASIC, EnemyType.SHOOTER],
+      enemyTypes: [EnemyType.DRONE, EnemyType.SNIPER],
       spacing: 60,
     },
     {
       type: 'circle',
-      enemyTypes: [EnemyType.FAST, EnemyType.SHOOTER],
+      enemyTypes: [EnemyType.WASP, EnemyType.SNIPER],
       spacing: 80,
     },
     {
       type: 'wave',
-      enemyTypes: [EnemyType.TANK, EnemyType.SHOOTER],
+      enemyTypes: [EnemyType.TANK, EnemyType.SNIPER],
       spacing: 60,
     },
   ],
@@ -80,17 +80,17 @@ const HARD_BUCKET: WaveBucket = {
   formations: [
     {
       type: 'line',
-      enemyTypes: [EnemyType.TANK, EnemyType.SHOOTER, EnemyType.SPIRAL_SHOOTER],
+      enemyTypes: [EnemyType.TANK, EnemyType.SNIPER, EnemyType.SPIRAL_SHOOTER],
       spacing: 60,
     },
     {
       type: 'v',
-      enemyTypes: [EnemyType.SHOOTER, EnemyType.SPIRAL_SHOOTER, EnemyType.SPAWNER],
+      enemyTypes: [EnemyType.SNIPER, EnemyType.SPIRAL_SHOOTER, EnemyType.SPAWNER],
       spacing: 60,
     },
     {
       type: 'circle',
-      enemyTypes: [EnemyType.FAST, EnemyType.SPIRAL_SHOOTER, EnemyType.PATROLLER],
+      enemyTypes: [EnemyType.WASP, EnemyType.SPIRAL_SHOOTER, EnemyType.PATROLLER],
       spacing: 80,
     },
     {
