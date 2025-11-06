@@ -1,9 +1,18 @@
 import Phaser from 'phaser'
-import { GameState, CharacterStats } from '../game/GameState'
-import { CharacterType, CHARACTER_CONFIGS } from '../game/Character'
+import { GameState } from '../game/GameState'
+import { CharacterType, CHARACTER_CONFIGS, CharacterConfig } from '../game/Character'
+import { WeaponType, WEAPON_CONFIGS, WeaponConfig } from '../game/Weapon'
+import { PassiveType, PASSIVE_CONFIGS, PassiveConfig } from '../game/Passive'
+import { EvolutionType, EVOLUTION_RECIPES, EvolutionRecipe, EVOLUTION_CONFIGS } from '../game/Evolution'
+
+type TabType = 'ships' | 'weapons' | 'passives' | 'evolutions'
 
 export default class StatsScene extends Phaser.Scene {
   private gameState!: GameState
+  private currentTab: TabType = 'ships'
+  private selectedItem: any = null
+  private itemListContainer!: Phaser.GameObjects.Container
+  private detailContainer!: Phaser.GameObjects.Container
 
   constructor() {
     super('StatsScene')
@@ -17,10 +26,10 @@ export default class StatsScene extends Phaser.Scene {
       .setOrigin(0, 0)
 
     // Title
-    const title = this.add.text(
+    this.add.text(
       this.cameras.main.centerX,
       30,
-      'CHARACTER STATISTICS',
+      'INFORMATION',
       {
         fontFamily: 'Courier New',
         fontSize: '40px',
@@ -41,160 +50,335 @@ export default class StatsScene extends Phaser.Scene {
       }
     ).setInteractive({ useHandCursor: true })
 
-    backButton.on('pointerover', () => {
-      backButton.setColor('#00ff00')
-    })
+    backButton.on('pointerover', () => backButton.setColor('#00ff00'))
+    backButton.on('pointerout', () => backButton.setColor('#00ffff'))
+    backButton.on('pointerdown', () => this.scene.start('MainMenuScene'))
 
-    backButton.on('pointerout', () => {
-      backButton.setColor('#00ffff')
-    })
+    // Create tabs
+    this.createTabs()
 
-    backButton.on('pointerdown', () => {
-      this.scene.start('MainMenuScene')
-    })
+    // Create containers for item list and detail view
+    this.itemListContainer = this.add.container(0, 0)
+    this.detailContainer = this.add.container(0, 0)
 
-    // Get all character stats
-    const allStats = this.gameState.getAllCharacterStats()
-    const unlockedCharacters = this.gameState.getUnlockedCharacters()
-
-    // Find most selected character
-    let mostSelected: CharacterType | null = null
-    let maxSelections = 0
-    allStats.forEach((stats, type) => {
-      if (stats.timesSelected > maxSelections) {
-        maxSelections = stats.timesSelected
-        mostSelected = type
-      }
-    })
-
-    // Display stats for each unlocked character
-    const startY = 100
-    const cardHeight = 160
-    const cardSpacing = 10
-    let currentY = startY
-
-    unlockedCharacters.forEach(type => {
-      this.createStatCard(type, currentY, type === mostSelected)
-      currentY += cardHeight + cardSpacing
-    })
-
-    // If no unlocked characters have stats yet, show a message
-    if (unlockedCharacters.length === 0 || allStats.size === 0) {
-      this.add.text(
-        this.cameras.main.centerX,
-        this.cameras.main.centerY,
-        'No statistics yet!\nComplete a mission to start tracking stats.',
-        {
-          fontFamily: 'Courier New',
-          fontSize: '24px',
-          color: '#888888',
-          align: 'center',
-        }
-      ).setOrigin(0.5)
-    }
+    // Load initial tab content
+    this.displayItemList()
   }
 
-  private createStatCard(type: CharacterType, y: number, isMostSelected: boolean) {
-    const config = CHARACTER_CONFIGS[type]
-    const stats = this.gameState.getCharacterStats(type)
+  private tabObjects: Map<TabType, { bg: Phaser.GameObjects.Rectangle, border: Phaser.GameObjects.Rectangle, text: Phaser.GameObjects.Text }> = new Map()
 
-    const cardWidth = 700
-    const cardHeight = 150
-    const x = this.cameras.main.centerX - cardWidth / 2
+  private createTabs() {
+    const tabs: { label: string, type: TabType }[] = [
+      { label: 'SHIPS', type: 'ships' },
+      { label: 'WEAPONS', type: 'weapons' },
+      { label: 'PASSIVES', type: 'passives' },
+      { label: 'EVOLUTIONS', type: 'evolutions' },
+    ]
 
-    // Card background
-    const bgColor = isMostSelected ? 0x2a4a2a : 0x1a1a3a
-    const bg = this.add.rectangle(
-      x,
-      y,
-      cardWidth,
-      cardHeight,
-      bgColor
-    ).setOrigin(0, 0)
+    const tabWidth = 115
+    const tabHeight = 40
+    const tabPadding = 3
+    const totalTabWidth = tabs.length * tabWidth + (tabs.length - 1) * tabPadding
+    const startX = this.cameras.main.centerX - totalTabWidth / 2
+    const tabY = 80
 
-    // Border
-    const borderColor = isMostSelected ? 0x00ff00 : 0x4a4a6a
-    const border = this.add.rectangle(
-      x,
-      y,
-      cardWidth,
-      cardHeight
-    ).setOrigin(0, 0).setStrokeStyle(2, borderColor)
+    tabs.forEach((tab, index) => {
+      const x = startX + index * (tabWidth + tabPadding)
+      const isActive = this.currentTab === tab.type
 
-    // Character symbol and name
-    const symbol = this.add.text(
-      x + 20,
-      y + cardHeight / 2,
-      config.symbol,
+      const bg = this.add.rectangle(x, tabY, tabWidth, tabHeight, isActive ? 0x2a4a6a : 0x1a1a3a)
+        .setOrigin(0, 0)
+        .setInteractive({ useHandCursor: true })
+
+      const border = this.add.rectangle(x, tabY, tabWidth, tabHeight)
+        .setOrigin(0, 0)
+        .setStrokeStyle(2, isActive ? 0x00ffff : 0x4a4a6a)
+
+      const text = this.add.text(
+        x + tabWidth / 2,
+        tabY + tabHeight / 2,
+        tab.label,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '16px',
+          color: isActive ? '#00ffff' : '#aaaaaa',
+        }
+      ).setOrigin(0.5)
+
+      // Store tab objects for later updating
+      this.tabObjects.set(tab.type, { bg, border, text })
+
+      // Make tab clickable
+      bg.on('pointerdown', () => this.switchTab(tab.type))
+      bg.on('pointerover', () => {
+        if (this.currentTab !== tab.type) {
+          bg.setFillStyle(0x2a2a4a)
+        }
+      })
+      bg.on('pointerout', () => {
+        if (this.currentTab !== tab.type) {
+          bg.setFillStyle(0x1a1a3a)
+        }
+      })
+    })
+  }
+
+  private switchTab(tab: TabType) {
+    if (this.currentTab === tab) return // Already on this tab
+
+    this.currentTab = tab
+    this.selectedItem = null
+
+    // Update tab visuals
+    this.tabObjects.forEach((objects, tabType) => {
+      const isActive = tabType === tab
+      objects.bg.setFillStyle(isActive ? 0x2a4a6a : 0x1a1a3a)
+      objects.border.setStrokeStyle(2, isActive ? 0x00ffff : 0x4a4a6a)
+      objects.text.setColor(isActive ? '#00ffff' : '#aaaaaa')
+    })
+
+    // Clear containers
+    this.itemListContainer.removeAll(true)
+    this.detailContainer.removeAll(true)
+
+    // Display items for the current tab
+    this.displayItemList()
+  }
+
+  private displayItemList() {
+    let items: any[] = []
+
+    switch (this.currentTab) {
+      case 'ships':
+        items = Object.values(CharacterType).map(type => ({
+          type,
+          config: CHARACTER_CONFIGS[type]
+        }))
+        break
+      case 'weapons':
+        items = Object.values(WeaponType).map(type => ({
+          type,
+          config: WEAPON_CONFIGS[type]
+        }))
+        break
+      case 'passives':
+        items = Object.values(PassiveType).map(type => ({
+          type,
+          config: PASSIVE_CONFIGS[type]
+        }))
+        break
+      case 'evolutions':
+        items = EVOLUTION_RECIPES.map(recipe => ({
+          recipe,
+          evolution: recipe.evolution
+        }))
+        break
+    }
+
+    // Display items in a grid
+    const startX = 50
+    const startY = 140
+    const iconSize = 60
+    const spacing = 20
+    const itemsPerRow = 6
+
+    items.forEach((item, index) => {
+      const row = Math.floor(index / itemsPerRow)
+      const col = index % itemsPerRow
+      const x = startX + col * (iconSize + spacing)
+      const y = startY + row * (iconSize + spacing)
+
+      this.createItemIcon(item, x, y, iconSize)
+    })
+  }
+
+  private createItemIcon(item: any, x: number, y: number, size: number) {
+    const bg = this.add.rectangle(x, y, size, size, 0x2a2a4a)
+      .setOrigin(0, 0)
+      .setInteractive({ useHandCursor: true })
+
+    const border = this.add.rectangle(x, y, size, size)
+      .setOrigin(0, 0)
+      .setStrokeStyle(2, 0x4a4a6a)
+
+    let icon: string
+    let color: string
+
+    if (this.currentTab === 'ships') {
+      icon = item.config.symbol
+      color = item.config.color
+    } else if (this.currentTab === 'evolutions') {
+      // For evolutions, use the evolution's unique icon
+      const evolutionConfig = EVOLUTION_CONFIGS[item.recipe.evolution]
+      icon = evolutionConfig.icon
+      color = evolutionConfig.color
+    } else {
+      icon = item.config.icon
+      color = item.config.color
+    }
+
+    // Use smaller font size for evolutions to prevent overflow
+    const fontSize = this.currentTab === 'evolutions' ? '24px' : '32px'
+
+    const iconText = this.add.text(
+      x + size / 2,
+      y + size / 2,
+      icon,
       {
         fontFamily: 'Courier New',
-        fontSize: '64px',
-        color: config.color,
+        fontSize: fontSize,
+        color: color,
       }
-    ).setOrigin(0, 0.5)
+    ).setOrigin(0.5)
 
-    const name = this.add.text(
-      x + 100,
-      y + 20,
-      config.name,
+    // Hover effect
+    bg.on('pointerover', () => {
+      bg.setFillStyle(0x3a3a5a)
+      border.setStrokeStyle(2, 0x00ffff)
+    })
+    bg.on('pointerout', () => {
+      bg.setFillStyle(0x2a2a4a)
+      border.setStrokeStyle(2, 0x4a4a6a)
+    })
+    bg.on('pointerdown', () => this.selectItem(item))
+
+    this.itemListContainer.add([bg, border, iconText])
+  }
+
+  private selectItem(item: any) {
+    this.selectedItem = item
+    this.displayItemDetails()
+  }
+
+  private displayItemDetails() {
+    this.detailContainer.removeAll(true)
+
+    if (!this.selectedItem) return
+
+    const detailX = 50
+    const detailY = 450
+    const detailWidth = 440
+    const detailHeight = 450
+
+    // Background
+    const bg = this.add.rectangle(detailX, detailY, detailWidth, detailHeight, 0x1a1a3a)
+      .setOrigin(0, 0)
+
+    const border = this.add.rectangle(detailX, detailY, detailWidth, detailHeight)
+      .setOrigin(0, 0)
+      .setStrokeStyle(2, 0x4a4a6a)
+
+    this.detailContainer.add([bg, border])
+
+    let config: any
+    let name: string
+    let description: string
+    let icon: string
+    let color: string
+
+    if (this.currentTab === 'ships') {
+      config = this.selectedItem.config
+      name = config.name
+      description = config.description || 'No description available'
+      icon = config.symbol
+      color = config.color
+    } else if (this.currentTab === 'evolutions') {
+      const recipe = this.selectedItem.recipe
+      const weaponConfig = WEAPON_CONFIGS[recipe.baseWeapon]
+      const passiveConfig = PASSIVE_CONFIGS[recipe.requiredPassive]
+      const evolutionConfig = EVOLUTION_CONFIGS[recipe.evolution]
+      name = evolutionConfig.name
+      description = evolutionConfig.description
+      icon = evolutionConfig.icon
+      color = evolutionConfig.color
+
+      // Show components
+      const componentText = this.add.text(
+        detailX + 20,
+        detailY + 120,
+        `Components:\n${weaponConfig.icon} ${weaponConfig.name} + ${passiveConfig.icon} ${passiveConfig.name}`,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: '#aaaaaa',
+        }
+      )
+      this.detailContainer.add(componentText)
+    } else {
+      config = this.selectedItem.config
+      name = config.name
+      description = config.description
+      icon = config.icon
+      color = config.color
+    }
+
+    // Icon - use smaller size for evolutions to prevent overlap
+    const iconFontSize = this.currentTab === 'evolutions' ? '32px' : '40px'
+    const iconText = this.add.text(
+      detailX + 20,
+      detailY + 50,
+      icon,
       {
         fontFamily: 'Courier New',
-        fontSize: '24px',
+        fontSize: iconFontSize,
+        color: color,
+      }
+    )
+
+    // Name - positioned to avoid icon overlap
+    const nameText = this.add.text(
+      detailX + 100,
+      detailY + 35,
+      name,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '18px',
         color: '#ffffff',
         fontStyle: 'bold',
       }
     )
 
-    // Most selected indicator
-    if (isMostSelected) {
-      this.add.text(
-        x + cardWidth - 20,
-        y + 20,
-        '⭐ FAVORITE',
-        {
-          fontFamily: 'Courier New',
-          fontSize: '14px',
-          color: '#ffaa00',
-          fontStyle: 'bold',
-        }
-      ).setOrigin(1, 0)
-    }
-
-    // Calculate derived stats
-    const avgDPS = stats.totalTimePlayed > 0
-      ? (stats.totalDamageDealt / (stats.totalTimePlayed / 1000)).toFixed(1)
-      : '0.0'
-
-    const totalTimeSeconds = Math.floor(stats.totalTimePlayed / 1000)
-    const minutes = Math.floor(totalTimeSeconds / 60)
-    const seconds = totalTimeSeconds % 60
-    const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`
-
-    const avgKillsPerRun = stats.totalRuns > 0
-      ? (stats.totalKills / stats.totalRuns).toFixed(1)
-      : '0.0'
-
-    // Stats display (2 rows)
-    const statsRow1 = this.add.text(
-      x + 100,
-      y + 55,
-      `Runs: ${stats.totalRuns}  |  Selections: ${stats.timesSelected}  |  Total Time: ${timeStr}`,
+    // Description - use smaller font for ships to prevent overflow
+    const descFontSize = this.currentTab === 'ships' ? '12px' : '14px'
+    const descText = this.add.text(
+      detailX + 100,
+      detailY + 58,
+      description,
       {
         fontFamily: 'Courier New',
-        fontSize: '14px',
+        fontSize: descFontSize,
         color: '#aaaaaa',
+        wordWrap: { width: detailWidth - 120 }
       }
     )
 
-    const statsRow2 = this.add.text(
-      x + 100,
-      y + 80,
-      `Kills: ${stats.totalKills} (${avgKillsPerRun}/run)  |  Damage: ${Math.floor(stats.totalDamageDealt)}  |  Avg DPS: ${avgDPS}`,
+    this.detailContainer.add([iconText, nameText, descText])
+
+    // Stats (placeholder for now)
+    const statsY = this.currentTab === 'evolutions' ? 180 : 140
+    const statsText = this.add.text(
+      detailX + 20,
+      detailY + statsY,
+      this.getItemStats(),
       {
         fontFamily: 'Courier New',
-        fontSize: '14px',
+        fontSize: '16px',
         color: '#aaaaaa',
+        lineSpacing: 8
       }
     )
+    this.detailContainer.add(statsText)
+  }
+
+  private getItemStats(): string {
+    // Placeholder stats - in a real implementation, these would come from GameState
+    return `Times Used: 0
+Wins with Item: 0
+Win Rate: 0%
+
+Expected DPS: N/A
+Actual DPS: N/A
+
+[Stats tracking coming soon]`
   }
 }

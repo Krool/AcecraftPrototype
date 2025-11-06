@@ -11,50 +11,57 @@ export class XPDrop extends Phaser.GameObjects.Text {
   private magnetRadius: number = 150
   private magnetSpeed: number = 300
   private isBeingCollected: boolean = false
-  public body!: Phaser.Physics.Arcade.Body
+  private sparkleParticles: Phaser.GameObjects.Text[] = []
+  declare body: Phaser.Physics.Arcade.Body
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, '●', {
       fontFamily: 'Courier New',
-      fontSize: '24px',
-      color: '#00ff00',
+      fontSize: '8px',
+      color: '#00ddff',
     })
 
     this.setOrigin(0.5)
-    this.setStroke('#00ff00', 3) // Green outline for pickups
+    this.setStroke('#00ddff', 1) // Light blue outline for XP
+    this.setDepth(30) // XP renders above player
     this.xpValue = XPSize.SMALL
 
     // Add to scene and enable physics
     scene.add.existing(this)
     scene.physics.add.existing(this)
 
-    // Start inactive
+    // Start inactive and move off-screen to prevent collisions at 0,0
     this.setActive(false)
     this.setVisible(false)
+    this.setPosition(-1000, -1000)
   }
 
   spawn(x: number, y: number, xpValue: number = XPSize.SMALL) {
-    // Reset position and value
-    this.setPosition(x, y)
+    // Reset value
     this.xpValue = xpValue
     this.isBeingCollected = false
 
-    // Set color and size based on XP value
+    // Set size based on XP value (all same light blue color, 50% smaller)
     if (xpValue <= XPSize.SMALL) {
-      this.setColor('#00ff00') // Green for small
-      this.setStroke('#00ff00', 3)
-      this.setFontSize('22px')
+      this.setColor('#00ddff') // Light blue for all XP
+      this.setStroke('#00ddff', 1)
+      this.setFontSize('7px')
     } else if (xpValue <= XPSize.MEDIUM) {
-      this.setColor('#00ffff') // Cyan for medium
-      this.setStroke('#00ffff', 3)
-      this.setFontSize('26px')
+      this.setColor('#00ddff') // Light blue for all XP
+      this.setStroke('#00ddff', 1)
+      this.setFontSize('8px')
     } else {
-      this.setColor('#ff00ff') // Magenta for large
-      this.setStroke('#ff00ff', 4)
-      this.setFontSize('30px')
+      this.setColor('#00ddff') // Light blue for all XP
+      this.setStroke('#00ddff', 2)
+      this.setFontSize('9px')
     }
 
-    // Activate the XP drop
+    // Reset position first
+    this.body.reset(x, y)
+    this.setPosition(x, y)
+    this.body.setVelocityY(50) // Slow fall
+
+    // Then activate
     this.setActive(true)
     this.setVisible(true)
     this.setAlpha(1)
@@ -69,24 +76,88 @@ export class XPDrop extends Phaser.GameObjects.Text {
       repeat: -1,
     })
 
-    // Enable physics body with slight downward drift
-    this.body.enable = true
-    this.body.reset(x, y)
-    this.body.setVelocityY(50) // Slow fall
+    // Create sparkle effect
+    this.createSparkle()
+  }
+
+  private createSparkle() {
+    // Create more sparkles for higher value XP drops
+    // Small (5): 3-4 sparkles
+    // Medium (10): 5-6 sparkles
+    // Large (25): 7-9 sparkles
+    let sparkleCount: number
+    let sparkleSize: string
+    if (this.xpValue <= 5) {
+      sparkleCount = Phaser.Math.Between(3, 4)
+      sparkleSize = '6px'
+    } else if (this.xpValue <= 10) {
+      sparkleCount = Phaser.Math.Between(5, 6)
+      sparkleSize = '7px'
+    } else {
+      sparkleCount = Phaser.Math.Between(7, 9)
+      sparkleSize = '8px'
+    }
+
+    for (let i = 0; i < sparkleCount; i++) {
+      const angle = (Math.PI * 2 / sparkleCount) * i
+      const distance = 10 + (this.xpValue > 10 ? 3 : 0)
+      const offsetX = Math.cos(angle) * distance
+      const offsetY = Math.sin(angle) * distance
+
+      const sparkle = this.scene.add.text(
+        this.x + offsetX,
+        this.y + offsetY,
+        '✦',
+        {
+          fontFamily: 'Courier New',
+          fontSize: sparkleSize,
+          color: '#ffffff',
+        }
+      ).setOrigin(0.5).setAlpha(0).setDepth(31) // Sparkles slightly above XP
+
+      this.sparkleParticles.push(sparkle)
+
+      // Animate sparkle - faster and bigger for higher value
+      const animDuration = this.xpValue > 10 ? 350 : 400
+      this.scene.tweens.add({
+        targets: sparkle,
+        alpha: { from: 0, to: 1 },
+        scale: { from: 0.5, to: this.xpValue > 10 ? 2 : 1.5 },
+        duration: animDuration,
+        yoyo: true,
+        repeat: -1,
+        delay: i * 100,
+      })
+    }
   }
 
   getXPValue(): number {
     return this.xpValue
   }
 
-  update(playerX: number, playerY: number) {
+  update(playerX: number, playerY: number, pickupRadius?: number) {
     if (!this.active) return
+
+    // Use provided pickup radius or fall back to default
+    const effectiveRadius = pickupRadius !== undefined ? pickupRadius : this.magnetRadius
+
+    // Update sparkle positions to follow XP
+    this.sparkleParticles.forEach((sparkle, i) => {
+      if (sparkle.active) {
+        const angle = (Math.PI * 2 / this.sparkleParticles.length) * i
+        const distance = 10
+        sparkle.setPosition(
+          this.x + Math.cos(angle) * distance,
+          this.y + Math.sin(angle) * distance
+        )
+      }
+    })
 
     // Calculate distance to player
     const distance = Phaser.Math.Distance.Between(this.x, this.y, playerX, playerY)
 
     // If within magnet radius, move towards player
-    if (distance < this.magnetRadius) {
+    if (distance < effectiveRadius) {
       this.isBeingCollected = true
 
       // Calculate direction to player
@@ -110,9 +181,11 @@ export class XPDrop extends Phaser.GameObjects.Text {
 
     // Deactivate if off bottom of screen
     if (this.y > this.scene.cameras.main.height + 50) {
+      this.cleanupSparkles()
       this.setActive(false)
       this.setVisible(false)
-      this.body.enable = false
+      this.body.setVelocity(0, 0)
+      this.setPosition(-1000, -1000)
     }
   }
 
@@ -123,12 +196,25 @@ export class XPDrop extends Phaser.GameObjects.Text {
     // Stop any tweens on this object
     this.scene.tweens.killTweensOf(this)
 
+    // Clean up sparkles
+    this.cleanupSparkles()
+
     // Deactivate
     this.setActive(false)
     this.setVisible(false)
-    this.body.enable = false
+    this.body.setVelocity(0, 0)
+    this.setPosition(-1000, -1000)
     this.setScale(1)
     this.setAlpha(1)
+  }
+
+  private cleanupSparkles() {
+    // Destroy all sparkle particles
+    this.sparkleParticles.forEach(sparkle => {
+      this.scene.tweens.killTweensOf(sparkle)
+      sparkle.destroy()
+    })
+    this.sparkleParticles = []
   }
 }
 
@@ -141,7 +227,7 @@ export class XPDropGroup extends Phaser.Physics.Arcade.Group {
     // Create pool of XP drops
     for (let i = 0; i < poolSize; i++) {
       const xpDrop = new XPDrop(scene, 0, 0)
-      this.add(xpDrop, true)
+      this.add(xpDrop, false)  // false = already added to scene in constructor
       this.pool.push(xpDrop)
     }
   }
@@ -158,11 +244,11 @@ export class XPDropGroup extends Phaser.Physics.Arcade.Group {
     return null
   }
 
-  update(playerX: number, playerY: number) {
+  update(playerX: number, playerY: number, pickupRadius?: number) {
     // Update all active XP drops
     this.pool.forEach(xpDrop => {
       if (xpDrop.active) {
-        xpDrop.update(playerX, playerY)
+        xpDrop.update(playerX, playerY, pickupRadius)
       }
     })
   }

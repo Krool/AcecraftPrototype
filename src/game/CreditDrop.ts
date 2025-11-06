@@ -5,47 +5,57 @@ export class CreditDrop extends Phaser.GameObjects.Text {
   private magnetRadius: number = 150
   private magnetSpeed: number = 300
   private isBeingCollected: boolean = false
-  public body!: Phaser.Physics.Arcade.Body
+  private sparkleParticles: Phaser.GameObjects.Text[] = []
+  declare body: Phaser.Physics.Arcade.Body
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, '¤', {
       fontFamily: 'Courier New',
       fontSize: '24px',
-      color: '#ffdd00',
+      color: '#ffcc00',
     })
 
     this.setOrigin(0.5)
-    this.setStroke('#ffaa00', 3) // Golden outline for credits
+    this.setStroke('#ffaa00', 2) // Golden outline for credits
+    this.setDepth(30) // Credits render above player
     this.creditValue = 1
 
     // Add to scene and enable physics
     scene.add.existing(this)
     scene.physics.add.existing(this)
 
-    // Start inactive
+    // Start inactive and move off-screen to prevent collisions at 0,0
     this.setActive(false)
     this.setVisible(false)
+    this.setPosition(-1000, -1000)
   }
 
   spawn(x: number, y: number, creditValue: number = 1) {
-    // Reset position and value
-    this.setPosition(x, y)
+    // Reset value
     this.creditValue = creditValue
     this.isBeingCollected = false
 
-    // Set size based on credit value
+    // Set size based on credit value (all same gold color)
     if (creditValue <= 2) {
+      this.setColor('#ffcc00')
+      this.setFontSize('18px')
+      this.setStroke('#ffaa00', 2)
+    } else if (creditValue <= 5) {
+      this.setColor('#ffcc00')
+      this.setFontSize('20px')
+      this.setStroke('#ffaa00', 2)
+    } else {
+      this.setColor('#ffcc00')
       this.setFontSize('22px')
       this.setStroke('#ffaa00', 3)
-    } else if (creditValue <= 5) {
-      this.setFontSize('26px')
-      this.setStroke('#ffaa00', 4)
-    } else {
-      this.setFontSize('30px')
-      this.setStroke('#ffaa00', 5)
     }
 
-    // Activate the credit drop
+    // Reset position first
+    this.body.reset(x, y)
+    this.setPosition(x, y)
+    this.body.setVelocityY(50) // Slow fall
+
+    // Then activate
     this.setActive(true)
     this.setVisible(true)
     this.setAlpha(1)
@@ -60,24 +70,87 @@ export class CreditDrop extends Phaser.GameObjects.Text {
       repeat: -1,
     })
 
-    // Enable physics body with slight downward drift
-    this.body.enable = true
-    this.body.reset(x, y)
-    this.body.setVelocityY(50) // Slow fall
+    // Create sparkle effect
+    this.createSparkle()
+  }
+
+  private createSparkle() {
+    // Create more sparkles for higher value credits
+    // Low value (1-2): 3-4 sparkles
+    // Medium value (3-5): 5-6 sparkles
+    // High value (6+): 7-9 sparkles
+    let sparkleCount: number
+    let sparkleSize: string
+    if (this.creditValue <= 2) {
+      sparkleCount = Phaser.Math.Between(3, 4)
+      sparkleSize = '6px'
+    } else if (this.creditValue <= 5) {
+      sparkleCount = Phaser.Math.Between(5, 6)
+      sparkleSize = '7px'
+    } else {
+      sparkleCount = Phaser.Math.Between(7, 9)
+      sparkleSize = '8px'
+    }
+
+    for (let i = 0; i < sparkleCount; i++) {
+      const angle = (Math.PI * 2 / sparkleCount) * i
+      const distance = 10 + (this.creditValue > 5 ? 3 : 0)
+      const offsetX = Math.cos(angle) * distance
+      const offsetY = Math.sin(angle) * distance
+
+      const sparkle = this.scene.add.text(
+        this.x + offsetX,
+        this.y + offsetY,
+        '✦',
+        {
+          fontFamily: 'Courier New',
+          fontSize: sparkleSize,
+          color: '#ffdd00',
+        }
+      ).setOrigin(0.5).setAlpha(0).setDepth(31) // Sparkles slightly above credits
+
+      this.sparkleParticles.push(sparkle)
+
+      // Animate sparkle - faster animation for higher value
+      const animDuration = this.creditValue > 5 ? 350 : 400
+      this.scene.tweens.add({
+        targets: sparkle,
+        alpha: { from: 0, to: 1 },
+        scale: { from: 0.5, to: this.creditValue > 5 ? 2 : 1.5 },
+        duration: animDuration,
+        yoyo: true,
+        repeat: -1,
+        delay: i * 100,
+      })
+    }
   }
 
   getCreditValue(): number {
     return this.creditValue
   }
 
-  update(playerX: number, playerY: number) {
+  update(playerX: number, playerY: number, pickupRadius?: number) {
     if (!this.active) return
+
+    // Use provided pickup radius or fall back to default
+    const effectiveRadius = pickupRadius !== undefined ? pickupRadius : this.magnetRadius
+
+    // Update sparkle positions to follow credit
+    this.sparkleParticles.forEach((sparkle, i) => {
+      if (sparkle.active) {
+        const angle = (Math.PI * 2 / this.sparkleParticles.length) * i
+        const distance = 10
+        const offsetX = Math.cos(angle) * distance
+        const offsetY = Math.sin(angle) * distance
+        sparkle.setPosition(this.x + offsetX, this.y + offsetY)
+      }
+    })
 
     // Calculate distance to player
     const distance = Phaser.Math.Distance.Between(this.x, this.y, playerX, playerY)
 
     // If within magnet radius, move towards player
-    if (distance < this.magnetRadius) {
+    if (distance < effectiveRadius) {
       this.isBeingCollected = true
 
       // Calculate direction to player
@@ -101,10 +174,21 @@ export class CreditDrop extends Phaser.GameObjects.Text {
 
     // Deactivate if off bottom of screen
     if (this.y > this.scene.cameras.main.height + 50) {
+      this.cleanupSparkles()
       this.setActive(false)
       this.setVisible(false)
-      this.body.enable = false
+      this.body.setVelocity(0, 0)
+      this.setPosition(-1000, -1000)
     }
+  }
+
+  private cleanupSparkles() {
+    // Destroy all sparkle particles
+    this.sparkleParticles.forEach(sparkle => {
+      this.scene.tweens.killTweensOf(sparkle)
+      sparkle.destroy()
+    })
+    this.sparkleParticles = []
   }
 
   private collect() {
@@ -114,10 +198,14 @@ export class CreditDrop extends Phaser.GameObjects.Text {
     // Stop any tweens on this object
     this.scene.tweens.killTweensOf(this)
 
+    // Clean up sparkles
+    this.cleanupSparkles()
+
     // Deactivate
     this.setActive(false)
     this.setVisible(false)
-    this.body.enable = false
+    this.body.setVelocity(0, 0)
+    this.setPosition(-1000, -1000)
     this.setScale(1)
     this.setAlpha(1)
   }
@@ -132,7 +220,7 @@ export class CreditDropGroup extends Phaser.Physics.Arcade.Group {
     // Create pool of credit drops
     for (let i = 0; i < poolSize; i++) {
       const creditDrop = new CreditDrop(scene, 0, 0)
-      this.add(creditDrop, true)
+      this.add(creditDrop, false)  // false = already added to scene in constructor
       this.pool.push(creditDrop)
     }
   }
@@ -149,11 +237,11 @@ export class CreditDropGroup extends Phaser.Physics.Arcade.Group {
     return null
   }
 
-  update(playerX: number, playerY: number) {
+  update(playerX: number, playerY: number, pickupRadius?: number) {
     // Update all active credit drops
     this.pool.forEach(creditDrop => {
       if (creditDrop.active) {
-        creditDrop.update(playerX, playerY)
+        creditDrop.update(playerX, playerY, pickupRadius)
       }
     })
   }

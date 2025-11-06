@@ -13,6 +13,14 @@ export enum PassiveType {
   OVERDRIVE_REACTOR = 'OVERDRIVE_REACTOR',
   SALVAGE_UNIT = 'SALVAGE_UNIT',
   DRONE_BAY_EXPANSION = 'DRONE_BAY_EXPANSION',
+  VAMPIRIC_FIRE = 'VAMPIRIC_FIRE',
+  FROST_HASTE = 'FROST_HASTE',
+  STATIC_FORTUNE = 'STATIC_FORTUNE',
+  WINGMAN_PROTOCOL = 'WINGMAN_PROTOCOL',
+  TOXIC_ROUNDS = 'TOXIC_ROUNDS',
+  PYROMANIAC = 'PYROMANIAC',
+  SHATTER_STRIKE = 'SHATTER_STRIKE',
+  HEMORRHAGE = 'HEMORRHAGE',
 }
 
 export interface PassiveConfig {
@@ -113,6 +121,70 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     icon: '⊚',
     color: '#88ff00',
   },
+  [PassiveType.VAMPIRIC_FIRE]: {
+    name: 'Vampiric Fire',
+    type: PassiveType.VAMPIRIC_FIRE,
+    description: 'Fire damage heals you',
+    maxLevel: 3,
+    icon: '♥',
+    color: '#ff4400',
+  },
+  [PassiveType.FROST_HASTE]: {
+    name: 'Frost Haste',
+    type: PassiveType.FROST_HASTE,
+    description: 'Cold damage increases attack speed (stacking)',
+    maxLevel: 3,
+    icon: '❄',
+    color: '#aaffff',
+  },
+  [PassiveType.STATIC_FORTUNE]: {
+    name: 'Static Fortune',
+    type: PassiveType.STATIC_FORTUNE,
+    description: 'Lightning damage has chance to drop credits',
+    maxLevel: 3,
+    icon: '⚡',
+    color: '#ffdd00',
+  },
+  [PassiveType.WINGMAN_PROTOCOL]: {
+    name: 'Wingman Protocol',
+    type: PassiveType.WINGMAN_PROTOCOL,
+    description: 'Summons stationary wingmen that shoot',
+    maxLevel: 3,
+    icon: '◈',
+    color: '#00ffaa',
+  },
+  [PassiveType.TOXIC_ROUNDS]: {
+    name: 'Toxic Rounds',
+    type: PassiveType.TOXIC_ROUNDS,
+    description: 'Chance to poison on hit',
+    maxLevel: 3,
+    icon: '☠',
+    color: '#88ff00',
+  },
+  [PassiveType.PYROMANIAC]: {
+    name: 'Pyromaniac',
+    type: PassiveType.PYROMANIAC,
+    description: 'Bonus damage to burning enemies',
+    maxLevel: 3,
+    icon: '※',
+    color: '#ff6600',
+  },
+  [PassiveType.SHATTER_STRIKE]: {
+    name: 'Shatter Strike',
+    type: PassiveType.SHATTER_STRIKE,
+    description: 'Frozen enemies take increased damage',
+    maxLevel: 3,
+    icon: '◊',
+    color: '#00aaff',
+  },
+  [PassiveType.HEMORRHAGE]: {
+    name: 'Hemorrhage',
+    type: PassiveType.HEMORRHAGE,
+    description: 'Apply bleed on hit (damage amplification)',
+    maxLevel: 3,
+    icon: '♠',
+    color: '#ff0000',
+  },
 }
 
 export abstract class Passive {
@@ -165,6 +237,9 @@ export interface PlayerStats {
   pickupRadius: number
   damageReduction: number
   dodgeChance: number
+  healthRegen: number // Health regenerated per second
+  invulnFrames: number // Invulnerability frames after taking damage (in milliseconds)
+  revives: number // Number of times player can revive
 }
 
 // Ballistics Implementation
@@ -301,6 +376,96 @@ export class DroneBayExpansionPassive extends Passive {
   }
 }
 
+// Vampiric Fire Implementation
+export class VampiricFirePassive extends Passive {
+  applyModifiers(modifiers: WeaponModifiers): void {
+    // No weapon modifiers (healing handled in game logic)
+  }
+
+  applyPlayerEffects(playerStats: PlayerStats): void {
+    // Fire damage healing handled in game logic
+  }
+}
+
+// Frost Haste Implementation
+export class FrostHastePassive extends Passive {
+  applyModifiers(modifiers: WeaponModifiers): void {
+    // Attack speed buff applied in game logic when dealing cold damage
+  }
+
+  applyPlayerEffects(playerStats: PlayerStats): void {
+    // Stacking buff handled in game logic
+  }
+}
+
+// Static Fortune Implementation
+export class StaticFortunePassive extends Passive {
+  applyModifiers(modifiers: WeaponModifiers): void {
+    // No weapon modifiers (credit drop chance handled in game logic)
+  }
+
+  applyPlayerEffects(playerStats: PlayerStats): void {
+    // Credit drops handled in game logic
+  }
+}
+
+// Wingman Protocol Implementation
+export class WingmanProtocolPassive extends Passive {
+  applyModifiers(modifiers: WeaponModifiers): void {
+    // No weapon modifiers
+  }
+
+  applyPlayerEffects(playerStats: PlayerStats): void {
+    // Wingman spawning handled in game logic
+  }
+}
+
+// Toxic Rounds Implementation
+export class ToxicRoundsPassive extends Passive {
+  applyModifiers(modifiers: WeaponModifiers): void {
+    // No weapon modifiers (poison application handled in game logic)
+  }
+
+  applyPlayerEffects(playerStats: PlayerStats): void {
+    // Poison mechanics handled in game logic
+  }
+}
+
+// Pyromaniac Implementation
+export class PyromaniacPassive extends Passive {
+  applyModifiers(modifiers: WeaponModifiers): void {
+    // +25% damage per level against burning enemies (checked in game logic)
+    modifiers.damageMultiplier += 0.25 * this.level
+  }
+
+  applyPlayerEffects(playerStats: PlayerStats): void {
+    // No direct player effects
+  }
+}
+
+// Shatter Strike Implementation
+export class ShatterStrikePassive extends Passive {
+  applyModifiers(modifiers: WeaponModifiers): void {
+    // +30% damage per level against frozen enemies (checked in game logic)
+    modifiers.damageMultiplier += 0.30 * this.level
+  }
+
+  applyPlayerEffects(playerStats: PlayerStats): void {
+    // No direct player effects
+  }
+}
+
+// Hemorrhage Implementation
+export class HemorrhagePassive extends Passive {
+  applyModifiers(modifiers: WeaponModifiers): void {
+    // No weapon modifiers (bleed application handled in game logic)
+  }
+
+  applyPlayerEffects(playerStats: PlayerStats): void {
+    // Bleed mechanics handled in game logic
+  }
+}
+
 // Passive Factory
 export class PassiveFactory {
   static create(scene: Phaser.Scene, type: PassiveType): Passive {
@@ -327,6 +492,22 @@ export class PassiveFactory {
         return new SalvageUnitPassive(scene, type)
       case PassiveType.DRONE_BAY_EXPANSION:
         return new DroneBayExpansionPassive(scene, type)
+      case PassiveType.VAMPIRIC_FIRE:
+        return new VampiricFirePassive(scene, type)
+      case PassiveType.FROST_HASTE:
+        return new FrostHastePassive(scene, type)
+      case PassiveType.STATIC_FORTUNE:
+        return new StaticFortunePassive(scene, type)
+      case PassiveType.WINGMAN_PROTOCOL:
+        return new WingmanProtocolPassive(scene, type)
+      case PassiveType.TOXIC_ROUNDS:
+        return new ToxicRoundsPassive(scene, type)
+      case PassiveType.PYROMANIAC:
+        return new PyromaniacPassive(scene, type)
+      case PassiveType.SHATTER_STRIKE:
+        return new ShatterStrikePassive(scene, type)
+      case PassiveType.HEMORRHAGE:
+        return new HemorrhagePassive(scene, type)
       default:
         // Default to ballistics for unimplemented passives
         return new BallisticsPassive(scene, PassiveType.BALLISTICS)

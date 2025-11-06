@@ -5,6 +5,8 @@ export enum PowerUpType {
   RAPID_FIRE = 'RAPID_FIRE', // Temporary fire rate boost
   NUKE = 'NUKE',             // Instant clear all enemies
   MAGNET = 'MAGNET',         // Attract all XP
+  CHEST = 'CHEST',           // Treasure chest: random 1, 3, or 5 upgrades
+  HEALTH = 'HEALTH',         // Health potion: heals 20% of max health
 }
 
 export interface PowerUpConfig {
@@ -16,49 +18,63 @@ export interface PowerUpConfig {
 export const POWERUP_CONFIGS: Record<PowerUpType, PowerUpConfig> = {
   [PowerUpType.SHIELD]: {
     symbol: '◆',
-    color: '#00ffff',
+    color: '#ff88ff', // Consistent pink/magenta for all power-ups
     duration: 5000, // 5 seconds
   },
   [PowerUpType.RAPID_FIRE]: {
     symbol: '»',
-    color: '#ff00ff',
+    color: '#ff88ff', // Consistent pink/magenta for all power-ups
     duration: 8000, // 8 seconds
   },
   [PowerUpType.NUKE]: {
     symbol: '※',
-    color: '#ffff00',
+    color: '#ff88ff', // Consistent pink/magenta for all power-ups
     duration: 0, // Instant effect
   },
   [PowerUpType.MAGNET]: {
     symbol: '⊕',
-    color: '#00ff00',
+    color: '#ff88ff', // Consistent pink/magenta for all power-ups
     duration: 10000, // 10 seconds
+  },
+  [PowerUpType.CHEST]: {
+    symbol: '▣',
+    color: '#ffaa00', // Gold for treasure chest
+    duration: 0, // Instant effect
+  },
+  [PowerUpType.HEALTH]: {
+    symbol: '+',
+    color: '#00ff00', // Green for health
+    duration: 0, // Instant effect
   },
 }
 
 export class PowerUp extends Phaser.GameObjects.Text {
   private powerUpType: PowerUpType
   private speed: number = 100
-  public body!: Phaser.Physics.Arcade.Body
+  private sparkleParticles: Phaser.GameObjects.Text[] = []
+  declare body: Phaser.Physics.Arcade.Body
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, '', {
       fontFamily: 'Courier New',
-      fontSize: '32px',
+      fontSize: '48px',
       color: '#ffffff',
     })
 
     this.setOrigin(0.5)
-    this.setStroke('#00ff00', 2) // Green outline for pickups
+    this.setStroke('#00ff00', 3) // Green outline for pickups
+    this.setShadow(2, 2, '#00ff00', 8, false, true) // Green glow
+    this.setDepth(35) // Power-ups render above XP/credits
     this.powerUpType = PowerUpType.SHIELD
 
     // Add to scene and enable physics
     scene.add.existing(this)
     scene.physics.add.existing(this)
 
-    // Start inactive
+    // Start inactive and move off-screen to prevent collisions at 0,0
     this.setActive(false)
     this.setVisible(false)
+    this.setPosition(-1000, -1000)
   }
 
   spawn(x: number, y: number, type: PowerUpType) {
@@ -68,17 +84,16 @@ export class PowerUp extends Phaser.GameObjects.Text {
     this.powerUpType = type
     this.setText(config.symbol)
     this.setColor(config.color)
-    this.setStroke('#00ff00', 2) // Green outline for pickups
+    this.setStroke('#00ff00', 3) // Green outline for pickups
 
-    // Position and activate
+    // Reset position first
+    this.body.reset(x, y)
     this.setPosition(x, y)
+    this.body.setVelocityY(this.speed)
+
+    // Then activate
     this.setActive(true)
     this.setVisible(true)
-
-    // Enable physics and set downward velocity
-    this.body.enable = true
-    this.body.reset(x, y)
-    this.body.setVelocityY(this.speed)
 
     // Add pulsing animation
     this.scene.tweens.add({
@@ -89,6 +104,87 @@ export class PowerUp extends Phaser.GameObjects.Text {
       repeat: -1,
       ease: 'Sine.easeInOut'
     })
+
+    // Add sparkles for treasure chests
+    if (type === PowerUpType.CHEST) {
+      this.createSparkle()
+    }
+
+    // Add healing particles for health potions
+    if (type === PowerUpType.HEALTH) {
+      this.createHealingParticles()
+    }
+  }
+
+  private createSparkle() {
+    // Create 5-6 gold sparkle particles around the chest
+    const sparkleCount = Phaser.Math.Between(5, 6)
+    for (let i = 0; i < sparkleCount; i++) {
+      const angle = (Math.PI * 2 / sparkleCount) * i
+      const distance = 20
+      const offsetX = Math.cos(angle) * distance
+      const offsetY = Math.sin(angle) * distance
+
+      const sparkle = this.scene.add.text(
+        this.x + offsetX,
+        this.y + offsetY,
+        '✦',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '8px',
+          color: '#ffdd00',
+        }
+      ).setOrigin(0.5).setAlpha(0).setDepth(36) // Sparkles slightly above power-ups
+
+      this.sparkleParticles.push(sparkle)
+
+      // Animate sparkle
+      this.scene.tweens.add({
+        targets: sparkle,
+        alpha: { from: 0, to: 1 },
+        scale: { from: 0.5, to: 2 },
+        duration: 500,
+        yoyo: true,
+        repeat: -1,
+        delay: i * 80,
+      })
+    }
+  }
+
+  private createHealingParticles() {
+    // Create 4 green healing particles around the health potion
+    const particleCount = 4
+    for (let i = 0; i < particleCount; i++) {
+      const angle = (Math.PI * 2 / particleCount) * i + Math.PI / 4 // Offset by 45 degrees
+      const distance = 18
+      const offsetX = Math.cos(angle) * distance
+      const offsetY = Math.sin(angle) * distance
+
+      const particle = this.scene.add.text(
+        this.x + offsetX,
+        this.y + offsetY,
+        '+',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '12px',
+          color: '#00ff00',
+        }
+      ).setOrigin(0.5).setAlpha(0).setDepth(36) // Particles slightly above power-ups
+
+      this.sparkleParticles.push(particle)
+
+      // Animate healing particle - rise upward and fade
+      this.scene.tweens.add({
+        targets: particle,
+        alpha: { from: 0, to: 1 },
+        scale: { from: 0.3, to: 1.5 },
+        y: particle.y - 15,
+        duration: 800,
+        yoyo: true,
+        repeat: -1,
+        delay: i * 200,
+      })
+    }
   }
 
   getPowerUpType(): PowerUpType {
@@ -96,19 +192,43 @@ export class PowerUp extends Phaser.GameObjects.Text {
   }
 
   collect() {
+    this.cleanupSparkles()
     this.setActive(false)
     this.setVisible(false)
-    this.body.enable = false
+    this.body.setVelocity(0, 0)
+    this.setPosition(-1000, -1000)
     this.scene.tweens.killTweensOf(this)
     this.setScale(1) // Reset scale
   }
 
+  private cleanupSparkles() {
+    // Destroy all sparkle particles
+    this.sparkleParticles.forEach(sparkle => {
+      this.scene.tweens.killTweensOf(sparkle)
+      sparkle.destroy()
+    })
+    this.sparkleParticles = []
+  }
+
   update() {
+    // Update sparkle positions to follow power-up
+    this.sparkleParticles.forEach((sparkle, i) => {
+      if (sparkle.active) {
+        const angle = (Math.PI * 2 / this.sparkleParticles.length) * i
+        const distance = 20
+        const offsetX = Math.cos(angle) * distance
+        const offsetY = Math.sin(angle) * distance
+        sparkle.setPosition(this.x + offsetX, this.y + offsetY)
+      }
+    })
+
     // Deactivate if off screen (bottom)
     if (this.active && this.y > this.scene.cameras.main.height + 50) {
+      this.cleanupSparkles()
       this.setActive(false)
       this.setVisible(false)
-      this.body.enable = false
+      this.body.setVelocity(0, 0)
+      this.setPosition(-1000, -1000)
       this.scene.tweens.killTweensOf(this)
       this.setScale(1)
     }
@@ -124,7 +244,7 @@ export class PowerUpGroup extends Phaser.Physics.Arcade.Group {
     // Create pool of power-ups
     for (let i = 0; i < poolSize; i++) {
       const powerUp = new PowerUp(scene, 0, 0)
-      this.add(powerUp, true)
+      this.add(powerUp, false)  // false = already added to scene in constructor
       this.pool.push(powerUp)
     }
   }
@@ -146,14 +266,16 @@ export class PowerUpGroup extends Phaser.Physics.Arcade.Group {
     const rand = Math.random() * 100
     let type: PowerUpType
 
-    if (rand < 40) {
-      type = PowerUpType.RAPID_FIRE // 40% chance
-    } else if (rand < 70) {
-      type = PowerUpType.SHIELD // 30% chance
-    } else if (rand < 90) {
-      type = PowerUpType.MAGNET // 20% chance
+    if (rand < 32) {
+      type = PowerUpType.RAPID_FIRE // 32% chance
+    } else if (rand < 59) {
+      type = PowerUpType.SHIELD // 27% chance
+    } else if (rand < 81) {
+      type = PowerUpType.MAGNET // 22% chance
+    } else if (rand < 92) {
+      type = PowerUpType.NUKE // 11% chance
     } else {
-      type = PowerUpType.NUKE // 10% chance
+      type = PowerUpType.CHEST // 8% chance (rolls internally for 1/3/5)
     }
 
     return this.spawnPowerUp(x, y, type)

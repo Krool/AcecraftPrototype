@@ -20,29 +20,28 @@ export interface GameStateData {
   bestTime: number
   unlockedLevels: number
   characterStats?: { [key: string]: CharacterStats }
+  levelHighScores?: { [key: number]: number }
 }
 
 export class GameState {
   private static instance: GameState
   private credits: number = 0
   private buildings: Map<BuildingType, Building> = new Map()
-  private unlockedCharacters: Set<CharacterType> = new Set([CharacterType.ACE])
-  private selectedCharacter: CharacterType = CharacterType.ACE
+  private unlockedCharacters: Set<CharacterType> = new Set([CharacterType.VULCAN])
+  private selectedCharacter: CharacterType = CharacterType.VULCAN
   private totalRuns: number = 0
   private totalKills: number = 0
   private bestScore: number = 0
   private bestTime: number = 0
   private unlockedLevels: number = 1 // Start with level 1 unlocked (0-indexed)
   private characterStats: Map<CharacterType, CharacterStats> = new Map()
+  private levelHighScores: Map<number, number> = new Map() // High scores per level index
 
   private constructor() {
-    // Initialize all buildings as locked, level 0
+    // Initialize all buildings at level 0 (all available)
     Object.values(BuildingType).forEach(type => {
-      this.buildings.set(type, new Building(type, 0, false))
+      this.buildings.set(type, new Building(type, 0))
     })
-
-    // Unlock Hangar by default
-    this.buildings.get(BuildingType.HANGAR)!.unlock()
   }
 
   static getInstance(): GameState {
@@ -90,6 +89,18 @@ export class GameState {
     return levelIndex < this.unlockedLevels
   }
 
+  getLevelHighScore(levelIndex: number): number {
+    return this.levelHighScores.get(levelIndex) || 0
+  }
+
+  setLevelHighScore(levelIndex: number, score: number): void {
+    const currentHigh = this.getLevelHighScore(levelIndex)
+    if (score > currentHigh) {
+      this.levelHighScores.set(levelIndex, score)
+      this.save()
+    }
+  }
+
   // Building management
   getBuilding(type: BuildingType): Building {
     return this.buildings.get(type)!
@@ -99,27 +110,6 @@ export class GameState {
     return Array.from(this.buildings.values())
   }
 
-  getHangarLevel(): number {
-    const hangar = this.buildings.get(BuildingType.HANGAR)
-    return hangar ? hangar.getLevel() : 0
-  }
-
-  unlockBuilding(type: BuildingType): boolean {
-    const building = this.buildings.get(type)
-    if (!building || building.isUnlocked()) {
-      return false
-    }
-
-    // Check if hangar level requirement is met
-    const hangarLevel = this.getHangarLevel()
-    if (!building.canUnlock(hangarLevel)) {
-      return false
-    }
-
-    building.unlock()
-    this.save()
-    return true
-  }
 
   upgradeBuilding(type: BuildingType): boolean {
     const building = this.buildings.get(type)
@@ -226,26 +216,17 @@ export class GameState {
 
   // Calculate total bonuses from buildings
   getTotalBonuses(): { [key: string]: number } {
-    const bonuses: { [key: string]: number } = {
-      maxHealth: 0,
-      moveSpeed: 0,
-      weaponSlots: 0,
-      xpMultiplier: 0,
-      pickupRadius: 0,
-      permanentDamage: 0,
-    }
+    const bonuses: { [key: string]: number } = {}
 
     this.buildings.forEach(building => {
-      if (building.isUnlocked()) {
-        const benefits = building.getBenefits()
-        Object.entries(benefits).forEach(([key, value]) => {
-          if (bonuses[key] !== undefined) {
-            bonuses[key] += value
-          } else {
-            bonuses[key] = value
-          }
-        })
-      }
+      const benefits = building.getBenefits()
+      Object.entries(benefits).forEach(([key, value]) => {
+        if (bonuses[key] !== undefined) {
+          bonuses[key] += value
+        } else {
+          bonuses[key] = value
+        }
+      })
     })
 
     return bonuses
@@ -256,6 +237,11 @@ export class GameState {
     const characterStatsObj: { [key: string]: CharacterStats } = {}
     this.characterStats.forEach((stats, type) => {
       characterStatsObj[type] = stats
+    })
+
+    const levelHighScoresObj: { [key: number]: number } = {}
+    this.levelHighScores.forEach((score, levelIndex) => {
+      levelHighScoresObj[levelIndex] = score
     })
 
     const data: GameStateData = {
@@ -269,6 +255,7 @@ export class GameState {
       bestTime: this.bestTime,
       unlockedLevels: this.unlockedLevels,
       characterStats: characterStatsObj,
+      levelHighScores: levelHighScoresObj,
     }
 
     localStorage.setItem('roguecraft_gamestate', JSON.stringify(data))
@@ -287,19 +274,30 @@ export class GameState {
       this.bestTime = data.bestTime || 0
       this.unlockedLevels = data.unlockedLevels || 1
 
-      // Load buildings
+      // Load buildings - filter out any invalid types
       if (data.buildings) {
         data.buildings.forEach(state => {
-          this.buildings.set(state.type, Building.deserialize(state))
+          // Only load if the building type still exists in BUILDING_CONFIGS
+          if (BUILDING_CONFIGS[state.type]) {
+            this.buildings.set(state.type, Building.deserialize(state))
+          }
         })
       }
 
-      // Load characters
+      // Load characters - validate that they exist in the current CharacterType enum
       if (data.unlockedCharacters) {
-        this.unlockedCharacters = new Set(data.unlockedCharacters)
+        const validCharacters = data.unlockedCharacters.filter(type =>
+          Object.values(CharacterType).includes(type)
+        )
+        this.unlockedCharacters = new Set(validCharacters.length > 0 ? validCharacters : [CharacterType.VULCAN])
       }
-      if (data.selectedCharacter) {
+      if (data.selectedCharacter && Object.values(CharacterType).includes(data.selectedCharacter)) {
         this.selectedCharacter = data.selectedCharacter
+      } else {
+        // If saved character is invalid, default to VULCAN
+        this.selectedCharacter = CharacterType.VULCAN
+        // Ensure VULCAN is unlocked
+        this.unlockedCharacters.add(CharacterType.VULCAN)
       }
 
       // Load character stats
@@ -307,6 +305,14 @@ export class GameState {
         this.characterStats = new Map()
         Object.entries(data.characterStats).forEach(([type, stats]) => {
           this.characterStats.set(type as CharacterType, stats)
+        })
+      }
+
+      // Load level high scores
+      if (data.levelHighScores) {
+        this.levelHighScores = new Map()
+        Object.entries(data.levelHighScores).forEach(([levelIndex, score]) => {
+          this.levelHighScores.set(parseInt(levelIndex), score)
         })
       }
     } catch (error) {
@@ -317,17 +323,17 @@ export class GameState {
   reset(): void {
     this.credits = 0
     this.buildings.forEach(building => {
-      this.buildings.set(building.getConfig().type, new Building(building.getConfig().type, 0, false))
+      this.buildings.set(building.getConfig().type, new Building(building.getConfig().type, 0))
     })
-    this.buildings.get(BuildingType.HANGAR)!.unlock()
-    this.unlockedCharacters = new Set([CharacterType.ACE])
-    this.selectedCharacter = CharacterType.ACE
+    this.unlockedCharacters = new Set([CharacterType.VULCAN])
+    this.selectedCharacter = CharacterType.VULCAN
     this.totalRuns = 0
     this.totalKills = 0
     this.bestScore = 0
     this.bestTime = 0
     this.unlockedLevels = 1
     this.characterStats = new Map()
+    this.levelHighScores = new Map()
     this.save()
   }
 }

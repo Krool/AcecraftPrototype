@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import BootScene from '../scenes/BootScene'
 import LoadingScene from '../scenes/LoadingScene'
 import GameScene from '../scenes/GameScene'
 import MainMenuScene from '../scenes/MainMenuScene'
@@ -18,7 +19,7 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [GameScene, MainMenuScene, BuildingMenuScene, HangarScene, StatsScene],
+  scene: [BootScene, LoadingScene, GameScene, MainMenuScene, BuildingMenuScene, HangarScene, StatsScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

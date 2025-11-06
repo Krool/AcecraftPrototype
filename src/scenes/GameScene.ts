@@ -1,16 +1,19 @@
 import Phaser from 'phaser'
 import { ProjectileGroup, ProjectileType } from '../game/Projectile'
-import { EnemyGroup, EnemyType } from '../game/Enemy'
+import { EnemyGroup, EnemyType, ENEMY_CONFIGS } from '../game/Enemy'
 import { EnemyProjectileGroup } from '../game/EnemyProjectile'
-import { XPDropGroup, XPSize } from '../game/XPDrop'
+import { XPDropGroup } from '../game/XPDrop'
 import { CreditDropGroup } from '../game/CreditDrop'
 import { PowerUpGroup, PowerUpType, POWERUP_CONFIGS } from '../game/PowerUp'
 import { Weapon, WeaponType, WeaponFactory, WeaponModifiers, DEFAULT_MODIFIERS } from '../game/Weapon'
 import { Passive, PassiveType, PassiveFactory, PlayerStats } from '../game/Passive'
-import { Character, CharacterType, CharacterFactory } from '../game/Character'
-import { EvolutionManager, EvolutionRecipe, EVOLUTION_RECIPES } from '../game/Evolution'
+import { Character, CharacterType, CharacterFactory, CHARACTER_CONFIGS } from '../game/Character'
+import { EvolutionManager, EVOLUTION_RECIPES } from '../game/Evolution'
 import { GameState } from '../game/GameState'
 import { CampaignManager } from '../game/Campaign'
+import { soundManager, SoundType } from '../game/SoundManager'
+import { WaveSystem } from '../game/WaveSystem'
+import { gameProgression } from '../game/GameProgression'
 
 export default class GameScene extends Phaser.Scene {
   private gameState!: GameState
@@ -23,12 +26,9 @@ export default class GameScene extends Phaser.Scene {
   private xpDrops!: XPDropGroup
   private creditDrops!: CreditDropGroup
   private powerUps!: PowerUpGroup
+  private damageZones: DamageZone[] = []
   private campaignManager!: CampaignManager
   private campaignLevelText!: Phaser.GameObjects.Text
-  private enemiesRemainingText!: Phaser.GameObjects.Text
-  private fireRate: number = 250 // Time between shots in milliseconds
-  private baseFireRate: number = 250
-  private nextFireTime: number = 0
   private enemySpawnRate: number = 1500 // Time between enemy spawns in milliseconds
   private nextEnemySpawnTime: number = 0
   private baseEnemySpawnRate: number = 1500
@@ -58,35 +58,56 @@ export default class GameScene extends Phaser.Scene {
   // Active power-ups
   private hasShield: boolean = false
   private shieldEndTime: number = 0
+  private shieldFlashTween?: Phaser.Tweens.Tween
   private hasRapidFirePowerUp: boolean = false
   private rapidFireEndTime: number = 0
   private hasMagnet: boolean = false
   private magnetEndTime: number = 0
-  private powerUpText!: Phaser.GameObjects.Text
+  private buffIconsContainer!: Phaser.GameObjects.Container
+  private buffDisplays: Map<string, { bg: Phaser.GameObjects.Rectangle, fill: Phaser.GameObjects.Rectangle, icon: Phaser.GameObjects.Text, startTime: number, duration: number }> = new Map()
 
-  // Score and timer
+
+  // Score and waves
   private score: number = 0
   private scoreText!: Phaser.GameObjects.Text
   private survivalTime: number = 0
   private timerText!: Phaser.GameObjects.Text
+  private waveSystem!: WaveSystem
+  private waveText!: Phaser.GameObjects.Text
+  private waveProgressBar!: Phaser.GameObjects.Rectangle
+  private waveProgressBarBg!: Phaser.GameObjects.Rectangle
+  private bossHealthBar!: Phaser.GameObjects.Rectangle
+  private bossHealthBarBg!: Phaser.GameObjects.Rectangle
+  private bossHealthText!: Phaser.GameObjects.Text
+  private currentWaveEnemyCount: number = 0
+  private waveInProgress: boolean = false
+  private waveStartTime: number = 0 // Failsafe: track when wave started
   private highScore: number = 0
 
   // Character stats tracking
   private totalDamageDealt: number = 0
   private killCount: number = 0
+  private bossesKilled: number = 0
   private runStartTime: number = 0
+  private pauseStartTime: number = 0
+  private totalPausedTime: number = 0
 
-  // Player stats
-  private projectileDamage: number = 10
-  private projectileSpeed: number = 500
-  private projectilePierce: number = 0
-  private projectileCount: number = 1 // Number of projectiles fired at once
-  private hasSpreadShot: boolean = false
+  // Debug metrics
+  private damageDealtLastSecond: number = 0
+  private healthSpawnedLastSecond: number = 0
+  private damageTrackingWindow: { timestamp: number, damage: number }[] = []
+  private healthTrackingWindow: { timestamp: number, health: number }[] = []
+  private debugText!: Phaser.GameObjects.Text
+  private creditsCollectedThisRun: number = 0
+  private creditsCollectedText!: Phaser.GameObjects.Text
+  private lastEngineTrailTime: number = 0
+  private gameOverUI: Phaser.GameObjects.GameObject[] = []
 
   // New weapon/passive/character system
   private weapons: Weapon[] = []
   private passives: Passive[] = []
   private character!: Character
+  private characterColor!: string
   private maxWeaponSlots: number = 4
   private maxPassiveSlots: number = 4
   private weaponModifiers: WeaponModifiers = { ...DEFAULT_MODIFIERS }
@@ -97,20 +118,37 @@ export default class GameScene extends Phaser.Scene {
     pickupRadius: 100,
     damageReduction: 0,
     dodgeChance: 0,
+    healthRegen: 0,
+    invulnFrames: 1000,
+    revives: 0,
   }
-  private weaponSlotsText!: Phaser.GameObjects.Text
-  private passiveSlotsText!: Phaser.GameObjects.Text
+  private weaponSlotsContainer!: Phaser.GameObjects.Container
+  private passiveSlotsContainer!: Phaser.GameObjects.Container
   private evolutionManager!: EvolutionManager
   private discoveredEvolutions: Set<string> = new Set() // Track discovered evolutions
   private starFieldTweens: Phaser.Tweens.Tween[] = [] // Track tweens for pausing
+  private bgMusic?: Phaser.Sound.BaseSound
 
   constructor() {
     super('GameScene')
   }
 
   create(data?: { levelIndex?: number }) {
+    // Fade in from black
+    this.cameras.main.fadeIn(500, 0, 0, 0)
+
     // Initialize game state
     this.gameState = GameState.getInstance()
+
+    // Start random background music
+    const randomTrack = Phaser.Math.Between(1, 20)
+    if (this.bgMusic) {
+      this.bgMusic.stop()
+    }
+    this.bgMusic = this.sound.add(`bgm-${randomTrack}`, { loop: true, volume: soundManager.getMusicVolume() * soundManager.getMasterVolume() })
+    if (!soundManager.isMuted()) {
+      this.bgMusic.play()
+    }
 
     // Reset all game state variables (important for scene restart)
     this.totalXP = 0
@@ -120,13 +158,6 @@ export default class GameScene extends Phaser.Scene {
     this.maxHealth = 100
     this.isPaused = false
     this.playerSpeed = 300
-    this.projectileDamage = 10
-    this.projectileSpeed = 500
-    this.projectilePierce = 0
-    this.projectileCount = 1
-    this.hasSpreadShot = false
-    this.fireRate = 250
-    this.nextFireTime = 0
     this.enemySpawnRate = 1500
     this.baseEnemySpawnRate = 1500
     this.minEnemySpawnRate = 400
@@ -140,23 +171,53 @@ export default class GameScene extends Phaser.Scene {
     this.rapidFireEndTime = 0
     this.hasMagnet = false
     this.magnetEndTime = 0
-    this.baseFireRate = 250
     this.score = 0
     this.survivalTime = 0
     this.totalDamageDealt = 0
     this.killCount = 0
+    this.bossesKilled = 0
     this.runStartTime = 0
+    this.pauseStartTime = 0
+    this.totalPausedTime = 0
     this.discoveredEvolutions = new Set()
     this.starFieldTweens = []
-    // Load high score from localStorage
-    this.highScore = parseInt(localStorage.getItem('roguecraft_highscore') || '0')
 
-    // Add background
-    this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x1a1a2e)
-      .setOrigin(0, 0)
+    // Clear buff displays map to ensure clean state on restart
+    this.buffDisplays.clear()
 
-    // Add scrolling star field
-    this.createStarField()
+    // Clear weapons and passives arrays
+    this.weapons = []
+    this.passives = []
+
+    // Reset weapon modifiers and player stats to defaults
+    this.weaponModifiers = { ...DEFAULT_MODIFIERS }
+    this.playerStats = {
+      maxHealth: 100,
+      currentHealth: 100,
+      moveSpeed: 300,
+      pickupRadius: 100,
+      damageReduction: 0,
+      dodgeChance: 0,
+      healthRegen: 0,
+      invulnFrames: 1000,
+      revives: 0,
+    }
+
+    // Initialize campaign manager early (needed for background creation)
+    const levelIndex = data?.levelIndex ?? this.gameState.getUnlockedLevels() - 1
+    this.campaignManager = new CampaignManager(levelIndex)
+
+    // Initialize wave system
+    this.waveSystem = new WaveSystem(levelIndex + 1)
+
+    // Load high score for this specific level
+    this.highScore = this.gameState.getLevelHighScore(levelIndex)
+
+    // Add level-specific background
+    this.createLevelBackground(levelIndex)
+
+    // Add scrolling star field with level-specific theme
+    this.createStarField(levelIndex)
 
     // Create UI containers
     // Top container (semi-transparent dark)
@@ -187,7 +248,7 @@ export default class GameScene extends Phaser.Scene {
     this.scoreText = this.add.text(
       this.cameras.main.width - 10,
       10,
-      `Score: 0 | High: ${this.highScore}`,
+      `Score: 0 | 👑: ${this.highScore}`,
       {
         fontFamily: 'Courier New',
         fontSize: '14px',
@@ -196,31 +257,154 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setOrigin(1, 0).setDepth(11)
 
-    // Add timer (top right, second line)
+    // Add timer for campaign mode (top center)
     this.timerText = this.add.text(
-      this.cameras.main.width - 10,
-      30,
-      '⏱ 0:00',
+      this.cameras.main.width / 2,
+      10,
+      '0:00',
       {
         fontFamily: 'Courier New',
-        fontSize: '14px',
+        fontSize: '24px',
         color: '#00ffff',
-        align: 'right'
+        fontStyle: 'bold',
+        align: 'center'
+      }
+    ).setOrigin(0.5, 0).setDepth(11)
+
+    // Add wave counter (top right, second line)
+    this.waveText = this.add.text(
+      this.cameras.main.width - 10,
+      30,
+      'Wave 0/15',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '16px',
+        color: '#ffaa00',
+        align: 'right',
+        fontStyle: 'bold'
       }
     ).setOrigin(1, 0).setDepth(11)
 
-    // Add Level counter
-    this.levelText = this.add.text(10, 10, 'Level: 1', {
+    // Add wave progress bar (below wave counter)
+    const progressBarWidth = 200
+    const progressBarHeight = 8
+    this.waveProgressBarBg = this.add.rectangle(
+      this.cameras.main.width - 10 - progressBarWidth,
+      55,
+      progressBarWidth,
+      progressBarHeight,
+      0x333333
+    ).setOrigin(0, 0).setDepth(11)
+
+    this.waveProgressBar = this.add.rectangle(
+      this.cameras.main.width - 10 - progressBarWidth,
+      55,
+      0,
+      progressBarHeight,
+      0x00ffff
+    ).setOrigin(0, 0).setDepth(11)
+
+    // Boss health bar (initially hidden)
+    const bossBarWidth = 400
+    const bossBarHeight = 20
+    this.bossHealthBarBg = this.add.rectangle(
+      this.cameras.main.centerX,
+      80,
+      bossBarWidth,
+      bossBarHeight,
+      0x330000
+    ).setOrigin(0.5, 0).setDepth(11).setVisible(false).setStrokeStyle(2, 0xff0000)
+
+    this.bossHealthBar = this.add.rectangle(
+      this.cameras.main.centerX - bossBarWidth / 2,
+      80,
+      bossBarWidth,
+      bossBarHeight,
+      0xff0000
+    ).setOrigin(0, 0).setDepth(11).setVisible(false)
+
+    this.bossHealthText = this.add.text(
+      this.cameras.main.centerX,
+      105,
+      'BOSS',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '16px',
+        color: '#ff0000',
+        align: 'center',
+        fontStyle: 'bold'
+      }
+    ).setOrigin(0.5, 0).setDepth(11).setVisible(false)
+
+    // Add credits collected counter (to the right of menu button, below score)
+    this.creditsCollectedThisRun = 0
+    this.creditsCollectedText = this.add.text(
+      this.cameras.main.centerX + 70,
+      30,
+      '0¤',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '14px',
+        color: '#ffdd00',
+        align: 'left'
+      }
+    ).setOrigin(0, 0).setDepth(11)
+
+    // Add menu button (top center)
+    const menuButton = this.add.rectangle(
+      this.cameras.main.centerX,
+      10,
+      120,
+      40,
+      0x2a2a4a,
+      0.8
+    ).setOrigin(0.5, 0).setDepth(11).setInteractive({ useHandCursor: true })
+
+    this.add.text(
+      this.cameras.main.centerX,
+      30,
+      'MENU',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '18px',
+        color: '#ffffff',
+      }
+    ).setOrigin(0.5).setDepth(12)
+
+    // Hover effects for menu button
+    menuButton.on('pointerover', () => {
+      menuButton.setFillStyle(0x3a3a6a, 0.9)
+    })
+
+    menuButton.on('pointerout', () => {
+      menuButton.setFillStyle(0x2a2a4a, 0.8)
+    })
+
+    // Click handler for menu button
+    menuButton.on('pointerdown', () => {
+      // Pause the game
+      this.isPaused = true
+      this.pauseStartTime = this.time.now
+      this.physics.pause()
+      this.starFieldTweens.forEach(tween => tween.pause())
+
+      // Show confirmation dialog
+      this.showMenuConfirmation()
+    })
+
+    // Add Level counter (just the number)
+    this.levelText = this.add.text(10, 18, '1', {
       fontFamily: 'Courier New',
-      fontSize: '16px',
+      fontSize: '20px',
       color: '#00ffff',
+      fontStyle: 'bold'
     }).setDepth(11)
 
-    // Create XP bar with label
-    const xpBarWidth = 200
-    const xpBarHeight = 15
-    const xpBarX = 10
-    const xpBarY = 32
+    // Create XP bar next to level number
+    const xpBarWidth = 105 // 30% smaller than original 150
+    const xpBarHeight = 20
+    const xpBarX = 40
+    const xpBarY = 13
 
     this.xpBarBackground = this.add.rectangle(
       xpBarX,
@@ -286,51 +470,47 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setOrigin(1, 0).setVisible(false).setDepth(11)
 
-    // Create power-up status text
-    this.powerUpText = this.add.text(
+    // Create buff icons container (bottom center, in UI tray)
+    this.buffIconsContainer = this.add.container(
       this.cameras.main.centerX,
-      this.cameras.main.height - 50,
-      '',
-      {
-        fontFamily: 'Courier New',
-        fontSize: '16px',
-        color: '#00ffff',
-      }
-    ).setOrigin(0.5).setDepth(11)
+      this.cameras.main.height - 35
+    ).setDepth(11)
 
-    // Create weapon slots display (bottom left)
-    this.weaponSlotsText = this.add.text(
+    // Create weapon slots container (bottom left)
+    this.weaponSlotsContainer = this.add.container(
       10,
-      this.cameras.main.height - 70,
-      '',
+      this.cameras.main.height - 70
+    ).setDepth(11)
+
+    // Create debug text (bottom left, below weapons)
+    this.debugText = this.add.text(
+      10,
+      this.cameras.main.height - 35,
+      'DPS Ratio: 0.00',
       {
         fontFamily: 'Courier New',
-        fontSize: '28px',
-        color: '#ffaa00',
+        fontSize: '14px',
+        color: '#00ff00',
       }
     ).setOrigin(0, 0).setDepth(11)
 
-    // Create passive slots display (bottom right)
-    this.passiveSlotsText = this.add.text(
+    // Create passive slots container (bottom right)
+    this.passiveSlotsContainer = this.add.container(
       this.cameras.main.width - 10,
-      this.cameras.main.height - 70,
-      '',
-      {
-        fontFamily: 'Courier New',
-        fontSize: '28px',
-        color: '#00ffaa',
-        align: 'right'
-      }
-    ).setOrigin(1, 0).setDepth(11)
+      this.cameras.main.height - 70
+    ).setDepth(11)
 
-    // Create projectile group
-    this.projectiles = new ProjectileGroup(this, 200)
+    // Create projectile group (no pooling - creates/destroys as needed)
+    this.projectiles = new ProjectileGroup(this)
 
-    // Create enemy group
+    // Create enemy group (start small, grows dynamically)
     this.enemies = new EnemyGroup(this, 100, 50)
 
-    // Create enemy projectile group
-    this.enemyProjectiles = new EnemyProjectileGroup(this, 150)
+    // Give projectiles access to enemy group for homing missiles
+    this.projectiles.setEnemyGroup(this.enemies)
+
+    // Create enemy projectile group (start small, grows dynamically)
+    this.enemyProjectiles = new EnemyProjectileGroup(this, 50)
 
     // Initialize character and starting weapon FIRST (so we know what ship to display)
     this.gameState = GameState.getInstance()
@@ -340,42 +520,49 @@ export default class GameScene extends Phaser.Scene {
 
     // Create player with character's symbol and color
     const characterConfig = this.character.getConfig()
+    this.characterColor = characterConfig.color // Store the character's color
     this.player = this.add.text(
       this.cameras.main.centerX,
       this.cameras.main.height - 100,
       characterConfig.symbol,
       {
         fontFamily: 'Courier New',
-        fontSize: '48px',
-        color: characterConfig.color,
+        fontSize: '72px',
+        color: this.characterColor,
       }
-    ).setOrigin(0.5)
+    )
+      .setOrigin(0.5)
+      .setDepth(25) // Player renders above projectiles and enemies
+      .setScale(characterConfig.scale) // Apply ship-specific scaling
 
     // Enable physics on player
     this.physics.add.existing(this.player)
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body
     playerBody.setCollideWorldBounds(true)
 
+    // Set collision radius from character config (scaled for gameplay)
+    const collisionSize = characterConfig.collisionRadius * 2 // Diameter
+    playerBody.setSize(collisionSize, collisionSize)
+    playerBody.setCircle(characterConfig.collisionRadius) // Use circular collision for better hit detection
+
     // Now link enemy projectiles and player reference to enemies
     this.enemies.setProjectileGroup(this.enemyProjectiles)
     this.enemies.setPlayerReference(this.player)
 
-    // Create XP drop group
-    this.xpDrops = new XPDropGroup(this, 100)
+    // Create XP drop group (start small, grows dynamically)
+    this.xpDrops = new XPDropGroup(this, 50)
 
-    // Create credit drop group
-    this.creditDrops = new CreditDropGroup(this, 50)
+    // Create credit drop group (start small, grows dynamically)
+    this.creditDrops = new CreditDropGroup(this, 30)
 
-    // Create power-up group
+    // Create power-up group (start small, grows dynamically)
     this.powerUps = new PowerUpGroup(this, 20)
 
-    // Initialize campaign manager
-    const levelIndex = data?.levelIndex ?? this.gameState.getUnlockedLevels() - 1
-    this.campaignManager = new CampaignManager(levelIndex)
+    // Campaign manager already initialized earlier for background creation
 
-    // Create campaign level text (top left, under level)
+    // Create campaign level text (top left, under level+xp bar)
     this.campaignLevelText = this.add.text(
-      10, 50,
+      10, 40,
       `Mission: ${this.campaignManager.getCurrentLevel().name}`,
       {
         fontFamily: 'Courier New',
@@ -384,23 +571,17 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setDepth(11)
 
-    // Time remaining text
-    this.enemiesRemainingText = this.add.text(
-      10, 65,
-      'Time to Victory: 0:00',
-      {
-        fontFamily: 'Courier New',
-        fontSize: '11px',
-        color: '#aaaaaa',
-      }
-    ).setDepth(11)
 
     // Setup collision detection
     this.physics.add.overlap(
       this.projectiles,
       this.enemies,
       this.handleProjectileEnemyCollision as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
-      undefined,
+      (projObj, enemObj) => {
+        // Process callback - only collide with enemies that have enabled bodies
+        const enem = enemObj as any
+        return enem.body && enem.body.enable && enem.active
+      },
       this
     )
 
@@ -409,7 +590,11 @@ export default class GameScene extends Phaser.Scene {
       this.player,
       this.enemies,
       this.handlePlayerEnemyCollision as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
-      undefined,
+      (playerObj, enemObj) => {
+        // Process callback - only collide with enemies that have enabled bodies
+        const enem = enemObj as any
+        return enem.body && enem.body.enable && enem.active
+      },
       this
     )
 
@@ -431,7 +616,14 @@ export default class GameScene extends Phaser.Scene {
       this
     )
 
-    // Setup event listeners
+    // Setup event listeners (remove first to prevent duplicates)
+    this.events.off('enemyDied', this.handleEnemyDied, this)
+    this.events.off('xpCollected', this.handleXPCollected, this)
+    this.events.off('creditCollected', this.handleCreditCollected, this)
+    this.events.off('enemyExplosion', this.handleEnemyExplosion, this)
+    this.events.off('enemySplit', this.handleEnemySplit, this)
+    this.events.off('healNearbyEnemies', this.handleHealNearby, this)
+
     this.events.on('enemyDied', this.handleEnemyDied, this)
     this.events.on('xpCollected', this.handleXPCollected, this)
     this.events.on('creditCollected', this.handleCreditCollected, this)
@@ -453,6 +645,17 @@ export default class GameScene extends Phaser.Scene {
     this.maxWeaponSlots = this.character.getWeaponSlots()
     this.maxPassiveSlots = this.character.getPassiveSlots()
 
+    // Apply building bonuses from GameState
+    const bonuses = this.gameState.getTotalBonuses()
+
+    // Apply weapon and passive slot bonuses
+    if (bonuses.weaponSlots) {
+      this.maxWeaponSlots += bonuses.weaponSlots
+    }
+    if (bonuses.passiveSlots) {
+      this.maxPassiveSlots += bonuses.passiveSlots
+    }
+
     // Create and add starting weapon
     const startingWeapon = WeaponFactory.create(this, startingWeaponType, this.projectiles)
     this.weapons.push(startingWeapon)
@@ -461,6 +664,18 @@ export default class GameScene extends Phaser.Scene {
     this.playerStats.maxHealth = this.character.getBaseHealth()
     this.playerStats.currentHealth = this.playerStats.maxHealth
     this.playerStats.moveSpeed = this.character.getBaseMoveSpeed()
+
+    // Apply building bonuses to stats
+    if (bonuses.maxHealth) {
+      this.playerStats.maxHealth += bonuses.maxHealth
+      this.playerStats.currentHealth = this.playerStats.maxHealth
+    }
+    if (bonuses.pickupRadiusMultiplier) {
+      this.playerStats.pickupRadius = Math.floor(this.playerStats.pickupRadius * (1 + bonuses.pickupRadiusMultiplier))
+    }
+    if (bonuses.damageReduction) {
+      this.playerStats.damageReduction += bonuses.damageReduction
+    }
 
     this.maxHealth = this.playerStats.maxHealth
     this.health = this.playerStats.currentHealth
@@ -471,34 +686,185 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private updateSlotsDisplay() {
-    // Build weapon slots - just icons with level indicators
-    let weaponText = ''
+    // Clear existing containers
+    this.weaponSlotsContainer.removeAll(true)
+    this.passiveSlotsContainer.removeAll(true)
+
+    const iconSize = 28
+    const pipSize = 14
+    const slotSpacing = 45
+
+    // Build weapon slots - icons with level pips below
+    let xOffset = 0
     this.weapons.forEach((weapon, index) => {
       const config = weapon.getConfig()
       const level = weapon.getLevel()
+      const isMaxLevel = level >= config.maxLevel
+
+      // Create icon
+      const icon = this.add.text(
+        xOffset,
+        0,
+        config.icon,
+        {
+          fontFamily: 'Courier New',
+          fontSize: `${iconSize}px`,
+          color: isMaxLevel ? '#ffff00' : '#ffaa00', // Gold color for max level
+        }
+      ).setOrigin(0, 0).setInteractive({ useHandCursor: true })
+
+      // Add click handler to open stats popup
+      icon.on('pointerdown', () => {
+        if (!this.isPaused) {
+          this.showStatsPopup()
+        }
+      })
+
+      // Add sparkle indicator for max level weapons
+      if (isMaxLevel) {
+        const maxSparkle = this.add.text(
+          xOffset + iconSize - 8,
+          -4,
+          '✦',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '10px',
+            color: '#ffff00',
+          }
+        ).setOrigin(0, 0)
+
+        // Animate the sparkle
+        this.tweens.add({
+          targets: maxSparkle,
+          alpha: { from: 0.5, to: 1 },
+          scale: { from: 0.8, to: 1.2 },
+          duration: 800,
+          yoyo: true,
+          repeat: -1,
+        })
+
+        this.weaponSlotsContainer.add(maxSparkle)
+      }
+
+      // Create level pips below icon
       const levelDots = '•'.repeat(level)
-      weaponText += `${config.icon}${levelDots} `
+      const pips = this.add.text(
+        xOffset,
+        iconSize + 2,
+        levelDots,
+        {
+          fontFamily: 'Courier New',
+          fontSize: `${pipSize}px`,
+          color: isMaxLevel ? '#ffff00' : '#ffaa00',
+        }
+      ).setOrigin(0, 0)
+
+      this.weaponSlotsContainer.add(icon)
+      this.weaponSlotsContainer.add(pips)
+      xOffset += slotSpacing
     })
-    // Show empty slots
+
+    // Show empty weapon slots
     for (let i = this.weapons.length; i < this.maxWeaponSlots; i++) {
-      weaponText += `[ ] `
+      const emptySlot = this.add.text(
+        xOffset,
+        0,
+        '[ ]',
+        {
+          fontFamily: 'Courier New',
+          fontSize: `${iconSize}px`,
+          color: '#ffaa00',
+        }
+      ).setOrigin(0, 0)
+      this.weaponSlotsContainer.add(emptySlot)
+      xOffset += slotSpacing
     }
 
-    // Build passive slots - just icons with level indicators
-    let passiveText = ''
+    // Build passive slots - icons with level pips below
+    xOffset = 0
     this.passives.forEach((passive, index) => {
       const config = passive.getConfig()
       const level = passive.getLevel()
-      const levelDots = '•'.repeat(level)
-      passiveText += `${config.icon}${levelDots} `
-    })
-    // Show empty slots
-    for (let i = this.passives.length; i < this.maxPassiveSlots; i++) {
-      passiveText += `[ ] `
-    }
+      const isMaxLevel = level >= config.maxLevel
 
-    this.weaponSlotsText.setText(weaponText.trim())
-    this.passiveSlotsText.setText(passiveText.trim())
+      // Create icon
+      const icon = this.add.text(
+        -xOffset,
+        0,
+        config.icon,
+        {
+          fontFamily: 'Courier New',
+          fontSize: `${iconSize}px`,
+          color: isMaxLevel ? '#00ffff' : '#00ffaa', // Brighter cyan for max level
+        }
+      ).setOrigin(1, 0).setInteractive({ useHandCursor: true })
+
+      // Add click handler to open stats popup
+      icon.on('pointerdown', () => {
+        if (!this.isPaused) {
+          this.showStatsPopup()
+        }
+      })
+
+      // Add sparkle indicator for max level passives
+      if (isMaxLevel) {
+        const maxSparkle = this.add.text(
+          -xOffset - iconSize + 8,
+          -4,
+          '✦',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '10px',
+            color: '#00ffff',
+          }
+        ).setOrigin(1, 0)
+
+        // Animate the sparkle
+        this.tweens.add({
+          targets: maxSparkle,
+          alpha: { from: 0.5, to: 1 },
+          scale: { from: 0.8, to: 1.2 },
+          duration: 800,
+          yoyo: true,
+          repeat: -1,
+        })
+
+        this.passiveSlotsContainer.add(maxSparkle)
+      }
+
+      // Create level pips below icon
+      const levelDots = '•'.repeat(level)
+      const pips = this.add.text(
+        -xOffset,
+        iconSize + 2,
+        levelDots,
+        {
+          fontFamily: 'Courier New',
+          fontSize: `${pipSize}px`,
+          color: isMaxLevel ? '#00ffff' : '#00ffaa',
+        }
+      ).setOrigin(1, 0)
+
+      this.passiveSlotsContainer.add(icon)
+      this.passiveSlotsContainer.add(pips)
+      xOffset += slotSpacing
+    })
+
+    // Show empty passive slots
+    for (let i = this.passives.length; i < this.maxPassiveSlots; i++) {
+      const emptySlot = this.add.text(
+        -xOffset,
+        0,
+        '[ ]',
+        {
+          fontFamily: 'Courier New',
+          fontSize: `${iconSize}px`,
+          color: '#00ffaa',
+        }
+      ).setOrigin(1, 0)
+      this.passiveSlotsContainer.add(emptySlot)
+      xOffset += slotSpacing
+    }
   }
 
   private calculateModifiers() {
@@ -511,6 +877,84 @@ export default class GameScene extends Phaser.Scene {
     this.playerStats.pickupRadius = 100
     this.playerStats.damageReduction = 0
     this.playerStats.dodgeChance = 0
+    this.playerStats.healthRegen = 0
+    this.playerStats.invulnFrames = 1000 // Default 1 second invuln
+    this.playerStats.revives = 0
+
+    // Apply building bonuses from GameState
+    const bonuses = this.gameState.getTotalBonuses()
+
+    // ========== PLAYER STAT BONUSES ==========
+
+    // Health & Defense
+    if (bonuses.maxHealth) {
+      this.playerStats.maxHealth += bonuses.maxHealth
+    }
+    if (bonuses.damageReduction) {
+      this.playerStats.damageReduction += bonuses.damageReduction
+    }
+    if (bonuses.healthRegen) {
+      this.playerStats.healthRegen += bonuses.healthRegen
+    }
+    if (bonuses.invulnTime) {
+      this.playerStats.invulnFrames = Math.floor(this.playerStats.invulnFrames * (1 + bonuses.invulnTime))
+    }
+    if (bonuses.revive) {
+      this.playerStats.revives += bonuses.revive
+    }
+
+    // Movement & Pickup
+    if (bonuses.moveSpeed) {
+      this.playerStats.moveSpeed *= (1 + bonuses.moveSpeed)
+    }
+    if (bonuses.pickupRadiusMultiplier) {
+      this.playerStats.pickupRadius = Math.floor(this.playerStats.pickupRadius * (1 + bonuses.pickupRadiusMultiplier))
+    }
+
+    // ========== WEAPON MODIFIER BONUSES ==========
+
+    // Base damage modifiers
+    if (bonuses.damageMultiplier) {
+      this.weaponModifiers.damageMultiplier *= (1 + bonuses.damageMultiplier)
+    }
+    if (bonuses.physicalDamage) {
+      this.weaponModifiers.damageMultiplier *= (1 + bonuses.physicalDamage)
+    }
+    if (bonuses.fireDamage) {
+      this.weaponModifiers.damageMultiplier *= (1 + bonuses.fireDamage)
+    }
+    if (bonuses.coldDamage) {
+      this.weaponModifiers.damageMultiplier *= (1 + bonuses.coldDamage)
+    }
+    if (bonuses.natureDamage) {
+      this.weaponModifiers.damageMultiplier *= (1 + bonuses.natureDamage)
+    }
+    if (bonuses.allyDamage) {
+      this.weaponModifiers.damageMultiplier *= (1 + bonuses.allyDamage)
+    }
+
+    // Attack speed & projectiles
+    if (bonuses.attackSpeed) {
+      this.weaponModifiers.fireRateMultiplier *= (1 + bonuses.attackSpeed)
+    }
+    if (bonuses.projectileSpeed) {
+      this.weaponModifiers.projectileSpeedMultiplier *= (1 + bonuses.projectileSpeed)
+    }
+    if (bonuses.projectileCount) {
+      this.weaponModifiers.pierceCount += bonuses.projectileCount
+    }
+
+    // Critical hits
+    if (bonuses.critChance) {
+      this.weaponModifiers.critChance += bonuses.critChance
+    }
+
+    // AOE
+    if (bonuses.aoeRadiusMultiplier) {
+      this.weaponModifiers.projectileSizeMultiplier *= (1 + bonuses.aoeRadiusMultiplier)
+    }
+
+    // ========== APPLY PASSIVE & CHARACTER MODIFIERS ==========
 
     // Apply all passive modifiers
     this.passives.forEach(passive => {
@@ -521,6 +965,11 @@ export default class GameScene extends Phaser.Scene {
     // Apply character innate ability
     if (this.character) {
       this.character.applyInnateAbility(this.weaponModifiers, this.playerStats)
+    }
+
+    // Apply power-up effects
+    if (this.hasRapidFirePowerUp) {
+      this.weaponModifiers.fireRateMultiplier *= 4.0 // 4x faster fire rate
     }
 
     // Apply calculated stats to game state
@@ -568,10 +1017,39 @@ export default class GameScene extends Phaser.Scene {
     return null
   }
 
-  private generateUpgradeOptions(): Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string }> {
-    const options: Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string }> = []
+  private getPassiveBenefit(type: PassiveType): string {
+    switch (type) {
+      case PassiveType.BALLISTICS:
+        return '+20% damage per level'
+      case PassiveType.WEAPON_SPEED_UP:
+        return '+15% fire rate per level'
+      case PassiveType.SHIP_ARMOR:
+        return '+2 damage reduction per level'
+      case PassiveType.ENERGY_CORE:
+        return '+25% projectile size, +10% speed'
+      case PassiveType.PICKUP_RADIUS:
+        return '+50 pickup radius per level'
+      case PassiveType.EVASION_DRIVE:
+        return '+5% dodge chance per level'
+      case PassiveType.CRITICAL_SYSTEMS:
+        return '+10% crit chance per level'
+      case PassiveType.THRUSTER_MOD:
+        return '+20% projectile speed, +10% move speed'
+      case PassiveType.OVERDRIVE_REACTOR:
+        return 'Attack speed burst on XP pickup'
+      case PassiveType.SALVAGE_UNIT:
+        return 'Spawns golden pinata enemies'
+      case PassiveType.DRONE_BAY_EXPANSION:
+        return '+15% ally damage & attack speed'
+      default:
+        return ''
+    }
+  }
 
-    // Check for evolutions FIRST (highest priority)
+  private generateUpgradeOptions(): Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean }> {
+    const options: Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean }> = []
+
+    // Check for evolutions FIRST (highest priority - always recommended)
     const availableEvolution = this.evolutionManager.checkForEvolutions(this.weapons, this.passives)
     if (availableEvolution) {
       const evolutionConfig = this.evolutionManager.getEvolutionConfig(availableEvolution.evolution)
@@ -580,6 +1058,8 @@ export default class GameScene extends Phaser.Scene {
         description: `[EVOLUTION] ${evolutionConfig.description}`,
         icon: evolutionConfig.icon,
         color: '#ffff00',
+        recommended: true, // Evolutions are always recommended
+        enablesEvolution: false, // Evolutions themselves don't enable other evolutions
         effect: () => {
           // Find and remove the base weapon
           const weaponIndex = this.weapons.findIndex(w => w.getConfig().type === availableEvolution.baseWeapon)
@@ -605,11 +1085,29 @@ export default class GameScene extends Phaser.Scene {
     this.weapons.forEach(weapon => {
       if (!weapon.isMaxLevel()) {
         const config = weapon.getConfig()
+        const currentLevel = weapon.getLevel()
+        const maxLevel = config.maxLevel
+        // Recommend if weapon is close to max level (within 1 level)
+        const isNearMaxLevel = currentLevel >= maxLevel - 1
+
+        // Calculate current and next level stats
+        const currentDamage = weapon.getDamage()
+        const currentFireRate = weapon.getFireRate(this.weaponModifiers)
+
+        // Temporarily level up to see next stats
+        const nextDamage = Math.floor(config.baseDamage * (1 + currentLevel * 0.2))
+        const nextFireRate = Math.floor((config.baseFireRate * (1 - currentLevel * 0.1)) / this.weaponModifiers.fireRateMultiplier)
+
+        const description = `Level ${currentLevel} → ${currentLevel + 1}\n` +
+          `Damage: ${currentDamage} → ${nextDamage} (+${nextDamage - currentDamage})\n` +
+          `Fire Rate: ${Math.round(currentFireRate)}ms → ${Math.round(nextFireRate)}ms`
+
         options.push({
           name: `${config.name} Level Up`,
-          description: `Level ${weapon.getLevel()} → ${weapon.getLevel() + 1}`,
+          description: description,
           icon: config.icon,
           color: config.color,
+          recommended: isNearMaxLevel,
           effect: () => {
             weapon.levelUp()
           }
@@ -641,15 +1139,24 @@ export default class GameScene extends Phaser.Scene {
 
           // Check for evolution hint
           const evolutionHint = this.checkEvolutionHint(type, undefined)
+
+          // Show initial stats for new weapon
+          const statsInfo = `Damage: ${config.baseDamage} | Fire Rate: ${config.baseFireRate}ms`
           const description = evolutionHint
-            ? `${config.description}\n\n${evolutionHint}`
-            : config.description
+            ? `${config.description}\n${statsInfo}\n\n${evolutionHint}`
+            : `${config.description}\n${statsInfo}`
+
+          // Recommend if first weapon slot is empty OR creates evolution
+          const isFirstWeapon = this.weapons.length === 0
+          const createsEvolution = evolutionHint !== null
 
           options.push({
             name: config.name,
             description: description,
             icon: config.icon,
             color: config.color,
+            recommended: isFirstWeapon || createsEvolution,
+            enablesEvolution: createsEvolution,
             effect: () => {
               const newWeapon = WeaponFactory.create(this, type, this.projectiles)
               this.weapons.push(newWeapon)
@@ -663,11 +1170,24 @@ export default class GameScene extends Phaser.Scene {
     this.passives.forEach(passive => {
       if (!passive.isMaxLevel()) {
         const config = passive.getConfig()
+        const currentLevel = passive.getLevel()
+        const maxLevel = config.maxLevel
+        // Recommend if passive is close to max level (within 1 level)
+        const isNearMaxLevel = currentLevel >= maxLevel - 1
+
+        // Get detailed per-level benefits
+        const benefit = this.getPassiveBenefit(config.type)
+
+        const description = `Level ${currentLevel} → ${currentLevel + 1}\n` +
+          `${config.description}\n` +
+          `${benefit}`
+
         options.push({
           name: `${config.name} Level Up`,
-          description: `Level ${passive.getLevel()} → ${passive.getLevel() + 1}`,
+          description: description,
           icon: config.icon,
           color: config.color,
+          recommended: isNearMaxLevel,
           effect: () => {
             passive.levelUp()
           }
@@ -699,15 +1219,24 @@ export default class GameScene extends Phaser.Scene {
 
           // Check for evolution hint
           const evolutionHint = this.checkEvolutionHint(undefined, type)
+
+          // Show benefit for new passive
+          const benefit = this.getPassiveBenefit(type)
           const description = evolutionHint
-            ? `${config.description}\n\n${evolutionHint}`
-            : config.description
+            ? `${config.description}\n${benefit}\n\n${evolutionHint}`
+            : `${config.description}\n${benefit}`
+
+          // Recommend if first passive slot is empty OR creates evolution
+          const isFirstPassive = this.passives.length === 0
+          const createsEvolution = evolutionHint !== null
 
           options.push({
             name: config.name,
             description: description,
             icon: config.icon,
             color: config.color,
+            recommended: isFirstPassive || createsEvolution,
+            enablesEvolution: createsEvolution,
             effect: () => {
               const newPassive = PassiveFactory.create(this, type)
               this.passives.push(newPassive)
@@ -720,32 +1249,187 @@ export default class GameScene extends Phaser.Scene {
     return options
   }
 
-  private createStarField() {
-    // Create multiple layers of stars for parallax effect (reduced for less distraction)
-    const starLayers = [
-      { count: 20, speed: 20, size: 1, brightness: 0.15 },
-      { count: 10, speed: 40, size: 1, brightness: 0.25 },
-      { count: 5, speed: 60, size: 2, brightness: 0.35 },
+  private createLevelBackground(levelIndex: number) {
+    // Define level-specific background themes
+    const backgroundThemes = [
+      { bgColor: 0x1a1a3a, hasCity: false, hasClouds: false },        // 0: Dark blue space (lightened)
+      { bgColor: 0x2a1a3e, hasCity: false, hasClouds: false },        // 1: Purple-tinted space (lightened)
+      { bgColor: 0x1a2a3e, hasCity: false, hasClouds: true },         // 2: Blue space with clouds (lightened)
+      { bgColor: 0x3e1a1a, hasCity: false, hasClouds: false },        // 3: Red-tinted space (lightened)
+      { bgColor: 0x3e2a1a, hasCity: false, hasClouds: false },        // 4: Orange space (lightened)
+      { bgColor: 0x2a2a1a, hasCity: true, hasClouds: false },         // 5: Dark yellow with city (lightened)
+      { bgColor: 0x1a3e1a, hasCity: false, hasClouds: true },         // 6: Green nebula with clouds (lightened)
+      { bgColor: 0x1a1a1a, hasCity: false, hasClouds: false },        // 7: Nearly black (eclipse, slightly lightened)
+      { bgColor: 0x4e2a1a, hasCity: false, hasClouds: true },         // 8: Dark orange-red with thick clouds (lightened)
+      { bgColor: 0x5e1a1a, hasCity: false, hasClouds: true },         // 9: Dark red with apocalyptic clouds (lightened)
     ]
+
+    const theme = backgroundThemes[Math.min(levelIndex, backgroundThemes.length - 1)]
+
+    // Base background rectangle
+    this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, theme.bgColor)
+      .setOrigin(0, 0)
+
+    // Add city silhouette at bottom if applicable
+    if (theme.hasCity) {
+      this.createCitySilhouette()
+    }
+
+    // Add cloud layers if applicable
+    if (theme.hasClouds) {
+      this.createCloudLayer(levelIndex)
+    }
+  }
+
+  private createCitySilhouette() {
+    // Create a simple city skyline using rectangles at the bottom
+    const cityHeight = 120
+    const buildingCount = 15
+    const cityY = this.cameras.main.height - cityHeight
+
+    for (let i = 0; i < buildingCount; i++) {
+      const buildingWidth = Phaser.Math.Between(30, 80)
+      const buildingHeight = Phaser.Math.Between(40, 100)
+      const x = (this.cameras.main.width / buildingCount) * i
+
+      const building = this.add.rectangle(
+        x, this.cameras.main.height - buildingHeight,
+        buildingWidth, buildingHeight,
+        0x000000, 0.4
+      ).setOrigin(0, 0)
+
+      // Add occasional windows (small yellow rectangles)
+      const windowCount = Phaser.Math.Between(2, 5)
+      for (let w = 0; w < windowCount; w++) {
+        const windowX = x + Phaser.Math.Between(5, buildingWidth - 10)
+        const windowY = this.cameras.main.height - buildingHeight + Phaser.Math.Between(10, buildingHeight - 20)
+        this.add.rectangle(windowX, windowY, 4, 6, 0xffff88, 0.6).setOrigin(0, 0)
+      }
+    }
+  }
+
+  private createCloudLayer(levelIndex: number) {
+    // Create scrolling clouds with varying opacity
+    const cloudCount = levelIndex >= 8 ? 15 : 8 // More clouds for apocalyptic levels
+    const cloudOpacity = levelIndex >= 8 ? 0.3 : 0.15
+
+    for (let i = 0; i < cloudCount; i++) {
+      const x = Phaser.Math.Between(0, this.cameras.main.width)
+      const y = Phaser.Math.Between(0, this.cameras.main.height)
+      const width = Phaser.Math.Between(80, 200)
+      const height = Phaser.Math.Between(30, 60)
+
+      // Cloud color varies by level (whitish for most, darker for apocalypse)
+      const cloudColor = levelIndex >= 8 ? 0x553333 : 0xffffff
+
+      const cloud = this.add.ellipse(x, y, width, height, cloudColor, cloudOpacity)
+
+      // Animate cloud scrolling downward slowly
+      this.tweens.add({
+        targets: cloud,
+        y: this.cameras.main.height + height,
+        duration: Phaser.Math.Between(15000, 25000), // Very slow drift
+        repeat: -1,
+        onRepeat: () => {
+          cloud.x = Phaser.Math.Between(0, this.cameras.main.width)
+          cloud.y = -height
+        }
+      })
+    }
+  }
+
+  private createStarField(levelIndex: number) {
+    // Define level-specific star themes
+    const levelThemes = [
+      { starColor: 0xffffff, density: 1.0 },    // 0: White stars
+      { starColor: 0xccaaff, density: 1.1 },    // 1: Purple-tinted stars
+      { starColor: 0x88ddff, density: 1.2 },    // 2: Cyan stars
+      { starColor: 0xffaaaa, density: 1.3 },    // 3: Red-tinted stars
+      { starColor: 0xffcc88, density: 1.5 },    // 4: Orange stars (denser)
+      { starColor: 0xffffaa, density: 1.4 },    // 5: Yellow stars
+      { starColor: 0xaaffaa, density: 1.2 },    // 6: Green-tinted stars
+      { starColor: 0x8888ff, density: 0.8 },    // 7: Dark purple stars (eclipse - sparse)
+      { starColor: 0xff8844, density: 1.6 },    // 8: Red-orange stars (apocalypse - very dense)
+      { starColor: 0xff4444, density: 1.8 },    // 9: Red stars (armageddon - densest)
+    ]
+
+    const theme = levelThemes[Math.min(levelIndex, levelThemes.length - 1)]
+
+    // Create multiple layers of stars for parallax effect (adjusted by level density)
+    const baseCounts = [20, 10, 5]
+    const starLayers = baseCounts.map((count, i) => ({
+      count: Math.floor(count * theme.density),
+      speed: 20 + i * 20,
+      size: i === 2 ? 2 : 1,
+      brightness: 0.15 + i * 0.1,
+    }))
 
     starLayers.forEach(layer => {
       for (let i = 0; i < layer.count; i++) {
         const x = Phaser.Math.Between(0, this.cameras.main.width)
-        const y = Phaser.Math.Between(0, this.cameras.main.height)
+        // Start at random Y position to spread out particles evenly and prevent clumping
+        const y = Phaser.Math.Between(-this.cameras.main.height, this.cameras.main.height)
 
         const alpha = layer.brightness
-        const star = this.add.circle(x, y, layer.size, 0xffffff, alpha)
 
-        // Animate star scrolling downward
+        // Randomly choose particle type
+        const particleType = Phaser.Math.Between(0, 100)
+        let particle: Phaser.GameObjects.GameObject
+
+        if (particleType < 70) {
+          // 70% chance: Regular star (circle)
+          particle = this.add.circle(x, y, layer.size, theme.starColor, alpha)
+        } else if (particleType < 85) {
+          // 15% chance: Asteroid (diamond/square shapes)
+          const asteroidSymbols = ['◆', '◇', '▪', '▫']
+          const symbol = Phaser.Utils.Array.GetRandom(asteroidSymbols)
+          const hexColor = '#' + theme.starColor.toString(16).padStart(6, '0')
+          particle = this.add.text(x, y, symbol, {
+            fontFamily: 'Courier New',
+            fontSize: `${8 + layer.size * 4}px`,
+            color: hexColor,
+          }).setOrigin(0.5).setAlpha(alpha * 0.6)
+        } else {
+          // 15% chance: Cloud/nebula (text symbols or ellipses)
+          const cloudType = Phaser.Math.Between(0, 1)
+          if (cloudType === 0) {
+            // Text cloud symbol
+            const hexColor = '#' + theme.starColor.toString(16).padStart(6, '0')
+            particle = this.add.text(x, y, '☁', {
+              fontFamily: 'Courier New',
+              fontSize: `${12 + layer.size * 6}px`,
+              color: hexColor,
+            }).setOrigin(0.5).setAlpha(alpha * 0.4)
+          } else {
+            // Ellipse cloud
+            particle = this.add.ellipse(x, y, 8 + layer.size * 3, 4 + layer.size * 2, theme.starColor, alpha * 0.3)
+          }
+        }
+
+        // Calculate how far this particle needs to travel
+        const distanceToBottom = this.cameras.main.height + 10 - y
+        const baseDuration = (distanceToBottom / layer.speed) * 1000
+
+        // Animate particle scrolling downward
         const tween = this.tweens.add({
-          targets: star,
+          targets: particle,
           y: this.cameras.main.height + 10,
-          duration: (this.cameras.main.height / layer.speed) * 1000,
+          duration: baseDuration,
           repeat: -1,
           onRepeat: () => {
             // Reset to top with new random X position
-            star.x = Phaser.Math.Between(0, this.cameras.main.width)
-            star.y = -10
+            (particle as any).x = Phaser.Math.Between(0, this.cameras.main.width)
+            ;(particle as any).y = -10
+
+            // Recalculate duration for consistent speed
+            const newDistance = this.cameras.main.height + 20
+            const newDuration = (newDistance / layer.speed) * 1000
+
+            // Update the tween duration for next loop
+            const particleTween = this.tweens.getTweensOf(particle)[0]
+            if (particleTween) {
+              particleTween.duration = newDuration
+            }
           }
         })
 
@@ -776,9 +1460,12 @@ export default class GameScene extends Phaser.Scene {
         const newX = lastPlayerX + pointer.x - pointer.downX
         const newY = lastPlayerY + pointer.y - pointer.downY
 
-        // Clamp to world bounds
+        // Clamp to world bounds, excluding UI areas
+        const topUIHeight = 100 // Top UI area (health, timer, etc.)
+        const bottomUIHeight = 80 // Bottom UI area (weapon/passive slots, buffs)
+
         const clampedX = Phaser.Math.Clamp(newX, 0, this.cameras.main.width)
-        const clampedY = Phaser.Math.Clamp(newY, 0, this.cameras.main.height)
+        const clampedY = Phaser.Math.Clamp(newY, topUIHeight, this.cameras.main.height - bottomUIHeight)
 
         this.player.setPosition(clampedX, clampedY)
         playerBody.updateFromGameObject()
@@ -802,12 +1489,51 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private spawnEnemyBasedOnDifficulty(x: number, y: number) {
-    // Enemy spawn probabilities - heavily weighted toward fodder
-    // Goal: Multiple rows of fodder with occasional shooters
+    // Enemy spawn probabilities based on campaign level AND survival time
     const rand = Math.random() * 100
     let type: EnemyType
+    const campaignLevel = this.campaignManager.getCurrentLevelIndex()
+    const survivalTime = this.survivalTime // Time survived in seconds
 
-    if (this.level <= 3) {
+    // Campaign Level 0 (First Contact): Only 4 enemy types, gradual shooter introduction
+    if (campaignLevel === 0) {
+      // First 60 seconds: Only non-shooting enemies
+      if (survivalTime < 60) {
+        if (rand < 60) {
+          type = EnemyType.DRONE        // 60% - Basic fodder
+        } else if (rand < 90) {
+          type = EnemyType.WASP         // 30% - Fast zigzag
+        } else {
+          type = EnemyType.SWARMER      // 10% - Sinwave
+        }
+      }
+      // 60-120 seconds: Introduce hunters (first shooter)
+      else if (survivalTime < 120) {
+        if (rand < 50) {
+          type = EnemyType.DRONE        // 50% - Basic fodder
+        } else if (rand < 75) {
+          type = EnemyType.WASP         // 25% - Fast zigzag
+        } else if (rand < 90) {
+          type = EnemyType.SWARMER      // 15% - Sinwave
+        } else {
+          type = EnemyType.HUNTER       // 10% - First shooter
+        }
+      }
+      // 120+ seconds: Full level 1 composition with all 4 types
+      else {
+        if (rand < 45) {
+          type = EnemyType.DRONE        // 45% - Basic fodder
+        } else if (rand < 70) {
+          type = EnemyType.WASP         // 25% - Fast zigzag
+        } else if (rand < 85) {
+          type = EnemyType.SWARMER      // 15% - Sinwave
+        } else {
+          type = EnemyType.HUNTER       // 15% - Shooter
+        }
+      }
+    }
+    // Higher campaign levels: More variety
+    else if (this.level <= 3) {
       // Early game: 85% fodder, 15% shooters
       if (rand < 50) {
         type = EnemyType.DRONE        // 50% - Basic fodder
@@ -857,6 +1583,218 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.enemies.spawnEnemy(x, y, type)
+
+    // Track health spawned for debug metrics
+    const enemyHealth = ENEMY_CONFIGS[type].health
+    this.healthTrackingWindow.push({ timestamp: this.time.now, health: enemyHealth })
+  }
+
+  private spawnFormation(centerX: number, y: number, formationType: 'line' | 'v' | 'circle' | 'wave') {
+    // Spawn enemies in interesting formations (increased sizes)
+    const spacing = 60
+
+    switch (formationType) {
+      case 'line':
+        // Horizontal line of 9 enemies (was 5)
+        for (let i = -4; i <= 4; i++) {
+          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y)
+        }
+        break
+
+      case 'v':
+        // V formation (5-7-5-3 pattern - was 3-5-3)
+        for (let i = -2; i <= 2; i++) {
+          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y)
+        }
+        for (let i = -3; i <= 3; i++) {
+          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y - 40)
+        }
+        for (let i = -2; i <= 2; i++) {
+          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y - 80)
+        }
+        for (let i = -1; i <= 1; i++) {
+          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y - 120)
+        }
+        break
+
+      case 'circle':
+        // Circle of 10 enemies (was 6)
+        for (let i = 0; i < 10; i++) {
+          const angle = (i / 10) * Math.PI * 2
+          const offsetX = Math.cos(angle) * 80
+          const offsetY = Math.sin(angle) * 40
+          this.spawnEnemyBasedOnDifficulty(centerX + offsetX, y + offsetY)
+        }
+        break
+
+      case 'wave':
+        // Wave pattern (11 enemies - was 7)
+        for (let i = -5; i <= 5; i++) {
+          const waveOffset = Math.sin((i / 5) * Math.PI) * 30
+          this.spawnEnemyBasedOnDifficulty(centerX + i * spacing, y + waveOffset)
+        }
+        break
+    }
+  }
+
+  private startNextWave() {
+    const waveData = this.waveSystem.startNextWave()
+    if (!waveData) {
+      return // No more waves
+    }
+
+    this.waveInProgress = true
+    this.currentWaveEnemyCount = 0
+    this.waveStartTime = this.time.now // Track when wave started for failsafe
+
+    // Show/hide boss health bar
+    if (waveData.isBoss || waveData.isMiniBoss) {
+      this.bossHealthBarBg.setVisible(true)
+      this.bossHealthBar.setVisible(true)
+      this.bossHealthText.setVisible(true)
+      // Boss name will be set when boss is spawned and updateWaveUI is called
+      this.bossHealthText.setText(waveData.isBoss ? 'BOSS INCOMING...' : 'MINI-BOSS INCOMING...')
+    } else {
+      this.bossHealthBarBg.setVisible(false)
+      this.bossHealthBar.setVisible(false)
+      this.bossHealthText.setVisible(false)
+    }
+
+    // Spawn enemies for each bucket in the wave
+    waveData.buckets.forEach(bucket => {
+      // Determine how many enemies to spawn from this bucket
+      const enemyCount = Phaser.Math.Between(bucket.minEnemies, bucket.maxEnemies)
+
+      // Get random formations and spawn them
+      let spawnedFromBucket = 0
+      while (spawnedFromBucket < enemyCount) {
+        const formation = bucket.formations[Math.floor(Math.random() * bucket.formations.length)]
+        const enemyType = formation.enemyTypes[Math.floor(Math.random() * formation.enemyTypes.length)]
+
+        this.spawnWaveFormation(formation, enemyType)
+
+        // Count how many enemies this formation spawns
+        const formationSize = this.getFormationSize(formation)
+        spawnedFromBucket += formationSize
+        this.currentWaveEnemyCount += formationSize
+      }
+    })
+
+    // Update wave UI
+    this.updateWaveUI()
+  }
+
+  private spawnWaveFormation(formation: any, enemyType: EnemyType) {
+    const centerX = this.cameras.main.centerX
+    const y = -50 // Spawn above the screen
+    const spacing = formation.spacing || 60
+
+    switch (formation.type) {
+      case 'single':
+        const count = formation.count || 1
+        for (let i = 0; i < count; i++) {
+          const offsetX = (i - (count - 1) / 2) * 100
+          this.enemies.spawnEnemy(centerX + offsetX, y, enemyType)
+        }
+        break
+
+      case 'line':
+        for (let i = -4; i <= 4; i++) {
+          this.enemies.spawnEnemy(centerX + i * spacing, y, enemyType)
+        }
+        break
+
+      case 'v':
+        for (let i = -2; i <= 2; i++) {
+          this.enemies.spawnEnemy(centerX + i * spacing, y, enemyType)
+        }
+        for (let i = -3; i <= 3; i++) {
+          this.enemies.spawnEnemy(centerX + i * spacing, y - 40, enemyType)
+        }
+        for (let i = -2; i <= 2; i++) {
+          this.enemies.spawnEnemy(centerX + i * spacing, y - 80, enemyType)
+        }
+        for (let i = -1; i <= 1; i++) {
+          this.enemies.spawnEnemy(centerX + i * spacing, y - 120, enemyType)
+        }
+        break
+
+      case 'circle':
+        for (let i = 0; i < 10; i++) {
+          const angle = (i / 10) * Math.PI * 2
+          const offsetX = Math.cos(angle) * 80
+          const offsetY = Math.sin(angle) * 40
+          this.enemies.spawnEnemy(centerX + offsetX, y + offsetY, enemyType)
+        }
+        break
+
+      case 'wave':
+        for (let i = -5; i <= 5; i++) {
+          const waveOffset = Math.sin((i / 5) * Math.PI) * 30
+          this.enemies.spawnEnemy(centerX + i * spacing, y + waveOffset, enemyType)
+        }
+        break
+    }
+  }
+
+  private getFormationSize(formation: any): number {
+    switch (formation.type) {
+      case 'single':
+        return formation.count || 1
+      case 'line':
+        return 9
+      case 'v':
+        return 17 // 5 + 7 + 5
+      case 'circle':
+        return 10
+      case 'wave':
+        return 11
+      default:
+        return 1
+    }
+  }
+
+  private updateWaveUI() {
+    const currentWave = this.waveSystem.getCurrentWave()
+    const totalWaves = this.waveSystem.getTotalWaves()
+
+    // Update wave counter
+    this.waveText.setText(`Wave ${currentWave}/${totalWaves}`)
+
+    // Update progress bar based on remaining enemies
+    if (this.currentWaveEnemyCount > 0) {
+      const activeEnemyCount = this.enemies.getChildren().filter((e: any) => e.active).length
+      const progress = 1 - (activeEnemyCount / this.currentWaveEnemyCount)
+      const progressBarWidth = 200
+      this.waveProgressBar.width = progressBarWidth * Math.max(0, Math.min(1, progress))
+    } else {
+      this.waveProgressBar.width = 0
+    }
+
+    // Update boss health bar if boss is active
+    const waveData = this.waveSystem.getWaveData()
+    if (waveData && (waveData.isBoss || waveData.isMiniBoss)) {
+      // Find boss enemy
+      const boss = this.enemies.getChildren().find((e: any) => {
+        const enemy = e as Enemy
+        return enemy.active && (enemy.getType() === EnemyType.BOSS || enemy.getType() === EnemyType.MINI_BOSS)
+      }) as Enemy | undefined
+
+      if (boss) {
+        // Ensure boss health bar is visible
+        this.bossHealthBarBg.setVisible(true)
+        this.bossHealthBar.setVisible(true)
+        this.bossHealthText.setVisible(true)
+
+        const bossHealth = boss.getHealth()
+        const bossMaxHealth = boss.getMaxHealth()
+        const healthPercent = bossHealth / bossMaxHealth
+        const bossBarWidth = 400
+        this.bossHealthBar.width = bossBarWidth * healthPercent
+        const bossName = boss.getName() || (waveData.isBoss ? 'BOSS' : 'MINI-BOSS')
+        this.bossHealthText.setText(`${bossName} - ${Math.ceil(bossHealth)} / ${bossMaxHealth}`)
+      }
+    }
   }
 
   update(time: number, delta: number) {
@@ -891,53 +1829,136 @@ export default class GameScene extends Phaser.Scene {
       playerBody.setVelocityY(0)
     }
 
+    // Create engine trail particles (only if not paused)
+    if (!this.isPaused && time - this.lastEngineTrailTime > 50) {
+      this.createEngineTrail()
+      this.lastEngineTrailTime = time
+    }
+
     // Auto-fire weapons (only if not paused)
     if (!this.isPaused) {
       // Calculate modifiers from passives and character
       this.calculateModifiers()
 
+      // Apply health regeneration
+      if (this.playerStats.healthRegen > 0) {
+        const regenAmount = (this.playerStats.healthRegen * delta) / 1000 // Convert to per-second
+        this.health = Math.min(this.maxHealth, this.health + regenAmount)
+      }
+
       // Fire all equipped weapons
       this.weapons.forEach(weapon => {
-        if (weapon.canFire(time)) {
-          weapon.fire(this.player.x, this.player.y - 30, this.weaponModifiers)
+        // Apply character-specific modifiers per weapon
+        const weaponModifiers = { ...this.weaponModifiers }
+
+        // Glacier: +25% attack speed for Cold weapons
+        if (this.character.getConfig().type === 'GLACIER' && weapon.getConfig().damageType === 'COLD') {
+          weaponModifiers.fireRateMultiplier *= 1.25
+        }
+
+        if (weapon.canFire(time, weaponModifiers)) {
+          weapon.fire(this.player.x, this.player.y - 30, weaponModifiers)
           weapon.setLastFireTime(time)
         }
       })
     }
 
-    // Spawn enemies dynamically (only if not paused)
+    // Wave-based spawning (only if not paused)
     if (!this.isPaused) {
-      // Calculate spawn rate based on time (ramps up)
-      const timeInSeconds = this.survivalTime
-      const baseSpawnDelay = 2000 // Start at 2 seconds
-      const minSpawnDelay = 300 // Minimum 0.3 seconds
-      const rampTime = 120 // Ramp up over 2 minutes
+      const activeEnemyCount = this.enemies.getChildren().filter((e: any) => e.active).length
 
-      const currentSpawnDelay = Math.max(
-        minSpawnDelay,
-        baseSpawnDelay - (baseSpawnDelay - minSpawnDelay) * (timeInSeconds / rampTime)
-      )
-
-      // Adjust spawn delay by difficulty
-      const adjustedSpawnDelay = currentSpawnDelay * this.campaignManager.getDifficulty()
-
-      if (time >= this.nextEnemySpawnTime) {
-        const randomX = Phaser.Math.Between(50, this.cameras.main.width - 50)
-        this.spawnEnemyBasedOnDifficulty(randomX, -50)
-        this.nextEnemySpawnTime = time + adjustedSpawnDelay
+      // Start first wave if not started yet
+      if (this.waveSystem.getCurrentWave() === 0 && !this.waveInProgress) {
+        this.startNextWave()
       }
 
-      // Check for win condition
-      if (this.survivalTime >= this.campaignManager.getWinTime()) {
-        console.log('Victory! Survived the required time.')
+      // Check if all enemies are cleared and wave is in progress
+      if (this.waveInProgress && activeEnemyCount === 0 && this.currentWaveEnemyCount > 0) {
+        // Wave cleared! Apply wave heal bonus
+        const bonuses = this.gameState.getTotalBonuses()
+        if (bonuses.waveHeal && bonuses.waveHeal > 0) {
+          this.health = Math.min(this.maxHealth, this.health + bonuses.waveHeal)
+
+          // Show healing text
+          const healText = this.add.text(
+            this.player.x,
+            this.player.y - 50,
+            `+${bonuses.waveHeal} HP`,
+            {
+              fontFamily: 'Courier New',
+              fontSize: '20px',
+              color: '#00ff00',
+              fontStyle: 'bold',
+            }
+          ).setOrigin(0.5).setDepth(100)
+
+          // Animate heal text rising and fading
+          this.tweens.add({
+            targets: healText,
+            y: healText.y - 40,
+            alpha: 0,
+            duration: 1000,
+            onComplete: () => {
+              healText.destroy()
+            }
+          })
+        }
+
+        // Start next wave immediately
+        this.waveInProgress = false
+        this.currentWaveEnemyCount = 0
+        this.time.delayedCall(1000, () => {
+          this.startNextWave()
+        })
+      }
+
+      // Failsafe 1: If wave has been running for too long, force advance
+      // This prevents the game from getting stuck if an enemy doesn't register as dead
+      // Use longer timeout for boss waves since they take longer to defeat
+      if (this.waveInProgress && this.waveStartTime > 0) {
+        const waveDuration = time - this.waveStartTime
+        const waveData = this.waveSystem.getWaveData()
+        const isBossWave = waveData && (waveData.isBoss || waveData.isMiniBoss)
+        const WAVE_TIMEOUT = isBossWave ? 120000 : 15000 // 120 seconds for boss waves, 15 for normal
+
+        if (waveDuration > WAVE_TIMEOUT) {
+          console.warn(`Wave failsafe triggered! Wave has been running for ${waveDuration / 1000}s. Active enemies: ${activeEnemyCount}`)
+
+          // Force clear any remaining enemies
+          this.enemies.getChildren().forEach((enemy: any) => {
+            if (enemy.active) {
+              enemy.destroy()
+            }
+          })
+
+          // Start next wave
+          this.waveInProgress = false
+          this.currentWaveEnemyCount = 0
+          this.time.delayedCall(1000, () => {
+            this.startNextWave()
+          })
+        }
+      }
+
+      // Failsafe 2: If no wave is in progress and no enemies are active, start next wave
+      // This handles cases where the wave system got stuck
+      if (!this.waveInProgress && activeEnemyCount === 0 && this.waveSystem.getCurrentWave() > 0) {
+        const timeSinceWaveStart = time - this.waveStartTime
+        // Only trigger if it's been at least 2 seconds since last wave start (avoid rapid re-trigger)
+        if (timeSinceWaveStart > 2000) {
+          console.warn('Wave system stuck - no wave in progress but no enemies. Starting next wave.')
+          this.startNextWave()
+        }
+      }
+
+      // Update wave UI
+      this.updateWaveUI()
+
+      // Check for win condition (all waves complete)
+      if (this.waveSystem.isComplete() && activeEnemyCount === 0) {
         this.levelWon()
       }
 
-      // Update time remaining display
-      const timeRemaining = this.campaignManager.getWinTime() - this.survivalTime
-      const minutes = Math.floor(timeRemaining / 60)
-      const seconds = timeRemaining % 60
-      this.enemiesRemainingText.setText(`Time to Victory: ${minutes}:${seconds.toString().padStart(2, '0')}`)
     }
 
     // Update projectiles, enemies, and XP drops (only if not paused)
@@ -946,13 +1967,25 @@ export default class GameScene extends Phaser.Scene {
       this.enemies.update(time, delta)
       this.enemyProjectiles.update()
 
-      // Update XP drops (magnet power-up handled internally by XPDrop class)
-      this.xpDrops.update(this.player.x, this.player.y)
+      // Update XP drops (pass player's pickup radius from stats)
+      this.xpDrops.update(this.player.x, this.player.y, this.playerStats.pickupRadius)
 
       // Update credit drops
-      this.creditDrops.update(this.player.x, this.player.y)
+      this.creditDrops.update(this.player.x, this.player.y, this.playerStats.pickupRadius)
 
       this.powerUps.update()
+
+      // Update damage zones
+      this.damageZones = this.damageZones.filter(zone => {
+        const isActive = zone.update(time, this.enemies)
+        if (!isActive) {
+          zone.destroy()
+        }
+        return isActive
+      })
+
+      // Update debug metrics
+      this.updateDebugMetrics(time)
 
       // Update combo timer
       if (this.comboCount > 0) {
@@ -965,18 +1998,32 @@ export default class GameScene extends Phaser.Scene {
       // Update power-up timers
       this.updatePowerUpTimers(time)
 
-      // Update survival timer
-      this.survivalTime = Math.floor(time / 1000)
-      const minutes = Math.floor(this.survivalTime / 60)
-      const seconds = this.survivalTime % 60
-      this.timerText.setText(`⏱ ${minutes}:${seconds.toString().padStart(2, '0')}`)
+      // Update buff display every frame for smooth depletion animation
+      if (this.buffDisplays.size > 0) {
+        this.updatePowerUpDisplay()
+      }
+
+      // Update survival timer and countdown (excluding paused time)
+      this.survivalTime = Math.floor((time - this.runStartTime - this.totalPausedTime) / 1000)
+      const timeRemaining = this.campaignManager.getWinTime() - this.survivalTime
+      const minutes = Math.floor(timeRemaining / 60)
+      const seconds = timeRemaining % 60
+      this.timerText.setText(`${minutes}:${seconds.toString().padStart(2, '0')}`)
 
       // Update health bar position to follow player
       this.updateHealthDisplay()
     }
   }
 
-  private handleEnemyDied(data: { x: number; y: number; xpValue: number }) {
+  private handleEnemyDied(data: { x: number; y: number; xpValue: number; reachedBottom?: boolean }) {
+    // If enemy reached bottom naturally, don't play sounds or spawn drops
+    if (data.reachedBottom) {
+      return
+    }
+
+    // Play enemy explosion sound
+    soundManager.play(SoundType.ENEMY_EXPLODE, 0.3)
+
     // Increment combo and kill count
     this.comboCount++
     this.killCount++
@@ -984,30 +2031,65 @@ export default class GameScene extends Phaser.Scene {
     this.updateCombo()
 
     // Apply combo multiplier to XP and score
-    const multipliedXP = Math.floor(data.xpValue * this.comboMultiplier)
+    let multipliedXP = Math.floor(data.xpValue * this.comboMultiplier)
     const scoreGain = Math.floor(data.xpValue * 10 * this.comboMultiplier)
+
+    // Apply building XP bonus
+    const bonuses = this.gameState.getTotalBonuses()
+    if (bonuses.xpMultiplier) {
+      multipliedXP = Math.floor(multipliedXP * (1 + bonuses.xpMultiplier))
+    }
 
     // Add to score
     this.score += scoreGain
-    this.scoreText.setText(`Score: ${this.score} | High: ${Math.max(this.score, this.highScore)}`)
+    this.scoreText.setText(`Score: ${this.score} | 👑: ${Math.max(this.score, this.highScore)}`)
 
     // Award meta currency (credits) - 1 credit per 5 XP
-    const creditsEarned = Math.floor(multipliedXP / 5)
+    let creditsEarned = Math.floor(multipliedXP / 5)
+    if (bonuses.creditMultiplier) {
+      creditsEarned = Math.floor(creditsEarned * (1 + bonuses.creditMultiplier))
+    }
     if (creditsEarned > 0) {
       this.gameState.addCredits(creditsEarned)
+      this.creditsCollectedThisRun += creditsEarned
+      this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
     }
 
     // Spawn XP drop at enemy position
     this.xpDrops.spawnXP(data.x, data.y, multipliedXP)
 
-    // Chance to spawn credit drop (25% chance)
+    // Chance to spawn credit drop OR health potion (25% chance)
     if (Math.random() < 0.25) {
-      const creditAmount = Math.max(1, Math.floor(data.xpValue / 10))
-      this.creditDrops.spawnCredit(data.x, data.y, creditAmount)
+      // If player is hurt, chance to drop health potion instead of credits
+      const isHurt = this.health < this.maxHealth
+      const bonuses = this.gameState.getTotalBonuses()
+      const baseHealthDropRate = 0.10 // 10% base
+      const healthDropRate = baseHealthDropRate + (bonuses.healthDropRate || 0)
+      const shouldDropHealth = isHurt && Math.random() < healthDropRate
+
+      if (shouldDropHealth) {
+        // Spawn health potion instead of credits
+        const angle = Math.random() * Math.PI * 2
+        const radius = 30 + Math.random() * 20
+        const offsetX = Math.cos(angle) * radius
+        const offsetY = Math.sin(angle) * radius
+        this.powerUps.spawnPowerUp(data.x + offsetX, data.y + offsetY, PowerUpType.HEALTH)
+      } else {
+        // Spawn credits normally
+        const creditAmount = Math.max(1, Math.floor(data.xpValue / 10))
+
+        // Spawn credit in a random ring around the enemy (30-50 pixels away)
+        const angle = Math.random() * Math.PI * 2
+        const radius = 30 + Math.random() * 20 // Random radius between 30-50
+        const offsetX = Math.cos(angle) * radius
+        const offsetY = Math.sin(angle) * radius
+
+        this.creditDrops.spawnCredit(data.x + offsetX, data.y + offsetY, creditAmount)
+      }
     }
 
-    // Chance to spawn power-up (10% chance)
-    if (Math.random() < 0.10) {
+    // Chance to spawn power-up (3% chance - reduced by 70%)
+    if (Math.random() < 0.03) {
       this.powerUps.spawnRandomPowerUp(data.x, data.y)
     }
 
@@ -1088,6 +2170,9 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private handleXPCollected(xpValue: number) {
+    // Play XP pickup sound
+    soundManager.play(SoundType.XP_PICKUP, 0.3)
+
     // Update total XP
     this.totalXP += xpValue
     this.updateXPDisplay()
@@ -1099,8 +2184,15 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private handleCreditCollected(creditValue: number) {
+    // Play credit pickup sound
+    soundManager.play(SoundType.CREDIT_PICKUP, 0.4)
+
     // Add credits to game state
     this.gameState.addCredits(creditValue)
+
+    // Update run counter
+    this.creditsCollectedThisRun += creditValue
+    this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
   }
 
   private updateXPDisplay() {
@@ -1108,7 +2200,7 @@ export default class GameScene extends Phaser.Scene {
     this.xpText.setText(`XP: ${this.totalXP} / ${this.xpToNextLevel}`)
 
     // Update XP bar width
-    const xpBarMaxWidth = 196 // 200 - 4 for padding
+    const xpBarMaxWidth = 101 // 105 - 4 for padding (30% smaller than original)
     const xpPercent = this.totalXP / this.xpToNextLevel
     const newWidth = xpBarMaxWidth * xpPercent
 
@@ -1116,20 +2208,281 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private levelUp() {
+    // Play level up sound
+    soundManager.play(SoundType.LEVEL_UP)
+
     this.level++
     this.totalXP = 0
-    this.xpToNextLevel = Math.floor(this.xpToNextLevel * 1.5) // XP requirement increases by 50% each level
+    this.xpToNextLevel = Math.floor(this.xpToNextLevel * 1.5) // XP requirement increases by 50% each level (flattened curve)
+
+    // Create sparkle burst effect around player
+    this.createLevelUpBurst()
 
     // Update UI
-    this.levelText.setText(`Level: ${this.level}`)
+    this.levelText.setText(`${this.level}`)
     this.updateXPDisplay()
 
     // Pause game and show upgrades
     this.isPaused = true
+    this.pauseStartTime = this.time.now
     this.physics.pause()
     // Pause star field
     this.starFieldTweens.forEach(tween => tween.pause())
     this.showUpgradeOptions()
+  }
+
+  private createLevelUpBurst() {
+    // Create 16-20 sparkle particles that burst outward from player
+    const sparkleCount = Phaser.Math.Between(16, 20)
+    const playerX = this.player.x
+    const playerY = this.player.y
+
+    for (let i = 0; i < sparkleCount; i++) {
+      const angle = (Math.PI * 2 / sparkleCount) * i
+      const distance = 80 + Phaser.Math.Between(-20, 20)
+      const speed = 200 + Phaser.Math.Between(-50, 50)
+
+      const sparkle = this.add.text(
+        playerX,
+        playerY,
+        '✦',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: Phaser.Display.Color.HSLToColor(i / sparkleCount, 1, 0.6).rgba,
+        }
+      ).setOrigin(0.5).setDepth(100)
+
+      // Animate sparkle bursting outward and fading
+      this.tweens.add({
+        targets: sparkle,
+        x: playerX + Math.cos(angle) * distance,
+        y: playerY + Math.sin(angle) * distance,
+        alpha: { from: 1, to: 0 },
+        scale: { from: 1.5, to: 0.5 },
+        duration: 800,
+        ease: 'Cubic.easeOut',
+        onComplete: () => sparkle.destroy()
+      })
+    }
+  }
+
+  private createEngineTrail() {
+    // Create subtle sparkle trail behind the player ship
+    const trail = this.add.text(
+      this.player.x + Phaser.Math.Between(-5, 5),
+      this.player.y + 20, // Behind the ship
+      '·',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '12px',
+        color: '#00ccff',
+      }
+    ).setOrigin(0.5).setDepth(9).setAlpha(0.6)
+
+    // Fade out and fall behind
+    this.tweens.add({
+      targets: trail,
+      y: trail.y + 40,
+      alpha: 0,
+      scale: 0.5,
+      duration: 400,
+      ease: 'Cubic.easeOut',
+      onComplete: () => trail.destroy()
+    })
+  }
+
+  private createCriticalHitBurst(x: number, y: number) {
+    // Create 8-10 sparkle particles that burst outward from the hit point
+    const sparkleCount = Phaser.Math.Between(8, 10)
+
+    for (let i = 0; i < sparkleCount; i++) {
+      const angle = (Math.PI * 2 / sparkleCount) * i + Phaser.Math.FloatBetween(-0.2, 0.2)
+      const distance = 40 + Phaser.Math.Between(-10, 10)
+
+      const sparkle = this.add.text(
+        x,
+        y,
+        '★',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '16px',
+          color: '#ff4400',
+        }
+      ).setOrigin(0.5).setDepth(50)
+
+      // Animate sparkle bursting outward and fading
+      this.tweens.add({
+        targets: sparkle,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance,
+        alpha: { from: 1, to: 0 },
+        scale: { from: 1.5, to: 0.3 },
+        rotation: Phaser.Math.FloatBetween(-Math.PI, Math.PI),
+        duration: 400,
+        ease: 'Cubic.easeOut',
+        onComplete: () => sparkle.destroy()
+      })
+    }
+  }
+
+  private createVictoryConfetti() {
+    // Create 40-50 colorful confetti particles that rain down from the top
+    const confettiCount = Phaser.Math.Between(40, 50)
+    const confettiChars = ['✦', '★', '◆', '●', '♦', '■']
+    const colors = ['#ff4444', '#44ff44', '#4444ff', '#ffff44', '#ff44ff', '#44ffff', '#ff8844', '#88ff44']
+
+    for (let i = 0; i < confettiCount; i++) {
+      const char = Phaser.Utils.Array.GetRandom(confettiChars)
+      const color = Phaser.Utils.Array.GetRandom(colors)
+      const startX = Phaser.Math.Between(0, this.cameras.main.width)
+      const startY = -50 - Phaser.Math.Between(0, 200)
+      const endY = this.cameras.main.height + 50
+
+      const confetti = this.add.text(
+        startX,
+        startY,
+        char,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '20px',
+          color: color,
+        }
+      ).setOrigin(0.5).setDepth(202)
+
+      // Animate confetti falling down with rotation
+      this.tweens.add({
+        targets: confetti,
+        y: endY,
+        x: startX + Phaser.Math.Between(-100, 100),
+        rotation: Phaser.Math.FloatBetween(-Math.PI * 4, Math.PI * 4),
+        alpha: { from: 1, to: 0.3 },
+        duration: 3000 + Phaser.Math.Between(0, 2000),
+        delay: i * 40,
+        ease: 'Cubic.easeIn',
+        onComplete: () => confetti.destroy()
+      })
+    }
+  }
+
+  private displayUnlockedShips(newlyUnlockedShips: CharacterType[], baseY: number): number {
+    // Returns the height of the unlock section so caller can position elements below it
+    if (newlyUnlockedShips.length === 0) {
+      return 0
+    }
+
+    const unlockHeaderText = this.add.text(
+      this.cameras.main.centerX,
+      baseY,
+      '🔓 NEW SHIPS UNLOCKED!',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '22px',
+        color: '#00ffaa',
+        fontStyle: 'bold',
+      }
+    ).setOrigin(0.5).setDepth(201)
+
+    // Pulse animation on the header
+    this.tweens.add({
+      targets: unlockHeaderText,
+      scale: { from: 1, to: 1.1 },
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    })
+
+    // Display each unlocked ship
+    let shipYOffset = baseY + 30
+    newlyUnlockedShips.forEach((shipType, index) => {
+      const shipConfig = CHARACTER_CONFIGS[shipType]
+
+      // Ship container background
+      const shipBg = this.add.rectangle(
+        this.cameras.main.centerX,
+        shipYOffset,
+        this.cameras.main.width - 100,
+        50,
+        0x1a3a3a,
+        0.8
+      ).setOrigin(0.5).setDepth(201)
+
+      // Ship symbol
+      const shipSymbol = this.add.text(
+        this.cameras.main.centerX - 180,
+        shipYOffset,
+        shipConfig.symbol,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '28px',
+          color: shipConfig.color,
+        }
+      ).setOrigin(0.5).setDepth(202)
+
+      // Ship name and cost
+      const shipName = this.add.text(
+        this.cameras.main.centerX - 100,
+        shipYOffset - 8,
+        shipConfig.name,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '18px',
+          color: '#ffffff',
+          fontStyle: 'bold',
+        }
+      ).setOrigin(0, 0.5).setDepth(202)
+
+      const shipCost = this.add.text(
+        this.cameras.main.centerX - 100,
+        shipYOffset + 8,
+        `Cost: ${shipConfig.cost} ¤`,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: '#ffdd00',
+        }
+      ).setOrigin(0, 0.5).setDepth(202)
+
+      // Starting weapon
+      const weaponText = this.add.text(
+        this.cameras.main.centerX + 100,
+        shipYOffset,
+        shipConfig.startingWeapon,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: '#ffaa00',
+        }
+      ).setOrigin(1, 0.5).setDepth(202)
+
+      // Slide-in animation with delay for each ship
+      const delay = index * 200
+      shipBg.setAlpha(0).setX(this.cameras.main.centerX + 300)
+      shipSymbol.setAlpha(0).setX(this.cameras.main.centerX - 180 + 300)
+      shipName.setAlpha(0).setX(this.cameras.main.centerX - 100 + 300)
+      shipCost.setAlpha(0).setX(this.cameras.main.centerX - 100 + 300)
+      weaponText.setAlpha(0).setX(this.cameras.main.centerX + 100 + 300)
+
+      this.tweens.add({
+        targets: [shipBg, shipSymbol, shipName, shipCost, weaponText],
+        alpha: 1,
+        x: (target: any) => {
+          if (target === shipBg) return this.cameras.main.centerX
+          if (target === shipSymbol) return this.cameras.main.centerX - 180
+          if (target === shipName || target === shipCost) return target.x - 300
+          if (target === weaponText) return this.cameras.main.centerX + 100
+          return target.x
+        },
+        duration: 500,
+        delay: delay,
+        ease: 'Back.easeOut'
+      })
+
+      shipYOffset += 60
+    })
+
+    return 40 + (newlyUnlockedShips.length * 60)
   }
 
   private showUpgradeOptions() {
@@ -1183,14 +2536,30 @@ export default class GameScene extends Phaser.Scene {
     selectedUpgrades.forEach((upgrade, index) => {
       const y = startY + (buttonHeight + buttonSpacing) * index
 
-      // Button background
+      // Button background (highlight if recommended)
+      const bgColor = upgrade.recommended ? 0x1a2a1a : 0x0a0a1e
       const button = this.add.rectangle(
         this.cameras.main.centerX,
         y,
         buttonWidth,
         buttonHeight,
-        0x2a2a4a
+        bgColor
       ).setDepth(101).setInteractive({ useHandCursor: true })
+
+      // Add recommendation star indicator (bigger and positioned to avoid clipping)
+      let starIcon: Phaser.GameObjects.Text | null = null
+      if (upgrade.recommended) {
+        starIcon = this.add.text(
+          this.cameras.main.centerX + 220,
+          y - 20,
+          '⭐',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '48px',
+            color: '#ffff00',
+          }
+        ).setOrigin(0.5).setDepth(102)
+      }
 
       // Icon (if available)
       let iconText: Phaser.GameObjects.Text | null = null
@@ -1203,6 +2572,23 @@ export default class GameScene extends Phaser.Scene {
             fontFamily: 'Courier New',
             fontSize: '56px',
             color: upgrade.color || '#ffffff',
+          }
+        ).setOrigin(0.5).setDepth(102)
+      }
+
+      // EVO badge for items that enable evolutions (below the icon)
+      let evoBadge: Phaser.GameObjects.Text | null = null
+      if (upgrade.enablesEvolution) {
+        evoBadge = this.add.text(
+          this.cameras.main.centerX - 210,
+          y + 45,
+          'EVO',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '16px',
+            color: '#000000',
+            backgroundColor: '#ffff00',
+            padding: { x: 4, y: 2 }
           }
         ).setOrigin(0.5).setDepth(102)
       }
@@ -1234,15 +2620,16 @@ export default class GameScene extends Phaser.Scene {
 
       // Hover effects
       button.on('pointerover', () => {
-        button.setFillStyle(0x3a3a6a)
+        button.setFillStyle(upgrade.recommended ? 0x2a3a2a : 0x1a1a3e)
       })
 
       button.on('pointerout', () => {
-        button.setFillStyle(0x2a2a4a)
+        button.setFillStyle(upgrade.recommended ? 0x1a2a1a : 0x0a0a1e)
       })
 
       // Click handler
       button.on('pointerdown', () => {
+        soundManager.play(SoundType.UPGRADE_SELECT)
         upgrade.effect()
         // Update slots display after upgrade
         this.updateSlotsDisplay()
@@ -1251,7 +2638,15 @@ export default class GameScene extends Phaser.Scene {
         nameText.destroy()
         descText.destroy()
         if (iconText) iconText.destroy()
+        if (evoBadge) evoBadge.destroy()
         button.destroy()
+
+        // Track paused time before unpausing
+        if (this.pauseStartTime > 0) {
+          this.totalPausedTime += this.time.now - this.pauseStartTime
+          this.pauseStartTime = 0
+        }
+
         this.isPaused = false
         this.physics.resume()
         // Resume star field
@@ -1260,10 +2655,884 @@ export default class GameScene extends Phaser.Scene {
 
       buttons.push(button, nameText, descText)
       if (iconText) buttons.push(iconText)
+      if (starIcon) buttons.push(starIcon)
+      if (evoBadge) buttons.push(evoBadge)
     })
 
     // Store container reference for cleanup if needed
     this.upgradeContainer = this.add.container(0, 0)
+  }
+
+  private openTreasureChest() {
+    // Randomly determine reward tier with weighted probabilities (+ building bonuses)
+    const bonuses = this.gameState.getTotalBonuses()
+    const baseGoldChance = 0.10 // 10% base
+    const goldChance = baseGoldChance + (bonuses.goldChestChance || 0)
+    const goldThreshold = 100 - (goldChance * 100) // Invert so higher chance = lower threshold
+
+    const rand = Math.random() * 100
+    let upgradeCount: number
+    let tierName: string
+    let tierColor: string
+    let chestSymbol: string
+
+    if (rand >= goldThreshold) {
+      // Gold chest - scales with building bonus
+      upgradeCount = 5
+      tierName = 'GOLD'
+      tierColor = '#ffd700'
+      chestSymbol = '◙'
+    } else if (rand >= 60) {
+      // 30% - Silver chest (default, no building bonus)
+      upgradeCount = 3
+      tierName = 'SILVER'
+      tierColor = '#c0c0c0'
+      chestSymbol = '▦'
+    } else {
+      // 60% - Bronze chest (default, no building bonus)
+      upgradeCount = 1
+      tierName = 'BRONZE'
+      tierColor = '#cd7f32'
+      chestSymbol = '▣'
+    }
+
+    // Apply chest value bonus (increases upgrade count)
+    if (bonuses.chestValue && bonuses.chestValue > 0) {
+      upgradeCount = Math.ceil(upgradeCount * (1 + bonuses.chestValue))
+    }
+
+    // Play chest sound based on rarity
+    soundManager.playChestSound(upgradeCount)
+
+    // Pause game immediately
+    this.isPaused = true
+    this.pauseStartTime = this.time.now
+    this.physics.pause()
+    this.starFieldTweens.forEach(tween => tween.pause())
+
+    // Create dark overlay
+    const overlay = this.add.rectangle(
+      0, 0,
+      this.cameras.main.width,
+      this.cameras.main.height,
+      0x000000,
+      0.85
+    ).setOrigin(0, 0).setDepth(100)
+
+    // Create chest icon (starts closed)
+    const chestIcon = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY,
+      '▣', // Starts as closed chest
+      {
+        fontFamily: 'Courier New',
+        fontSize: '120px',
+        color: '#8b7355',
+      }
+    ).setOrigin(0.5).setDepth(101).setAlpha(0)
+
+    // Fade in chest
+    this.tweens.add({
+      targets: chestIcon,
+      alpha: 1,
+      scale: { from: 0.5, to: 1.2 },
+      duration: 400,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        // Wait a moment, then start opening animation
+        this.time.delayedCall(300, () => {
+          this.playChestOpeningAnimation(chestIcon, chestSymbol, tierColor, tierName, upgradeCount, overlay)
+        })
+      }
+    })
+  }
+
+  private playChestOpeningAnimation(
+    chestIcon: Phaser.GameObjects.Text,
+    finalSymbol: string,
+    tierColor: string,
+    tierName: string,
+    upgradeCount: number,
+    overlay: Phaser.GameObjects.Rectangle
+  ) {
+    // Shake animation (same for all tiers)
+    this.tweens.add({
+      targets: chestIcon,
+      x: this.cameras.main.centerX + 10,
+      duration: 50,
+      yoyo: true,
+      repeat: 5,
+      onComplete: () => {
+        // Change to open chest symbol and tier color
+        chestIcon.setText(finalSymbol)
+        chestIcon.setColor(tierColor)
+
+        // Different animations based on tier
+        if (upgradeCount === 1) {
+          // Bronze - simple pop
+          this.tweens.add({
+            targets: chestIcon,
+            scale: 1.4,
+            duration: 200,
+            ease: 'Back.easeOut',
+            onComplete: () => {
+              this.showChestReward(tierName, tierColor, upgradeCount, overlay, chestIcon)
+            }
+          })
+        } else if (upgradeCount === 3) {
+          // Silver - double bounce
+          this.tweens.add({
+            targets: chestIcon,
+            scale: 1.6,
+            y: this.cameras.main.centerY - 30,
+            duration: 150,
+            ease: 'Quad.easeOut',
+            yoyo: true,
+            repeat: 1,
+            onComplete: () => {
+              // Sparkle effect
+              for (let i = 0; i < 8; i++) {
+                const angle = (Math.PI * 2 / 8) * i
+                const sparkle = this.add.text(
+                  this.cameras.main.centerX,
+                  this.cameras.main.centerY,
+                  '✦',
+                  {
+                    fontFamily: 'Courier New',
+                    fontSize: '24px',
+                    color: tierColor,
+                  }
+                ).setOrigin(0.5).setDepth(102)
+
+                this.tweens.add({
+                  targets: sparkle,
+                  x: this.cameras.main.centerX + Math.cos(angle) * 80,
+                  y: this.cameras.main.centerY + Math.sin(angle) * 80,
+                  alpha: 0,
+                  duration: 600,
+                  ease: 'Quad.easeOut',
+                  onComplete: () => sparkle.destroy()
+                })
+              }
+
+              this.time.delayedCall(400, () => {
+                this.showChestReward(tierName, tierColor, upgradeCount, overlay, chestIcon)
+              })
+            }
+          })
+        } else {
+          // Gold - explosive burst
+          this.tweens.add({
+            targets: chestIcon,
+            scale: 2.0,
+            y: this.cameras.main.centerY - 50,
+            duration: 200,
+            ease: 'Quad.easeOut',
+            onComplete: () => {
+              // Screen flash
+              this.cameras.main.flash(200, 255, 215, 0, false, undefined, 0.5)
+
+              // Multiple sparkle rings
+              for (let ring = 0; ring < 3; ring++) {
+                this.time.delayedCall(ring * 100, () => {
+                  for (let i = 0; i < 12; i++) {
+                    const angle = (Math.PI * 2 / 12) * i
+                    const sparkle = this.add.text(
+                      this.cameras.main.centerX,
+                      this.cameras.main.centerY - 50,
+                      ring === 0 ? '★' : '✦',
+                      {
+                        fontFamily: 'Courier New',
+                        fontSize: ring === 0 ? '32px' : '24px',
+                        color: tierColor,
+                      }
+                    ).setOrigin(0.5).setDepth(102)
+
+                    this.tweens.add({
+                      targets: sparkle,
+                      x: this.cameras.main.centerX + Math.cos(angle) * (100 + ring * 30),
+                      y: this.cameras.main.centerY - 50 + Math.sin(angle) * (100 + ring * 30),
+                      alpha: 0,
+                      rotation: Math.PI * 2,
+                      duration: 800,
+                      ease: 'Quad.easeOut',
+                      onComplete: () => sparkle.destroy()
+                    })
+                  }
+                })
+              }
+
+              this.time.delayedCall(600, () => {
+                this.showChestReward(tierName, tierColor, upgradeCount, overlay, chestIcon)
+              })
+            }
+          })
+        }
+      }
+    })
+  }
+
+  private showChestReward(
+    tierName: string,
+    tierColor: string,
+    upgradeCount: number,
+    overlay: Phaser.GameObjects.Rectangle,
+    chestIcon: Phaser.GameObjects.Text
+  ) {
+    // Fade out chest icon
+    this.tweens.add({
+      targets: chestIcon,
+      alpha: 0,
+      scale: 0.5,
+      duration: 300,
+      onComplete: () => chestIcon.destroy()
+    })
+
+    // Generate upgrade options - only level-ups for existing items
+    const allUpgrades = this.generateUpgradeOptions()
+
+    // Filter to only level-ups (exclude new weapons/passives/evolutions)
+    const levelUpUpgrades = allUpgrades.filter(upgrade =>
+      upgrade.name.includes('Level Up')
+    )
+
+    // If no level-ups available, give evolutions or new items
+    let selectedUpgrades: typeof allUpgrades = []
+    if (levelUpUpgrades.length === 0) {
+      // Fallback to any available upgrades
+      selectedUpgrades = Phaser.Utils.Array.Shuffle([...allUpgrades]).slice(0, upgradeCount)
+    } else {
+      // Randomly select from level-ups only
+      selectedUpgrades = Phaser.Utils.Array.Shuffle([...levelUpUpgrades]).slice(0, Math.min(upgradeCount, levelUpUpgrades.length))
+    }
+
+    // Automatically apply all upgrades
+    selectedUpgrades.forEach(upgrade => {
+      upgrade.effect()
+    })
+
+    // Update slots display
+    this.updateSlotsDisplay()
+
+    // Show tier announcement with what was upgraded
+    const rewardText = selectedUpgrades.length > 0
+      ? selectedUpgrades.map(u => u.name).join('\n')
+      : 'No upgrades available!'
+
+    const tierText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY - 100,
+      `${tierName} CHEST!`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '56px',
+        color: tierColor,
+        stroke: '#000000',
+        strokeThickness: 4
+      }
+    ).setOrigin(0.5).setDepth(101).setAlpha(0)
+
+    const upgradesText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 20,
+      rewardText,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '22px',
+        color: '#00ff00',
+        align: 'center',
+        stroke: '#000000',
+        strokeThickness: 2
+      }
+    ).setOrigin(0.5).setDepth(101).setAlpha(0)
+
+    // Fade in text
+    this.tweens.add({
+      targets: [tierText, upgradesText],
+      alpha: 1,
+      scale: { from: 0.5, to: 1 },
+      duration: 300,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        // Wait then clean up and resume
+        this.time.delayedCall(2000, () => {
+          this.tweens.add({
+            targets: [tierText, upgradesText, overlay],
+            alpha: 0,
+            duration: 300,
+            onComplete: () => {
+              tierText.destroy()
+              upgradesText.destroy()
+              overlay.destroy()
+
+              // Track paused time before unpausing
+              if (this.pauseStartTime > 0) {
+                this.totalPausedTime += this.time.now - this.pauseStartTime
+                this.pauseStartTime = 0
+              }
+
+              // Resume game
+              this.isPaused = false
+              this.physics.resume()
+              this.starFieldTweens.forEach(tween => tween.resume())
+            }
+          })
+        })
+      }
+    })
+  }
+
+  private showStatsPopup() {
+    // Pause game
+    this.isPaused = true
+    this.pauseStartTime = this.time.now
+    this.physics.pause()
+    this.starFieldTweens.forEach(tween => tween.pause())
+
+    // Create overlay
+    const overlay = this.add.rectangle(
+      0, 0,
+      this.cameras.main.width,
+      this.cameras.main.height,
+      0x000000,
+      0.8
+    ).setOrigin(0, 0).setDepth(200).setInteractive()
+
+    const uiElements: Phaser.GameObjects.GameObject[] = [overlay]
+
+    // Title
+    const title = this.add.text(
+      this.cameras.main.centerX,
+      50,
+      'DETAILED STATS',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '36px',
+        color: '#ffff00',
+      }
+    ).setOrigin(0.5).setDepth(201)
+    uiElements.push(title)
+
+    let yOffset = 100
+
+    // === ACTIVE BUFFS SECTION ===
+    const buffsTitle = this.add.text(
+      this.cameras.main.centerX,
+      yOffset,
+      '═══ ACTIVE BUFFS ═══',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '20px',
+        color: '#ff88ff',
+      }
+    ).setOrigin(0.5).setDepth(201)
+    uiElements.push(buffsTitle)
+    yOffset += 30
+
+    if (this.buffDisplays.size === 0) {
+      const noBuffs = this.add.text(
+        this.cameras.main.centerX,
+        yOffset,
+        'No active buffs',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: '#888888',
+        }
+      ).setOrigin(0.5).setDepth(201)
+      uiElements.push(noBuffs)
+      yOffset += 25
+    } else {
+      this.buffDisplays.forEach((buff, key) => {
+        const timeRemaining = Math.max(0, Math.ceil((buff.duration - (this.time.now - buff.startTime)) / 1000))
+        const buffName = key === 'shield' ? 'Shield' :
+                        key === 'rapidFire' ? 'Rapid Fire' :
+                        key === 'magnet' ? 'Magnet' : key
+
+        const buffText = this.add.text(
+          this.cameras.main.centerX,
+          yOffset,
+          `${buff.icon.text} ${buffName}: ${timeRemaining}s remaining`,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '16px',
+            color: '#ff88ff',
+          }
+        ).setOrigin(0.5).setDepth(201)
+        uiElements.push(buffText)
+        yOffset += 22
+      })
+    }
+
+    yOffset += 15
+
+    // === WEAPONS SECTION ===
+    const weaponsTitle = this.add.text(
+      this.cameras.main.centerX,
+      yOffset,
+      '═══ WEAPONS ═══',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '20px',
+        color: '#ffaa00',
+      }
+    ).setOrigin(0.5).setDepth(201)
+    uiElements.push(weaponsTitle)
+    yOffset += 30
+
+    if (this.weapons.length === 0) {
+      const noWeapons = this.add.text(
+        this.cameras.main.centerX,
+        yOffset,
+        'No weapons equipped',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: '#888888',
+        }
+      ).setOrigin(0.5).setDepth(201)
+      uiElements.push(noWeapons)
+      yOffset += 25
+    } else {
+      this.weapons.forEach(weapon => {
+        const config = weapon.getConfig()
+        const damage = weapon.getDamage() * this.weaponModifiers.damageMultiplier
+        const fireRate = weapon.getFireRate(this.weaponModifiers)
+        const dps = Math.round((damage / (fireRate / 1000)) * 10) / 10
+
+        const weaponIcon = this.add.text(
+          80,
+          yOffset,
+          config.icon,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '24px',
+            color: config.color,
+          }
+        ).setOrigin(0.5).setDepth(201)
+        uiElements.push(weaponIcon)
+
+        const weaponText = this.add.text(
+          110,
+          yOffset - 8,
+          `${config.name} Lv.${weapon.getLevel()}`,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '16px',
+            color: '#00ff00',
+          }
+        ).setOrigin(0, 0).setDepth(201)
+        uiElements.push(weaponText)
+
+        const statsText = this.add.text(
+          110,
+          yOffset + 8,
+          `DMG: ${Math.round(damage)} | DPS: ${dps} | Fire Rate: ${Math.round(fireRate)}ms`,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '12px',
+            color: '#aaaaaa',
+          }
+        ).setOrigin(0, 0).setDepth(201)
+        uiElements.push(statsText)
+
+        yOffset += 40
+      })
+    }
+
+    yOffset += 15
+
+    // === PASSIVES SECTION ===
+    const passivesTitle = this.add.text(
+      this.cameras.main.centerX,
+      yOffset,
+      '═══ PASSIVES ═══',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '20px',
+        color: '#00ffaa',
+      }
+    ).setOrigin(0.5).setDepth(201)
+    uiElements.push(passivesTitle)
+    yOffset += 30
+
+    if (this.passives.length === 0) {
+      const noPassives = this.add.text(
+        this.cameras.main.centerX,
+        yOffset,
+        'No passives equipped',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: '#888888',
+        }
+      ).setOrigin(0.5).setDepth(201)
+      uiElements.push(noPassives)
+      yOffset += 25
+    } else {
+      this.passives.forEach(passive => {
+        const config = passive.getConfig()
+        const benefit = this.getPassiveBenefit(config.type)
+
+        const passiveIcon = this.add.text(
+          80,
+          yOffset,
+          config.icon,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '24px',
+            color: config.color,
+          }
+        ).setOrigin(0.5).setDepth(201)
+        uiElements.push(passiveIcon)
+
+        const passiveText = this.add.text(
+          110,
+          yOffset - 8,
+          `${config.name} Lv.${passive.getLevel()}`,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '16px',
+            color: '#00ffaa',
+          }
+        ).setOrigin(0, 0).setDepth(201)
+        uiElements.push(passiveText)
+
+        const benefitText = this.add.text(
+          110,
+          yOffset + 8,
+          benefit,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '12px',
+            color: '#aaaaaa',
+          }
+        ).setOrigin(0, 0).setDepth(201)
+        uiElements.push(benefitText)
+
+        yOffset += 40
+      })
+    }
+
+    // Close button
+    const closeButton = this.add.rectangle(
+      this.cameras.main.centerX,
+      this.cameras.main.height - 60,
+      200,
+      50,
+      0x2a2a4a
+    ).setDepth(201).setInteractive({ useHandCursor: true })
+
+    const closeText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.height - 60,
+      'CLOSE',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '24px',
+        color: '#ffffff',
+      }
+    ).setOrigin(0.5).setDepth(202)
+
+    closeButton.on('pointerover', () => {
+      closeButton.setFillStyle(0x3a3a6a)
+    })
+
+    closeButton.on('pointerout', () => {
+      closeButton.setFillStyle(0x2a2a4a)
+    })
+
+    closeButton.on('pointerdown', () => {
+      // Clean up all UI elements
+      uiElements.forEach(obj => obj.destroy())
+      closeButton.destroy()
+      closeText.destroy()
+
+      // Track paused time before unpausing
+      if (this.pauseStartTime > 0) {
+        this.totalPausedTime += this.time.now - this.pauseStartTime
+        this.pauseStartTime = 0
+      }
+
+      // Resume game
+      this.isPaused = false
+      this.physics.resume()
+      this.starFieldTweens.forEach(tween => tween.resume())
+    })
+
+    uiElements.push(closeButton, closeText)
+  }
+
+  private showTreasureChest(upgradeCount: number) {
+    // Game is already paused from openTreasureChest()
+    // Create semi-transparent overlay
+    const overlay = this.add.rectangle(
+      0, 0,
+      this.cameras.main.width,
+      this.cameras.main.height,
+      0x000000,
+      0.7
+    ).setOrigin(0, 0).setDepth(100)
+
+    // Title
+    const title = this.add.text(
+      this.cameras.main.centerX,
+      150,
+      'Select Your Rewards',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '42px',
+        color: '#ffaa00',
+      }
+    ).setOrigin(0.5).setDepth(101)
+
+    const subtitle = this.add.text(
+      this.cameras.main.centerX,
+      200,
+      `Choose ${upgradeCount} upgrade${upgradeCount > 1 ? 's' : ''}:`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '24px',
+        color: '#ffffff',
+      }
+    ).setOrigin(0.5).setDepth(101)
+
+    // Generate upgrade options
+    const allUpgrades = this.generateUpgradeOptions()
+
+    // Check for evolution - if present, automatically include it
+    const evolutionUpgrade = allUpgrades.find(u => u.name.includes('⚡'))
+    const otherUpgrades = allUpgrades.filter(u => !u.name.includes('⚡'))
+
+    let selectedUpgrades: typeof allUpgrades = []
+
+    if (evolutionUpgrade && upgradeCount >= 1) {
+      // Evolution gets first slot
+      selectedUpgrades.push(evolutionUpgrade)
+      // Fill remaining slots with random upgrades
+      const shuffled = Phaser.Utils.Array.Shuffle([...otherUpgrades])
+      selectedUpgrades = selectedUpgrades.concat(shuffled.slice(0, upgradeCount - 1))
+    } else {
+      // No evolution, just random selection
+      const shuffled = Phaser.Utils.Array.Shuffle([...allUpgrades])
+      selectedUpgrades = shuffled.slice(0, Math.min(upgradeCount, allUpgrades.length))
+    }
+
+    // Track selections
+    const selections: number[] = []
+    const uiElements: Phaser.GameObjects.GameObject[] = [overlay, title, subtitle]
+
+    // Create upgrade buttons (adjust sizes for large chests)
+    const buttonHeight = upgradeCount >= 5 ? 100 : 120
+    const buttonWidth = 460
+    const buttonSpacing = upgradeCount >= 5 ? 8 : 10
+    const startY = upgradeCount >= 5 ? 240 : 260
+
+    selectedUpgrades.forEach((upgrade, index) => {
+      const y = startY + (buttonHeight + buttonSpacing) * index
+
+      // Button background (highlight if recommended or selected)
+      const bgColor = upgrade.recommended ? 0x3a4a2a : 0x2a2a4a
+      const button = this.add.rectangle(
+        this.cameras.main.centerX,
+        y,
+        buttonWidth,
+        buttonHeight,
+        bgColor
+      ).setDepth(101).setInteractive({ useHandCursor: true })
+
+      // Selection indicator (initially hidden)
+      const checkmark = this.add.text(
+        this.cameras.main.centerX - 220,
+        y - 40,
+        '✓',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '40px',
+          color: '#00ff00',
+        }
+      ).setOrigin(0.5).setDepth(103).setVisible(false)
+
+      // Add recommendation star indicator (bigger and positioned to avoid clipping)
+      let starIcon: Phaser.GameObjects.Text | null = null
+      if (upgrade.recommended) {
+        starIcon = this.add.text(
+          this.cameras.main.centerX + 210,
+          y - 15,
+          '⭐',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '40px',
+            color: '#ffff00',
+          }
+        ).setOrigin(0.5).setDepth(102)
+        uiElements.push(starIcon)
+      }
+
+      // EVO badge (below the icon, not the star)
+      let evoBadge: Phaser.GameObjects.Text | null = null
+      if (upgrade.enablesEvolution) {
+        evoBadge = this.add.text(
+          this.cameras.main.centerX - 190,
+          y + 40,
+          'EVO',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '14px',
+            color: '#000000',
+            backgroundColor: '#ffff00',
+            padding: { x: 4, y: 2 }
+          }
+        ).setOrigin(0.5).setDepth(102)
+        uiElements.push(evoBadge)
+      }
+
+      // Icon (if available)
+      let iconText: Phaser.GameObjects.Text | null = null
+      if (upgrade.icon) {
+        iconText = this.add.text(
+          this.cameras.main.centerX - 190,
+          y,
+          upgrade.icon,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '48px',
+            color: upgrade.color || '#ffffff',
+          }
+        ).setOrigin(0.5).setDepth(102)
+      }
+
+      // Button text
+      const nameText = this.add.text(
+        this.cameras.main.centerX - 120,
+        y - 35,
+        upgrade.name,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '20px',
+          color: '#00ff00',
+          wordWrap: { width: 300, useAdvancedWrap: true }
+        }
+      ).setOrigin(0, 0).setDepth(102)
+
+      const descText = this.add.text(
+        this.cameras.main.centerX - 120,
+        y + 5,
+        upgrade.description,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: '#aaaaaa',
+          wordWrap: { width: 300, useAdvancedWrap: true }
+        }
+      ).setOrigin(0, 0).setDepth(102)
+
+      // Click handler
+      button.on('pointerdown', () => {
+        const selectionIndex = selections.indexOf(index)
+
+        if (selectionIndex >= 0) {
+          // Deselect
+          selections.splice(selectionIndex, 1)
+          checkmark.setVisible(false)
+          button.setFillStyle(upgrade.recommended ? 0x3a4a2a : 0x2a2a4a)
+        } else if (selections.length < upgradeCount) {
+          // Select
+          selections.push(index)
+          checkmark.setVisible(true)
+          button.setFillStyle(0x2a4a6a)
+        }
+
+        // If all selections made, enable confirm button
+        if (selections.length === upgradeCount) {
+          confirmButton.setFillStyle(0x2a6a2a)
+        } else {
+          confirmButton.setFillStyle(0x444444)
+        }
+      })
+
+      // Hover effects
+      button.on('pointerover', () => {
+        if (!selections.includes(index)) {
+          button.setFillStyle(upgrade.recommended ? 0x4a5a3a : 0x3a3a6a)
+        }
+      })
+
+      button.on('pointerout', () => {
+        if (!selections.includes(index)) {
+          button.setFillStyle(upgrade.recommended ? 0x3a4a2a : 0x2a2a4a)
+        }
+      })
+
+      uiElements.push(button, nameText, descText, checkmark)
+      if (iconText) uiElements.push(iconText)
+    })
+
+    // Confirm button
+    const confirmButtonY = startY + (buttonHeight + buttonSpacing) * selectedUpgrades.length + 20
+    const confirmButton = this.add.rectangle(
+      this.cameras.main.centerX,
+      confirmButtonY,
+      200,
+      50,
+      0x444444
+    ).setDepth(101).setInteractive({ useHandCursor: true })
+
+    const confirmText = this.add.text(
+      this.cameras.main.centerX,
+      confirmButtonY,
+      'CONFIRM',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '24px',
+        color: '#ffffff',
+      }
+    ).setOrigin(0.5).setDepth(102)
+
+    confirmButton.on('pointerdown', () => {
+      if (selections.length === upgradeCount) {
+        soundManager.play(SoundType.UPGRADE_SELECT)
+        // Apply all selected upgrades
+        selections.forEach(selectionIndex => {
+          selectedUpgrades[selectionIndex].effect()
+        })
+
+        // Update slots display
+        this.updateSlotsDisplay()
+
+        // Clean up UI
+        uiElements.forEach(obj => obj.destroy())
+        confirmButton.destroy()
+        confirmText.destroy()
+
+        // Track paused time before unpausing
+        if (this.pauseStartTime > 0) {
+          this.totalPausedTime += this.time.now - this.pauseStartTime
+          this.pauseStartTime = 0
+        }
+
+        // Resume game
+        this.isPaused = false
+        this.physics.resume()
+        this.starFieldTweens.forEach(tween => tween.resume())
+      }
+    })
+
+    confirmButton.on('pointerover', () => {
+      if (selections.length === upgradeCount) {
+        confirmButton.setFillStyle(0x3a7a3a)
+      }
+    })
+
+    confirmButton.on('pointerout', () => {
+      if (selections.length === upgradeCount) {
+        confirmButton.setFillStyle(0x2a6a2a)
+      } else {
+        confirmButton.setFillStyle(0x444444)
+      }
+    })
+
+    uiElements.push(confirmButton, confirmText)
   }
 
   private handleProjectileEnemyCollision(
@@ -1279,22 +3548,38 @@ export default class GameScene extends Phaser.Scene {
       getFreezeDuration: () => number
       getChainCount: () => number
       getBounceCount: () => number
+      decrementBounce: () => boolean
+      getZoneDuration: () => number
+      getZoneRadius: () => number
+      active: boolean
+      body: Phaser.Physics.Arcade.Body
     }
-    const enemy = enemyObj as Phaser.GameObjects.Text & { takeDamage: (damage: number) => boolean, active: boolean }
+    const enemy = enemyObj as Phaser.GameObjects.Text & { takeDamage: (damage: number) => boolean, active: boolean, body: Phaser.Physics.Arcade.Body }
 
-    // Check if both are still active (prevent multiple hits in same frame)
-    if (!projectile.active || !enemy.active) {
-      return
+    // Get base damage amount
+    let damage = projectile.getDamage()
+
+    // Check for critical hit (with character bonuses)
+    let critChance = this.weaponModifiers.critChance
+
+    // Tempest: +20% crit chance on Nature damage
+    if (this.character.getConfig().type === 'TEMPEST' && projectile.getDamageType() === 'NATURE') {
+      critChance += 20
     }
 
-    // Get damage amount
-    const damage = projectile.getDamage()
+    const isCritical = Math.random() * 100 < critChance
+    if (isCritical) {
+      damage = Math.floor(damage * this.weaponModifiers.critDamage)
+      // Create critical hit sparkle burst
+      this.createCriticalHitBurst(enemy.x, enemy.y)
+    }
 
     // Track damage dealt
     this.totalDamageDealt += damage
+    this.damageTrackingWindow.push({ timestamp: this.time.now, damage })
 
     // Show damage number
-    this.showDamageNumber(enemy.x, enemy.y, damage)
+    this.showDamageNumber(enemy.x, enemy.y, damage, isCritical)
 
     // Apply damage to enemy
     const enemyDied = enemy.takeDamage(damage)
@@ -1306,6 +3591,9 @@ export default class GameScene extends Phaser.Scene {
     if (projectileType === ProjectileType.EXPLOSIVE) {
       const explosionRadius = projectile.getExplosionRadius()
       if (explosionRadius > 0) {
+        // Show burn status effect indicator on primary target
+        this.showStatusEffect(enemy.x, enemy.y, '🔥', '#ff4400')
+
         // Find all enemies within radius
         const nearbyEnemies = this.enemies.getNearbyEnemies(projectile.x, projectile.y, explosionRadius)
 
@@ -1317,7 +3605,10 @@ export default class GameScene extends Phaser.Scene {
               const aoeDamage = Math.floor(damage * 0.5)
               nearbyEnemy.takeDamage(aoeDamage)
               this.totalDamageDealt += aoeDamage
+              this.damageTrackingWindow.push({ timestamp: this.time.now, damage: aoeDamage })
               this.showDamageNumber(nearbyEnemy.x, nearbyEnemy.y, aoeDamage)
+              // Show burn effect on AOE targets too
+              this.showStatusEffect(nearbyEnemy.x, nearbyEnemy.y, '🔥', '#ff4400')
             }
           }
         })
@@ -1341,6 +3632,9 @@ export default class GameScene extends Phaser.Scene {
       if (Math.random() * 100 < freezeChance) {
         const freezeDuration = projectile.getFreezeDuration()
 
+        // Show freeze status effect indicator
+        this.showStatusEffect(enemy.x, enemy.y, '❄', '#00ffff')
+
         // Visual: Change enemy color to cyan temporarily
         const enemyText = enemy as Phaser.GameObjects.Text
         const originalColor = enemyText.style.color
@@ -1360,6 +3654,9 @@ export default class GameScene extends Phaser.Scene {
       const chainCount = projectile.getChainCount()
       const chainRange = 150
 
+      // Show shock status effect on primary target
+      this.showStatusEffect(enemy.x, enemy.y, '⚡', '#ffff00')
+
       // Find nearby enemies to chain to
       const nearbyEnemies = this.enemies.getNearbyEnemies(enemy.x, enemy.y, chainRange)
         .filter(e => e !== enemy && e.active) // Don't chain to same enemy
@@ -1370,7 +3667,10 @@ export default class GameScene extends Phaser.Scene {
         const chainDamage = Math.floor(damage * 0.7)
         chainedEnemy.takeDamage(chainDamage)
         this.totalDamageDealt += chainDamage
+        this.damageTrackingWindow.push({ timestamp: this.time.now, damage: chainDamage })
         this.showDamageNumber(chainedEnemy.x, chainedEnemy.y, chainDamage)
+        // Show shock effect on chained targets
+        this.showStatusEffect(chainedEnemy.x, chainedEnemy.y, '⚡', '#ffff00')
 
         // Visual: Draw lightning arc
         const lightning = this.add.line(
@@ -1384,28 +3684,91 @@ export default class GameScene extends Phaser.Scene {
       })
     }
 
-    // BOUNCING: Bounces are handled by the weapon system, not here
-    // The projectile will continue flying until it runs out of bounces
+    // BOUNCING: Ricochet off enemies
+    if (projectileType === ProjectileType.BOUNCING) {
+      if (projectile.getBounceCount() > 0) {
+        // Calculate bounce direction away from enemy
+        const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, projectile.x, projectile.y)
+        const speed = Math.sqrt(projectile.body.velocity.x ** 2 + projectile.body.velocity.y ** 2)
+
+        // Add some randomness to bounce angle (±30 degrees)
+        const randomOffset = (Math.random() - 0.5) * Math.PI / 3
+        const bounceAngle = angle + randomOffset
+
+        // Apply new velocity in bounce direction
+        projectile.body.setVelocity(
+          Math.cos(bounceAngle) * speed * 1.2, // Slightly faster on bounce
+          Math.sin(bounceAngle) * speed * 1.2
+        )
+
+        // Decrement bounce count
+        const stillHasBounces = projectile.decrementBounce()
+
+        // Visual feedback - flash the projectile
+        const originalColor = (projectile as Phaser.GameObjects.Text).style.color
+        ;(projectile as Phaser.GameObjects.Text).setColor('#ffff00')
+        this.time.delayedCall(50, () => {
+          if (projectile.active) {
+            ;(projectile as Phaser.GameObjects.Text).setColor(originalColor)
+          }
+        })
+
+        // If no bounces left, destroy on next hit
+        if (!stillHasBounces) {
+          // Let it continue one more frame, but it will be destroyed in Projectile.update()
+        }
+
+        // Don't destroy on bounce - projectile continues
+        return
+      } else {
+        // No bounces left - destroy projectile
+        projectile.destroy()
+        return
+      }
+    }
+
+    // EARTH_ZONE: Create persistent damage zone
+    if (projectileType === ProjectileType.EARTH_ZONE) {
+      const zoneDuration = projectile.getZoneDuration()
+      const zoneRadius = projectile.getZoneRadius()
+
+      if (zoneDuration > 0 && zoneRadius > 0) {
+        // Show poison status effect on primary target
+        this.showStatusEffect(enemy.x, enemy.y, '☠', '#88ff88')
+
+        // Create damage zone at projectile position
+        const zone = new DamageZone(
+          this,
+          projectile.x,
+          projectile.y,
+          zoneRadius,
+          damage * 0.3, // Zone does 30% of weapon damage per tick
+          zoneDuration,
+          500, // Damage tick every 500ms
+          (x, y, dmg) => this.showDamageNumber(x, y, dmg) // Callback to show damage numbers
+        )
+        this.damageZones.push(zone)
+      }
+
+      // Earth projectiles always destroy on hit (don't pierce)
+      projectile.destroy()
+      return
+    }
 
     // Check if projectile should be destroyed (based on pierce)
     const shouldDestroy = projectile.onHit()
     if (shouldDestroy) {
-      projectile.setActive(false)
-      projectile.setVisible(false)
-      const body = projectile.body as Phaser.Physics.Arcade.Body
-      if (body) {
-        body.enable = false
-      }
+      projectile.destroy()
     }
   }
 
-  private showDamageNumber(x: number, y: number, damage: number) {
+  private showDamageNumber(x: number, y: number, damage: number, isCritical: boolean = false) {
     const damageText = this.add.text(x, y, Math.floor(damage).toString(), {
       fontFamily: 'Courier New',
-      fontSize: '20px',
-      color: '#ffff00',
+      fontSize: isCritical ? '48px' : '36px',
+      color: isCritical ? '#ff4400' : '#ffff00',
       fontStyle: 'bold'
-    }).setOrigin(0.5)
+    }).setOrigin(0.5).setDepth(50)
 
     // Animate the damage number
     this.tweens.add({
@@ -1416,6 +3779,28 @@ export default class GameScene extends Phaser.Scene {
       ease: 'Power2',
       onComplete: () => {
         damageText.destroy()
+      }
+    })
+  }
+
+  private showStatusEffect(x: number, y: number, effect: string, color: string) {
+    const statusText = this.add.text(x, y - 20, effect, {
+      fontFamily: 'Courier New',
+      fontSize: '28px',
+      color: color,
+      fontStyle: 'bold'
+    }).setOrigin(0.5).setDepth(50)
+
+    // Animate the status effect indicator - pop up and fade
+    this.tweens.add({
+      targets: statusText,
+      y: y - 60,
+      scale: { from: 0.5, to: 1.2 },
+      alpha: { from: 1, to: 0 },
+      duration: 1000,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        statusText.destroy()
       }
     })
   }
@@ -1431,6 +3816,9 @@ export default class GameScene extends Phaser.Scene {
       return
     }
 
+    // Play player hit sound
+    soundManager.play(SoundType.PLAYER_HIT)
+
     // Damage player
     this.takeDamage(10)
 
@@ -1440,7 +3828,7 @@ export default class GameScene extends Phaser.Scene {
     // Visual feedback - flash player red briefly
     this.player.setColor('#ff0000')
     this.time.delayedCall(100, () => {
-      this.player.setColor('#00ff00')
+      this.player.setColor(this.characterColor)
     })
   }
 
@@ -1455,18 +3843,45 @@ export default class GameScene extends Phaser.Scene {
     const type = powerUp.getPowerUpType() as PowerUpType
     const config = POWERUP_CONFIGS[type]
 
+    // Play power-up pickup sound (chest sound played in openTreasureChest)
+    if (type !== PowerUpType.CHEST) {
+      soundManager.play(SoundType.POWERUP_PICKUP)
+    }
+
     // Apply power-up effect
     switch (type) {
       case PowerUpType.SHIELD:
         this.hasShield = true
         this.shieldEndTime = this.time.now + config.duration
-        this.player.setColor('#00ffff')
+
+        // Create flashing shield effect
+        if (this.shieldFlashTween) {
+          this.shieldFlashTween.stop()
+        }
+
+        // Reset to normal color first
+        this.player.setColor(this.characterColor)
+
+        // Create flashing tween that alternates between normal character color and cyan
+        this.shieldFlashTween = this.tweens.add({
+          targets: this.player,
+          duration: 200,
+          repeat: -1,
+          yoyo: true,
+          onUpdate: (tween) => {
+            const progress = tween.progress
+            if (progress < 0.5) {
+              this.player.setColor('#00ffff') // Cyan shield effect
+            } else {
+              this.player.setColor(this.characterColor) // Character's original color
+            }
+          }
+        })
         break
 
       case PowerUpType.RAPID_FIRE:
         this.hasRapidFirePowerUp = true
         this.rapidFireEndTime = this.time.now + config.duration
-        this.fireRate = this.baseFireRate * 0.25 // 4x faster
         break
 
       case PowerUpType.NUKE:
@@ -1481,8 +3896,50 @@ export default class GameScene extends Phaser.Scene {
         break
 
       case PowerUpType.MAGNET:
+        // Apply magnet duration bonus
+        const bonuses3 = this.gameState.getTotalBonuses()
+        const magnetDuration = config.duration + ((bonuses3.magnetDuration || 0) * 1000) // Convert seconds to ms
         this.hasMagnet = true
-        this.magnetEndTime = this.time.now + config.duration
+        this.magnetEndTime = this.time.now + magnetDuration
+        break
+
+      case PowerUpType.HEALTH:
+        // Heal 20% of max health (+ building bonuses)
+        const bonuses2 = this.gameState.getTotalBonuses()
+        const baseHealPercent = 0.2
+        const healPercent = baseHealPercent * (1 + (bonuses2.healthPackValue || 0))
+        const healAmount = Math.floor(this.maxHealth * healPercent)
+        this.health = Math.min(this.maxHealth, this.health + healAmount)
+
+        // Visual feedback - flash green
+        this.cameras.main.flash(200, 0, 255, 0)
+
+        // Show healing text
+        const healText = this.add.text(
+          this.player.x,
+          this.player.y - 40,
+          `+${healAmount}`,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '24px',
+            color: '#00ff00',
+            fontStyle: 'bold',
+          }
+        ).setOrigin(0.5).setDepth(100)
+
+        // Animate heal text rising and fading
+        this.tweens.add({
+          targets: healText,
+          y: healText.y - 50,
+          alpha: 0,
+          duration: 1000,
+          onComplete: () => healText.destroy()
+        })
+        break
+
+      case PowerUpType.CHEST:
+        // Random reward tier
+        this.openTreasureChest()
         break
     }
 
@@ -1497,14 +3954,19 @@ export default class GameScene extends Phaser.Scene {
     // Check shield
     if (this.hasShield && currentTime >= this.shieldEndTime) {
       this.hasShield = false
-      this.player.setColor('#00ff00')
+
+      // Stop the flashing tween and restore normal color
+      if (this.shieldFlashTween) {
+        this.shieldFlashTween.stop()
+        this.shieldFlashTween = undefined
+      }
+      this.player.setColor(this.characterColor)
       updated = true
     }
 
     // Check rapid fire
     if (this.hasRapidFirePowerUp && currentTime >= this.rapidFireEndTime) {
       this.hasRapidFirePowerUp = false
-      this.fireRate = this.baseFireRate
       updated = true
     }
 
@@ -1520,28 +3982,111 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private updatePowerUpDisplay() {
-    const activePowerUps: string[] = []
+    const currentTime = this.time.now
+    const iconSize = 40
+    const iconSpacing = 10
+
+    // Update existing buffs
+    this.buffDisplays.forEach((display, key) => {
+      const elapsed = currentTime - display.startTime
+      const remaining = Math.max(0, display.duration - elapsed)
+      const fillPercent = remaining / display.duration
+
+      // Update fill rectangle width to show depletion
+      display.fill.width = (iconSize - 4) * fillPercent
+    })
+
+    // Determine which buffs should be displayed
+    const buffsToShow: Array<{ key: string, icon: string, color: number, startTime: number, endTime: number, duration: number }> = []
 
     if (this.hasShield) {
-      const remaining = Math.ceil((this.shieldEndTime - this.time.now) / 1000)
-      activePowerUps.push(`SHIELD (${remaining}s)`)
+      buffsToShow.push({
+        key: 'shield',
+        icon: '◆',
+        color: 0xff88ff, // Consistent pink/magenta for all buffs
+        startTime: this.shieldEndTime - 5000,
+        endTime: this.shieldEndTime,
+        duration: 5000
+      })
     }
 
     if (this.hasRapidFirePowerUp) {
-      const remaining = Math.ceil((this.rapidFireEndTime - this.time.now) / 1000)
-      activePowerUps.push(`RAPID FIRE (${remaining}s)`)
+      buffsToShow.push({
+        key: 'rapidfire',
+        icon: '»',
+        color: 0xff88ff, // Consistent pink/magenta for all buffs
+        startTime: this.rapidFireEndTime - 8000,
+        endTime: this.rapidFireEndTime,
+        duration: 8000
+      })
     }
 
     if (this.hasMagnet) {
-      const remaining = Math.ceil((this.magnetEndTime - this.time.now) / 1000)
-      activePowerUps.push(`MAGNET (${remaining}s)`)
+      buffsToShow.push({
+        key: 'magnet',
+        icon: '⊕',
+        color: 0xff88ff, // Consistent pink/magenta for all buffs
+        startTime: this.magnetEndTime - 10000,
+        endTime: this.magnetEndTime,
+        duration: 10000
+      })
     }
 
-    if (activePowerUps.length > 0) {
-      this.powerUpText.setText(activePowerUps.join(' | '))
-    } else {
-      this.powerUpText.setText('')
-    }
+    // Remove buffs that are no longer active
+    this.buffDisplays.forEach((display, key) => {
+      if (!buffsToShow.find(b => b.key === key)) {
+        display.bg.destroy()
+        display.fill.destroy()
+        display.icon.destroy()
+        this.buffDisplays.delete(key)
+      }
+    })
+
+    // Add new buffs and position all
+    buffsToShow.forEach((buff, index) => {
+      if (!this.buffDisplays.has(buff.key)) {
+        // Create new buff display
+        const xOffset = (index - buffsToShow.length / 2 + 0.5) * (iconSize + iconSpacing)
+
+        // Background rectangle (dark)
+        const bg = this.add.rectangle(xOffset, 0, iconSize, iconSize, 0x000000, 0.7)
+          .setOrigin(0.5)
+
+        // Fill rectangle (colored, depletes over time)
+        const fill = this.add.rectangle(xOffset - iconSize / 2 + 2, 2, iconSize - 4, iconSize - 4, buff.color, 0.5)
+          .setOrigin(0, 0.5)
+
+        // Icon text
+        const icon = this.add.text(xOffset, 0, buff.icon, {
+          fontFamily: 'Courier New',
+          fontSize: '28px',
+          color: '#ffffff',
+        }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+
+        // Add click handler to open stats popup
+        icon.on('pointerdown', () => {
+          if (!this.isPaused) {
+            this.showStatsPopup()
+          }
+        })
+
+        this.buffIconsContainer.add([bg, fill, icon])
+        this.buffDisplays.set(buff.key, {
+          bg,
+          fill,
+          icon,
+          startTime: buff.startTime,
+          duration: buff.duration
+        })
+      }
+
+      // Update position for all buffs
+      const display = this.buffDisplays.get(buff.key)!
+      const xOffset = (index - buffsToShow.length / 2 + 0.5) * (iconSize + iconSpacing)
+      display.bg.x = xOffset
+      display.fill.x = xOffset - iconSize / 2 + 2
+      display.icon.x = xOffset
+    })
   }
 
   private takeDamage(amount: number) {
@@ -1559,6 +4104,11 @@ export default class GameScene extends Phaser.Scene {
 
     // Screen shake on damage
     this.cameras.main.shake(200, 0.01)
+
+    // Update debug metrics
+    if (!this.isPaused) {
+      this.updateDebugMetrics(this.time.now)
+    }
 
     // Check for game over
     if (this.health <= 0) {
@@ -1603,6 +4153,28 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateDebugMetrics(currentTime: number) {
+    // Remove old entries (older than 1 second)
+    const oneSecondAgo = currentTime - 1000
+    this.damageTrackingWindow = this.damageTrackingWindow.filter(entry => entry.timestamp >= oneSecondAgo)
+    this.healthTrackingWindow = this.healthTrackingWindow.filter(entry => entry.timestamp >= oneSecondAgo)
+
+    // Calculate totals for last second
+    this.damageDealtLastSecond = this.damageTrackingWindow.reduce((sum, entry) => sum + entry.damage, 0)
+    this.healthSpawnedLastSecond = this.healthTrackingWindow.reduce((sum, entry) => sum + entry.health, 0)
+
+    // Calculate ratio (damage per second / health per second)
+    const ratio = this.healthSpawnedLastSecond > 0
+      ? this.damageDealtLastSecond / this.healthSpawnedLastSecond
+      : 0
+
+    // Update debug text
+    const ratioText = ratio.toFixed(2)
+    const color = ratio < 1.0 ? '#00ff00' : '#ff0000'
+    this.debugText.setText(`${ratioText} (${this.damageDealtLastSecond.toFixed(0)} / ${this.healthSpawnedLastSecond.toFixed(0)})`)
+    this.debugText.setColor(color)
+  }
+
   private gameOver() {
     this.isPaused = true
     this.physics.pause()
@@ -1622,11 +4194,16 @@ export default class GameScene extends Phaser.Scene {
       enemyKills
     )
 
-    // Save high score if beaten
+    // Save high score for this level if beaten
+    const currentLevelIndex = this.campaignManager.getCurrentLevelIndex()
+    this.gameState.setLevelHighScore(currentLevelIndex, this.score)
     if (this.score > this.highScore) {
       this.highScore = this.score
-      localStorage.setItem('roguecraft_highscore', this.highScore.toString())
     }
+
+    // Clear any existing game over UI
+    this.gameOverUI.forEach(obj => obj.destroy())
+    this.gameOverUI = []
 
     // Create game over overlay
     const overlay = this.add.rectangle(
@@ -1636,25 +4213,36 @@ export default class GameScene extends Phaser.Scene {
       0x000000,
       0.8
     ).setOrigin(0, 0).setDepth(200)
+    this.gameOverUI.push(overlay)
 
     const gameOverText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 150,
-      'GAME OVER',
+      this.cameras.main.centerY - 200,
+      'RUN COMPLETE',
       {
         fontFamily: 'Courier New',
         fontSize: '64px',
-        color: '#ff0000',
+        color: '#aaaaaa',
       }
     ).setOrigin(0.5).setDepth(201)
+    this.gameOverUI.push(gameOverText)
 
     const minutes = Math.floor(this.survivalTime / 60)
     const seconds = this.survivalTime % 60
 
+    // Calculate DPS
+    const dps = this.survivalTime > 0 ? Math.floor(this.totalDamageDealt / this.survivalTime) : 0
+
+    // Get weapon names
+    const weaponNames = this.weapons.map(w => w.getConfig().name).join(', ')
+
+    // Get passive names
+    const passiveNames = this.passives.map(p => p.getConfig().name).join(', ')
+
     const statsText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 50,
-      `Score: ${this.score}\nLevel: ${this.level}\nTime: ${minutes}:${seconds.toString().padStart(2, '0')}\n\n${this.score === this.highScore && this.score > 0 ? 'NEW HIGH SCORE!' : `High Score: ${this.highScore}`}`,
+      this.cameras.main.centerY - 80,
+      `Score: ${this.score}\nLevel: ${this.level}\nTime: ${minutes}:${seconds.toString().padStart(2, '0')}\nDPS: ${dps}\n\n${this.score === this.highScore && this.score > 0 ? 'NEW HIGH SCORE!' : `High Score: ${this.highScore}`}`,
       {
         fontFamily: 'Courier New',
         fontSize: '24px',
@@ -1662,12 +4250,42 @@ export default class GameScene extends Phaser.Scene {
         align: 'center'
       }
     ).setOrigin(0.5).setDepth(201)
+    this.gameOverUI.push(statsText)
+
+    // Weapons and Passives display
+    const weaponsText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 30,
+      `Weapons: ${weaponNames || 'None'}`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '16px',
+        color: '#00ffff',
+        align: 'center',
+        wordWrap: { width: this.cameras.main.width - 100 }
+      }
+    ).setOrigin(0.5).setDepth(201)
+    this.gameOverUI.push(weaponsText)
+
+    const passivesText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 65,
+      `Passives: ${passiveNames || 'None'}`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '16px',
+        color: '#ffaa00',
+        align: 'center',
+        wordWrap: { width: this.cameras.main.width - 100 }
+      }
+    ).setOrigin(0.5).setDepth(201)
+    this.gameOverUI.push(passivesText)
 
     // Credits earned display
     const creditsEarned = this.gameState.getCredits() // Show current total
     const creditsText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 50,
+      this.cameras.main.centerY + 100,
       `Credits Earned: ${creditsEarned} ¤`,
       {
         fontFamily: 'Courier New',
@@ -1675,25 +4293,65 @@ export default class GameScene extends Phaser.Scene {
         color: '#ffdd00',
       }
     ).setOrigin(0.5).setDepth(201)
+    this.gameOverUI.push(creditsText)
 
+    // Revive button
+    const reviveButton = this.add.rectangle(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 160,
+      300,
+      70,
+      0x4a2a4a
+    ).setDepth(201).setInteractive({ useHandCursor: true })
+    this.gameOverUI.push(reviveButton)
+
+    const reviveText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 160,
+      'Revive Watch Ad',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '28px',
+        color: '#ffaa00',
+      }
+    ).setOrigin(0.5).setDepth(202)
+    this.gameOverUI.push(reviveText)
+
+    // Revive hover effects
+    reviveButton.on('pointerover', () => {
+      reviveButton.setFillStyle(0x6a3a6a)
+    })
+
+    reviveButton.on('pointerout', () => {
+      reviveButton.setFillStyle(0x4a2a4a)
+    })
+
+    // Revive handler
+    reviveButton.on('pointerdown', () => {
+      this.revivePlayer()
+    })
+
+    // Main menu button (positioned lower now)
     const mainMenuButton = this.add.rectangle(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 120,
+      this.cameras.main.centerY + 250,
       300,
-      80,
+      70,
       0x2a2a4a
     ).setDepth(201).setInteractive({ useHandCursor: true })
+    this.gameOverUI.push(mainMenuButton)
 
     const mainMenuText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 120,
+      this.cameras.main.centerY + 250,
       'MAIN MENU',
       {
         fontFamily: 'Courier New',
-        fontSize: '32px',
+        fontSize: '28px',
         color: '#00ff00',
       }
     ).setOrigin(0.5).setDepth(202)
+    this.gameOverUI.push(mainMenuText)
 
     // Hover effects
     mainMenuButton.on('pointerover', () => {
@@ -1706,8 +4364,51 @@ export default class GameScene extends Phaser.Scene {
 
     // Main menu handler
     mainMenuButton.on('pointerdown', () => {
+      this.scene.stop('GameScene')
       this.scene.start('MainMenuScene')
     })
+  }
+
+  private revivePlayer() {
+    // Clear game over UI
+    this.gameOverUI.forEach(obj => obj.destroy())
+    this.gameOverUI = []
+
+    // Restore health to full
+    this.health = this.maxHealth
+    this.updateHealthDisplay()
+
+    // Clear all enemies and projectiles to give player breathing room
+    // Deactivate all active enemies manually to preserve pool
+    this.enemies.getChildren().forEach((enemy: any) => {
+      if (enemy.active) {
+        enemy.setActive(false)
+        enemy.setVisible(false)
+        if (enemy.body) {
+          enemy.body.enable = false
+        }
+      }
+    })
+
+    // Clear enemy projectiles
+    this.enemyProjectiles.clear(false, false)
+
+    // Clear player projectiles
+    this.projectiles.clear(false, false)
+
+    // Reset wave state to continue where we left off
+    this.waveInProgress = true
+    this.currentWaveEnemyCount = 0
+
+    // Give brief invulnerability
+    this.lastHitTime = Date.now()
+
+    // Unpause game
+    this.isPaused = false
+    this.physics.resume()
+
+    // Resume star field
+    this.starFieldTweens.forEach(tween => tween.resume())
   }
 
   private levelWon() {
@@ -1716,9 +4417,28 @@ export default class GameScene extends Phaser.Scene {
     // Pause star field
     this.starFieldTweens.forEach(tween => tween.pause())
 
-    // Award credits
-    const creditsReward = this.campaignManager.getCreditsReward()
+    // Award credits with building bonus
+    let creditsReward = this.campaignManager.getCreditsReward()
+    const bonuses = this.gameState.getTotalBonuses()
+
+    // Apply credit multiplier
+    if (bonuses.creditMultiplier) {
+      creditsReward = Math.floor(creditsReward * (1 + bonuses.creditMultiplier))
+    }
+
+    // Add win bonus
+    if (bonuses.winBonus) {
+      creditsReward += bonuses.winBonus
+    }
+
+    // Add boss bonus (multiply by bosses killed this run)
+    if (bonuses.bossBonus && this.bossesKilled > 0) {
+      creditsReward += bonuses.bossBonus * this.bossesKilled
+    }
+
     this.gameState.addCredits(creditsReward)
+    this.creditsCollectedThisRun += creditsReward
+    this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
 
     // Unlock next level if available
     const currentLevel = this.campaignManager.getCurrentLevelIndex()
@@ -1727,6 +4447,18 @@ export default class GameScene extends Phaser.Scene {
         this.gameState.unlockNextLevel()
       }
     }
+
+    // Track ships before completing level
+    const shipsBefore = gameProgression.getUnlockedUnpurchasedShips()
+
+    // Complete level in progression system (unlocks ships)
+    const levelNumber = currentLevel + 1 // Convert 0-based to 1-based
+    gameProgression.completeLevel(levelNumber)
+    gameProgression.addCredits(creditsReward)
+
+    // Check for newly unlocked ships
+    const shipsAfter = gameProgression.getUnlockedUnpurchasedShips()
+    const newlyUnlockedShips = shipsAfter.filter(ship => !shipsBefore.includes(ship))
 
     // Record stats
     this.gameState.recordRun(this.score, this.survivalTime, this.killCount)
@@ -1740,17 +4472,18 @@ export default class GameScene extends Phaser.Scene {
       this.killCount
     )
 
-    // Save high score if beaten
+    // Save high score for this level if beaten
+    const currentLevelIndex = this.campaignManager.getCurrentLevelIndex()
+    this.gameState.setLevelHighScore(currentLevelIndex, this.score)
     if (this.score > this.highScore) {
       this.highScore = this.score
-      localStorage.setItem('roguecraft_highscore', this.highScore.toString())
     }
 
-    // Show victory overlay
-    this.showVictoryOverlay(creditsReward)
+    // Show victory overlay with newly unlocked ships
+    this.showVictoryOverlay(creditsReward, newlyUnlockedShips)
   }
 
-  private showVictoryOverlay(creditsEarned: number) {
+  private showVictoryOverlay(creditsEarned: number, newlyUnlockedShips: CharacterType[] = []) {
     // Create victory overlay
     const overlay = this.add.rectangle(
       0, 0,
@@ -1760,9 +4493,12 @@ export default class GameScene extends Phaser.Scene {
       0.8
     ).setOrigin(0, 0).setDepth(200)
 
+    // Create victory confetti burst
+    this.createVictoryConfetti()
+
     const victoryText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 150,
+      this.cameras.main.centerY - 200,
       'VICTORY!',
       {
         fontFamily: 'Courier New',
@@ -1774,10 +4510,19 @@ export default class GameScene extends Phaser.Scene {
     const minutes = Math.floor(this.survivalTime / 60)
     const seconds = this.survivalTime % 60
 
+    // Calculate DPS
+    const dps = this.survivalTime > 0 ? Math.floor(this.totalDamageDealt / this.survivalTime) : 0
+
+    // Get weapon names
+    const weaponNames = this.weapons.map(w => w.getConfig().name).join(', ')
+
+    // Get passive names
+    const passiveNames = this.passives.map(p => p.getConfig().name).join(', ')
+
     const statsText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 50,
-      `Time Survived: ${minutes}:${seconds.toString().padStart(2, '0')}\nKills: ${this.killCount}\nScore: ${this.score}`,
+      this.cameras.main.centerY - 80,
+      `Time Survived: ${minutes}:${seconds.toString().padStart(2, '0')}\nKills: ${this.killCount}\nScore: ${this.score}\nDPS: ${dps}`,
       {
         fontFamily: 'Courier New',
         fontSize: '24px',
@@ -1786,10 +4531,37 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5).setDepth(201)
 
+    // Weapons and Passives display
+    const weaponsText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 20,
+      `Weapons: ${weaponNames || 'None'}`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '16px',
+        color: '#00ffff',
+        align: 'center',
+        wordWrap: { width: this.cameras.main.width - 100 }
+      }
+    ).setOrigin(0.5).setDepth(201)
+
+    const passivesText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY + 55,
+      `Passives: ${passiveNames || 'None'}`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '16px',
+        color: '#ffaa00',
+        align: 'center',
+        wordWrap: { width: this.cameras.main.width - 100 }
+      }
+    ).setOrigin(0.5).setDepth(201)
+
     // Credits earned display
     const creditsText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 50,
+      this.cameras.main.centerY + 95,
       `Credits Earned: ${creditsEarned} ¤`,
       {
         fontFamily: 'Courier New',
@@ -1798,9 +4570,15 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5).setDepth(201)
 
+    // Display newly unlocked ships
+    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, this.cameras.main.centerY + 130)
+
+    // Position continue button below everything
+    const continueButtonY = this.cameras.main.centerY + 165 + unlockSectionHeight
+
     const continueButton = this.add.rectangle(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 120,
+      continueButtonY,
       300,
       80,
       0x2a4a2a
@@ -1808,7 +4586,7 @@ export default class GameScene extends Phaser.Scene {
 
     const continueText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 120,
+      continueButtonY,
       'CONTINUE',
       {
         fontFamily: 'Courier New',
@@ -1828,6 +4606,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Continue handler
     continueButton.on('pointerdown', () => {
+      this.scene.stop('GameScene')
       this.scene.start('MainMenuScene')
     })
   }
@@ -1840,13 +4619,19 @@ export default class GameScene extends Phaser.Scene {
 
     if (!projectile.active) return
 
+    // Play player hit sound
+    soundManager.play(SoundType.PLAYER_HIT)
+
     // Damage player
     this.takeDamage(projectile.getDamage())
 
     // Destroy projectile
+    const projectileBody = projectile.body as Phaser.Physics.Arcade.Body
     projectile.setActive(false)
     projectile.setVisible(false)
-    projectile.body.enable = false
+    projectile.setPosition(-1000, -1000)
+    projectileBody.setVelocity(0, 0)
+    projectileBody.enable = false
   }
 
   private handleEnemyExplosion(data: { x: number; y: number; radius: number; damage: number }) {
@@ -1862,12 +4647,145 @@ export default class GameScene extends Phaser.Scene {
 
   private handleEnemySplit(data: { x: number; y: number; count: number }) {
     // Spawn smaller enemies (swarmers) at the split location
+    const swarmerHealth = ENEMY_CONFIGS[EnemyType.SWARMER].health
+
     for (let i = 0; i < data.count; i++) {
       const angle = (i / data.count) * Math.PI * 2
       const offsetX = Math.cos(angle) * 40
       const offsetY = Math.sin(angle) * 40
       this.enemies.spawnEnemy(data.x + offsetX, data.y + offsetY, EnemyType.SWARMER)
+      this.healthTrackingWindow.push({ timestamp: this.time.now, health: swarmerHealth })
     }
+
+    // Update wave enemy count to track the newly spawned enemies
+    if (this.waveInProgress) {
+      this.currentWaveEnemyCount += data.count
+    }
+  }
+
+  private showMenuConfirmation() {
+    // Create overlay
+    const overlay = this.add.rectangle(
+      0, 0,
+      this.cameras.main.width,
+      this.cameras.main.height,
+      0x000000,
+      0.7
+    ).setOrigin(0, 0).setDepth(300)
+
+    // Title
+    const title = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY - 80,
+      'Return to Menu?',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '32px',
+        color: '#ffff00',
+      }
+    ).setOrigin(0.5).setDepth(301)
+
+    const subtitle = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY - 30,
+      'Your progress will be lost',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '18px',
+        color: '#aaaaaa',
+      }
+    ).setOrigin(0.5).setDepth(301)
+
+    // Yes button
+    const yesButton = this.add.rectangle(
+      this.cameras.main.centerX - 80,
+      this.cameras.main.centerY + 50,
+      140,
+      60,
+      0x4a2a2a
+    ).setDepth(301).setInteractive({ useHandCursor: true })
+
+    const yesText = this.add.text(
+      this.cameras.main.centerX - 80,
+      this.cameras.main.centerY + 50,
+      'YES',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '24px',
+        color: '#ff6666',
+      }
+    ).setOrigin(0.5).setDepth(302)
+
+    // No button
+    const noButton = this.add.rectangle(
+      this.cameras.main.centerX + 80,
+      this.cameras.main.centerY + 50,
+      140,
+      60,
+      0x2a4a2a
+    ).setDepth(301).setInteractive({ useHandCursor: true })
+
+    const noText = this.add.text(
+      this.cameras.main.centerX + 80,
+      this.cameras.main.centerY + 50,
+      'NO',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '24px',
+        color: '#66ff66',
+      }
+    ).setOrigin(0.5).setDepth(302)
+
+    // Hover effects
+    yesButton.on('pointerover', () => {
+      yesButton.setFillStyle(0x6a3a3a)
+    })
+
+    yesButton.on('pointerout', () => {
+      yesButton.setFillStyle(0x4a2a2a)
+    })
+
+    noButton.on('pointerover', () => {
+      noButton.setFillStyle(0x3a6a3a)
+    })
+
+    noButton.on('pointerout', () => {
+      noButton.setFillStyle(0x2a4a2a)
+    })
+
+    // Yes - go to menu
+    yesButton.on('pointerdown', () => {
+      overlay.destroy()
+      title.destroy()
+      subtitle.destroy()
+      yesButton.destroy()
+      yesText.destroy()
+      noButton.destroy()
+      noText.destroy()
+      this.scene.stop('GameScene')
+      this.scene.start('MainMenuScene')
+    })
+
+    // No - resume game
+    noButton.on('pointerdown', () => {
+      overlay.destroy()
+      title.destroy()
+      subtitle.destroy()
+      yesButton.destroy()
+      yesText.destroy()
+      noButton.destroy()
+      noText.destroy()
+
+      // Track paused time before unpausing
+      if (this.pauseStartTime > 0) {
+        this.totalPausedTime += this.time.now - this.pauseStartTime
+        this.pauseStartTime = 0
+      }
+
+      this.isPaused = false
+      this.physics.resume()
+      this.starFieldTweens.forEach(tween => tween.resume())
+    })
   }
 
   private handleHealNearby(data: { x: number; y: number; radius: number; amount: number }) {
@@ -1876,5 +4794,138 @@ export default class GameScene extends Phaser.Scene {
     nearbyEnemies.forEach(enemy => {
       enemy.heal(data.amount)
     })
+  }
+
+  shutdown() {
+    // Clean up event listeners
+    this.events.off('enemyDied', this.handleEnemyDied, this)
+    this.events.off('xpCollected', this.handleXPCollected, this)
+    this.events.off('creditCollected', this.handleCreditCollected, this)
+    this.events.off('enemyExplosion', this.handleEnemyExplosion, this)
+    this.events.off('enemySplit', this.handleEnemySplit, this)
+    this.events.off('healNearbyEnemies', this.handleHealNearby, this)
+
+    // Stop all tweens
+    this.starFieldTweens.forEach(tween => {
+      if (tween && !tween.isDestroyed()) {
+        tween.stop()
+      }
+    })
+    this.starFieldTweens = []
+
+    // Clear arrays
+    this.weapons = []
+    this.passives = []
+
+    // Destroy groups (will clean up all children)
+    if (this.projectiles) {
+      this.projectiles.clear(true, true)
+    }
+    if (this.enemies) {
+      this.enemies.clear(true, true)
+    }
+    if (this.enemyProjectiles) {
+      this.enemyProjectiles.clear(true, true)
+    }
+    if (this.xpDrops) {
+      this.xpDrops.clear(true, true)
+    }
+    if (this.creditDrops) {
+      this.creditDrops.clear(true, true)
+    }
+    if (this.powerUps) {
+      this.powerUps.clear(true, true)
+    }
+
+    // Clear damage zones
+    this.damageZones.forEach(zone => zone.destroy())
+    this.damageZones = []
+  }
+}
+
+// DamageZone class - represents a persistent damage area on the ground
+class DamageZone {
+  private scene: Phaser.Scene
+  private x: number
+  private y: number
+  private radius: number
+  private damage: number
+  private duration: number
+  private tickRate: number
+  private creationTime: number
+  private lastTickTime: number
+  private visual: Phaser.GameObjects.Arc
+  private pulseAnim?: Phaser.Tweens.Tween
+  private onDamageCallback?: (x: number, y: number, damage: number) => void
+
+  constructor(scene: Phaser.Scene, x: number, y: number, radius: number, damage: number, duration: number, tickRate: number = 500, onDamageCallback?: (x: number, y: number, damage: number) => void) {
+    this.scene = scene
+    this.x = x
+    this.y = y
+    this.radius = radius
+    this.damage = damage
+    this.duration = duration
+    this.tickRate = tickRate
+    this.creationTime = scene.time.now
+    this.lastTickTime = scene.time.now
+    this.onDamageCallback = onDamageCallback
+
+    // Create visual effect - pulsing circle
+    this.visual = scene.add.circle(x, y, radius, 0x884400, 0.4)
+    this.visual.setDepth(5)
+
+    // Add pulsing animation
+    this.pulseAnim = scene.tweens.add({
+      targets: this.visual,
+      alpha: 0.2,
+      scale: 1.1,
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    })
+  }
+
+  update(currentTime: number, enemies: any): boolean {
+    // Check if zone should expire
+    if (currentTime >= this.creationTime + this.duration) {
+      return false // Zone expired
+    }
+
+    // Check if it's time to deal damage
+    if (currentTime >= this.lastTickTime + this.tickRate) {
+      this.lastTickTime = currentTime
+      this.damageEnemiesInZone(enemies)
+    }
+
+    return true // Zone still active
+  }
+
+  private damageEnemiesInZone(enemies: any) {
+    enemies.getChildren().forEach((enemy: any) => {
+      if (enemy.active && enemy.body) {
+        const distance = Phaser.Math.Distance.Between(this.x, this.y, enemy.x, enemy.y)
+        if (distance <= this.radius) {
+          enemy.takeDamage(this.damage)
+          // Show damage number if callback is provided
+          if (this.onDamageCallback) {
+            this.onDamageCallback(enemy.x, enemy.y, this.damage)
+          }
+        }
+      }
+    })
+  }
+
+  destroy() {
+    if (this.pulseAnim) {
+      this.pulseAnim.stop()
+    }
+    if (this.visual) {
+      this.visual.destroy()
+    }
+  }
+
+  getPosition(): { x: number, y: number } {
+    return { x: this.x, y: this.y }
   }
 }
