@@ -1,10 +1,24 @@
 import Phaser from 'phaser'
 
+export enum ProjectileType {
+  NORMAL = 'NORMAL',
+  EXPLOSIVE = 'EXPLOSIVE',      // Fire - explodes on hit
+  FREEZING = 'FREEZING',        // Ice - slows/freezes enemies
+  CHAINING = 'CHAINING',        // Lightning - chains to nearby enemies
+  BOUNCING = 'BOUNCING',        // Ricochet - bounces off enemies
+}
+
 export class Projectile extends Phaser.GameObjects.Text {
   private damage: number = 10
   private speed: number = -500 // Negative for upward movement
   private pierceCount: number = 0 // How many enemies it can pierce through
   private remainingPierces: number = 0
+  private projectileType: ProjectileType = ProjectileType.NORMAL
+  private explosionRadius: number = 0
+  private freezeChance: number = 0
+  private freezeDuration: number = 0
+  private chainCount: number = 0
+  private bounceCount: number = 0
   public body!: Phaser.Physics.Arcade.Body
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
@@ -25,7 +39,24 @@ export class Projectile extends Phaser.GameObjects.Text {
     this.setVisible(false)
   }
 
-  fire(x: number, y: number, damage: number = 10, pierceCount: number = 0, velocityX: number = 0, velocityY: number = -500, icon: string = '|', color: string = '#ffff00') {
+  fire(
+    x: number,
+    y: number,
+    damage: number = 10,
+    pierceCount: number = 0,
+    velocityX: number = 0,
+    velocityY: number = -500,
+    icon: string = '|',
+    color: string = '#ffff00',
+    type: ProjectileType = ProjectileType.NORMAL,
+    specialData?: {
+      explosionRadius?: number
+      freezeChance?: number
+      freezeDuration?: number
+      chainCount?: number
+      bounceCount?: number
+    }
+  ) {
     // Reset position
     this.setPosition(x, y)
 
@@ -33,6 +64,14 @@ export class Projectile extends Phaser.GameObjects.Text {
     this.damage = damage
     this.pierceCount = pierceCount
     this.remainingPierces = pierceCount
+    this.projectileType = type
+
+    // Set special properties
+    this.explosionRadius = specialData?.explosionRadius || 0
+    this.freezeChance = specialData?.freezeChance || 0
+    this.freezeDuration = specialData?.freezeDuration || 0
+    this.chainCount = specialData?.chainCount || 0
+    this.bounceCount = specialData?.bounceCount || 0
 
     // Set visual based on icon and pierce
     this.setText(icon)
@@ -56,6 +95,30 @@ export class Projectile extends Phaser.GameObjects.Text {
 
   getDamage(): number {
     return this.damage
+  }
+
+  getType(): ProjectileType {
+    return this.projectileType
+  }
+
+  getExplosionRadius(): number {
+    return this.explosionRadius
+  }
+
+  getFreezeChance(): number {
+    return this.freezeChance
+  }
+
+  getFreezeDuration(): number {
+    return this.freezeDuration
+  }
+
+  getChainCount(): number {
+    return this.chainCount
+  }
+
+  getBounceCount(): number {
+    return this.bounceCount
   }
 
   onHit(): boolean {
@@ -95,12 +158,29 @@ export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
     }
   }
 
-  fireProjectile(x: number, y: number, damage: number = 10, pierceCount: number = 0, velocityX: number = 0, velocityY: number = -500, icon: string = '|', color: string = '#ffff00') {
+  fireProjectile(
+    x: number,
+    y: number,
+    damage: number = 10,
+    pierceCount: number = 0,
+    velocityX: number = 0,
+    velocityY: number = -500,
+    icon: string = '|',
+    color: string = '#ffff00',
+    type: ProjectileType = ProjectileType.NORMAL,
+    specialData?: {
+      explosionRadius?: number
+      freezeChance?: number
+      freezeDuration?: number
+      chainCount?: number
+      bounceCount?: number
+    }
+  ) {
     // Get an inactive projectile from the pool
     const projectile = this.pool.find(p => !p.active)
 
     if (projectile) {
-      projectile.fire(x, y, damage, pierceCount, velocityX, velocityY, icon, color)
+      projectile.fire(x, y, damage, pierceCount, velocityX, velocityY, icon, color, type, specialData)
     }
   }
 

@@ -296,12 +296,17 @@ export class ShotgunWeapon extends Weapon {
 export class LightningWeapon extends Weapon {
   fire(x: number, y: number, modifiers: WeaponModifiers): void {
     const damage = this.getDamage() * modifiers.damageMultiplier
+    const pierce = 0 // Lightning doesn't pierce, it chains
 
-    // Lightning is special - create a chain effect
-    // For now, fire a projectile that will chain (future: implement actual chaining)
-    const pierce = 2 + this.level // Lightning chains through enemies
+    // Lightning chains increase with level (1 chain at level 1, 2 at level 2, 3 at level 3)
+    const chainCount = this.level
 
-    this.projectileGroup.fireProjectile(x, y, damage, pierce, 0, -500, this.config.icon, this.config.color)
+    this.projectileGroup.fireProjectile(
+      x, y, damage, pierce, 0, -500,
+      this.config.icon, this.config.color,
+      ProjectileType.CHAINING,
+      { chainCount }
+    )
   }
 }
 
@@ -314,17 +319,30 @@ export class FireWeapon extends Weapon {
     const pierce = 0 // Fire explodes on first hit
     const speed = -400 // Slower than normal
 
+    // Explosion radius increases with level
+    const explosionRadius = 60 + (this.level * 20)
+
     // More projectiles at higher levels
     const count = this.level
     if (count === 1) {
-      this.projectileGroup.fireProjectile(x, y, damage, pierce, 0, speed, this.config.icon, this.config.color)
+      this.projectileGroup.fireProjectile(
+        x, y, damage, pierce, 0, speed,
+        this.config.icon, this.config.color,
+        ProjectileType.EXPLOSIVE,
+        { explosionRadius }
+      )
     } else {
       const spacing = 20
       const totalWidth = (count - 1) * spacing
       const startX = x - totalWidth / 2
 
       for (let i = 0; i < count; i++) {
-        this.projectileGroup.fireProjectile(startX + i * spacing, y, damage, pierce, 0, speed, this.config.icon, this.config.color)
+        this.projectileGroup.fireProjectile(
+          startX + i * spacing, y, damage, pierce, 0, speed,
+          this.config.icon, this.config.color,
+          ProjectileType.EXPLOSIVE,
+          { explosionRadius }
+        )
       }
     }
   }
@@ -365,17 +383,31 @@ export class IceWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 1 + this.level // Ice pierces and slows
 
+    // Freeze chance increases with level (30% base + 20% per level)
+    const freezeChance = 30 + (this.level * 20)
+    const freezeDuration = 2000 // 2 seconds
+
     // Fire ice lances
     const count = this.level
     if (count === 1) {
-      this.projectileGroup.fireProjectile(x, y, damage, pierce, 0, -500, this.config.icon, this.config.color)
+      this.projectileGroup.fireProjectile(
+        x, y, damage, pierce, 0, -500,
+        this.config.icon, this.config.color,
+        ProjectileType.FREEZING,
+        { freezeChance, freezeDuration }
+      )
     } else {
       const spacing = 20
       const totalWidth = (count - 1) * spacing
       const startX = x - totalWidth / 2
 
       for (let i = 0; i < count; i++) {
-        this.projectileGroup.fireProjectile(startX + i * spacing, y, damage, pierce, 0, -500, this.config.icon, this.config.color)
+        this.projectileGroup.fireProjectile(
+          startX + i * spacing, y, damage, pierce, 0, -500,
+          this.config.icon, this.config.color,
+          ProjectileType.FREEZING,
+          { freezeChance, freezeDuration }
+        )
       }
     }
   }

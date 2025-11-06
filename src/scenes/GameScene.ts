@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ProjectileGroup } from '../game/Projectile'
+import { ProjectileGroup, ProjectileType } from '../game/Projectile'
 import { EnemyGroup, EnemyType } from '../game/Enemy'
 import { EnemyProjectileGroup } from '../game/EnemyProjectile'
 import { XPDropGroup, XPSize } from '../game/XPDrop'
@@ -802,43 +802,57 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private spawnEnemyBasedOnDifficulty(x: number, y: number) {
-    // Enemy spawn probabilities change based on level
-    // Higher levels = more difficult enemies
+    // Enemy spawn probabilities - heavily weighted toward fodder
+    // Goal: Multiple rows of fodder with occasional shooters
     const rand = Math.random() * 100
     let type: EnemyType
 
-    if (this.level <= 2) {
-      // Early game: mostly basic enemies
-      if (rand < 70) {
-        type = EnemyType.DRONE
-      } else if (rand < 90) {
-        type = EnemyType.WASP
-      } else {
-        type = EnemyType.SWARMER
-      }
-    } else if (this.level <= 5) {
-      // Mid game: more variety
-      if (rand < 40) {
-        type = EnemyType.DRONE
-      } else if (rand < 65) {
-        type = EnemyType.WASP
+    if (this.level <= 3) {
+      // Early game: 85% fodder, 15% shooters
+      if (rand < 50) {
+        type = EnemyType.DRONE        // 50% - Basic fodder
+      } else if (rand < 75) {
+        type = EnemyType.WASP         // 25% - Fast fodder
       } else if (rand < 85) {
-        type = EnemyType.HUNTER
+        type = EnemyType.SWARMER      // 10% - Swarm fodder
+      } else if (rand < 95) {
+        type = EnemyType.HUNTER       // 10% - Shooter
       } else {
-        type = EnemyType.TANK
+        type = EnemyType.TANK         // 5% - Heavy shooter
+      }
+    } else if (this.level <= 7) {
+      // Mid game: 70% fodder, 30% shooters
+      if (rand < 35) {
+        type = EnemyType.DRONE        // 35% - Basic fodder
+      } else if (rand < 55) {
+        type = EnemyType.WASP         // 20% - Fast fodder
+      } else if (rand < 70) {
+        type = EnemyType.SWARMER      // 15% - Swarm fodder
+      } else if (rand < 85) {
+        type = EnemyType.HUNTER       // 15% - Shooter
+      } else if (rand < 95) {
+        type = EnemyType.TANK         // 10% - Heavy shooter
+      } else {
+        type = EnemyType.SNIPER       // 5% - Elite shooter
       }
     } else {
-      // Late game: harder enemies more common
-      if (rand < 20) {
-        type = EnemyType.DRONE
+      // Late game: 60% fodder, 40% shooters + special enemies
+      if (rand < 25) {
+        type = EnemyType.DRONE        // 25% - Basic fodder
       } else if (rand < 40) {
-        type = EnemyType.WASP
+        type = EnemyType.WASP         // 15% - Fast fodder
+      } else if (rand < 52) {
+        type = EnemyType.SWARMER      // 12% - Swarm fodder
       } else if (rand < 60) {
-        type = EnemyType.HUNTER
-      } else if (rand < 80) {
-        type = EnemyType.TANK
+        type = EnemyType.BOMBER       // 8% - Exploding fodder
+      } else if (rand < 75) {
+        type = EnemyType.HUNTER       // 15% - Shooter
+      } else if (rand < 88) {
+        type = EnemyType.TANK         // 13% - Heavy shooter
+      } else if (rand < 96) {
+        type = EnemyType.SNIPER       // 8% - Elite shooter
       } else {
-        type = EnemyType.BOMBER
+        type = EnemyType.ORBITER      // 4% - Circling shooter
       }
     }
 
@@ -1259,6 +1273,12 @@ export default class GameScene extends Phaser.Scene {
     const projectile = projectileObj as Phaser.GameObjects.Text & {
       getDamage: () => number
       onHit: () => boolean
+      getType: () => ProjectileType
+      getExplosionRadius: () => number
+      getFreezeChance: () => number
+      getFreezeDuration: () => number
+      getChainCount: () => number
+      getBounceCount: () => number
     }
     const enemy = enemyObj as Phaser.GameObjects.Text & { takeDamage: (damage: number) => boolean, active: boolean }
 
@@ -1278,6 +1298,94 @@ export default class GameScene extends Phaser.Scene {
 
     // Apply damage to enemy
     const enemyDied = enemy.takeDamage(damage)
+
+    // Apply special effects based on projectile type
+    const projectileType = projectile.getType()
+
+    // EXPLOSIVE: Create explosion that damages nearby enemies
+    if (projectileType === ProjectileType.EXPLOSIVE) {
+      const explosionRadius = projectile.getExplosionRadius()
+      if (explosionRadius > 0) {
+        // Find all enemies within radius
+        const nearbyEnemies = this.enemies.getNearbyEnemies(projectile.x, projectile.y, explosionRadius)
+
+        // Damage all nearby enemies (50% of projectile damage)
+        nearbyEnemies.forEach(nearbyEnemy => {
+          if (nearbyEnemy.active && nearbyEnemy !== enemy) {
+            const distance = Phaser.Math.Distance.Between(projectile.x, projectile.y, nearbyEnemy.x, nearbyEnemy.y)
+            if (distance <= explosionRadius) {
+              const aoeDamage = Math.floor(damage * 0.5)
+              nearbyEnemy.takeDamage(aoeDamage)
+              this.totalDamageDealt += aoeDamage
+              this.showDamageNumber(nearbyEnemy.x, nearbyEnemy.y, aoeDamage)
+            }
+          }
+        })
+
+        // Visual effect - create explosion circle
+        const explosion = this.add.circle(projectile.x, projectile.y, explosionRadius, 0xff4400, 0.3)
+        this.tweens.add({
+          targets: explosion,
+          scaleX: 1.5,
+          scaleY: 1.5,
+          alpha: 0,
+          duration: 200,
+          onComplete: () => explosion.destroy()
+        })
+      }
+    }
+
+    // FREEZING: Chance to slow/freeze enemy
+    if (projectileType === ProjectileType.FREEZING) {
+      const freezeChance = projectile.getFreezeChance()
+      if (Math.random() * 100 < freezeChance) {
+        const freezeDuration = projectile.getFreezeDuration()
+
+        // Visual: Change enemy color to cyan temporarily
+        const enemyText = enemy as Phaser.GameObjects.Text
+        const originalColor = enemyText.style.color
+        enemyText.setColor('#00ffff')
+
+        // Note: Enemy class doesn't have a freeze() method yet, so we just do visual for now
+        this.time.delayedCall(freezeDuration, () => {
+          if (enemy.active) {
+            enemyText.setColor(originalColor)
+          }
+        })
+      }
+    }
+
+    // CHAINING: Chain lightning to nearby enemies
+    if (projectileType === ProjectileType.CHAINING && projectile.getChainCount() > 0) {
+      const chainCount = projectile.getChainCount()
+      const chainRange = 150
+
+      // Find nearby enemies to chain to
+      const nearbyEnemies = this.enemies.getNearbyEnemies(enemy.x, enemy.y, chainRange)
+        .filter(e => e !== enemy && e.active) // Don't chain to same enemy
+        .slice(0, chainCount)
+
+      // Deal reduced damage to chained enemies
+      nearbyEnemies.forEach(chainedEnemy => {
+        const chainDamage = Math.floor(damage * 0.7)
+        chainedEnemy.takeDamage(chainDamage)
+        this.totalDamageDealt += chainDamage
+        this.showDamageNumber(chainedEnemy.x, chainedEnemy.y, chainDamage)
+
+        // Visual: Draw lightning arc
+        const lightning = this.add.line(
+          0, 0,
+          enemy.x, enemy.y,
+          chainedEnemy.x, chainedEnemy.y,
+          0x00ffff, 0.8
+        ).setLineWidth(2).setOrigin(0, 0)
+
+        this.time.delayedCall(100, () => lightning.destroy())
+      })
+    }
+
+    // BOUNCING: Bounces are handled by the weapon system, not here
+    // The projectile will continue flying until it runs out of bounces
 
     // Check if projectile should be destroyed (based on pierce)
     const shouldDestroy = projectile.onHit()

@@ -41,13 +41,12 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: 'o',
     color: '#ff6666',
     fontSize: '24px',
-    health: 20,
-    speed: 100,
-    xpValue: 8,
-    scoreValue: 10,
+    health: 15,
+    speed: 120,
+    xpValue: 5,
+    scoreValue: 8,
     behavior: {
-      shootsBack: true,
-      shootInterval: 2000,
+      shootsBack: false, // Fodder enemy - no shooting
       movementPattern: 'straight',
     },
   },
