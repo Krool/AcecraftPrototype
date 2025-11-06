@@ -22,9 +22,11 @@ export default class HangarScene extends Phaser.Scene {
   }
 
   create() {
+    console.log('[HangarScene] create() called')
     this.gameState = GameState.getInstance()
     this.selectedCharacter = this.gameState.getSelectedCharacter()
     this.viewingCharacter = this.selectedCharacter // Start by viewing the selected ship
+    console.log('[HangarScene] Selected character:', this.selectedCharacter)
 
     // Add background
     this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x0a0a1e)
@@ -164,10 +166,23 @@ export default class HangarScene extends Phaser.Scene {
 
   private createListItem(type: CharacterType, x: number, y: number, width: number, height: number) {
     const config = CHARACTER_CONFIGS[type]
-    const isUnlocked = gameProgression.isShipUnlocked(type) && gameProgression.isShipPurchased(type)
-    const canPurchase = gameProgression.isShipUnlocked(type) && !gameProgression.isShipPurchased(type)
+    // Ships with cost 0 are automatically purchased (free ships)
+    const autoPurchased = config.cost === 0
+    const unlocked = gameProgression.isShipUnlocked(type)
+    const purchased = gameProgression.isShipPurchased(type) || autoPurchased
+    const isUnlocked = unlocked && purchased
+    const canPurchase = unlocked && !purchased && !autoPurchased
     const isSelected = this.selectedCharacter === type
     const isViewing = this.viewingCharacter === type
+
+    // Debug logging for Scattershot
+    if (type === CharacterType.SCATTERSHOT) {
+      console.log('[HangarScene] Scattershot status:')
+      console.log('  - unlocked:', unlocked)
+      console.log('  - purchased:', purchased)
+      console.log('  - isUnlocked (both):', isUnlocked)
+      console.log('  - canPurchase:', canPurchase)
+    }
 
     const container = this.add.container(x, y)
 
@@ -304,8 +319,10 @@ export default class HangarScene extends Phaser.Scene {
 
   private createDetailPanel() {
     const config = CHARACTER_CONFIGS[this.viewingCharacter]
-    const isUnlocked = gameProgression.isShipUnlocked(this.viewingCharacter) && gameProgression.isShipPurchased(this.viewingCharacter)
-    const canPurchase = gameProgression.isShipUnlocked(this.viewingCharacter) && !gameProgression.isShipPurchased(this.viewingCharacter)
+    // Ships with cost 0 are automatically purchased (free ships)
+    const autoPurchased = config.cost === 0
+    const isUnlocked = gameProgression.isShipUnlocked(this.viewingCharacter) && (gameProgression.isShipPurchased(this.viewingCharacter) || autoPurchased)
+    const canPurchase = gameProgression.isShipUnlocked(this.viewingCharacter) && !gameProgression.isShipPurchased(this.viewingCharacter) && !autoPurchased
     const isSelected = this.selectedCharacter === this.viewingCharacter
 
     const panelX = 260
