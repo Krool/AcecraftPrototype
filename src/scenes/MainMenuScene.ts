@@ -31,20 +31,28 @@ export default class MainMenuScene extends Phaser.Scene {
     // Add scrolling star field
     this.createStarField()
 
+    // Calculate scale factor based on screen width (base width: 540px)
+    const screenWidth = this.cameras.main.width
+    const scaleFactor = Math.min(screenWidth / 540, 1.2) // Cap at 1.2x for larger screens
+
     // Title - split into individual letters for animation
     const titleText = 'ROGUECRAFT'
-    const letterSpacing = 38 // Approximate width per letter
+    const baseFontSize = 56
+    const baseLetterSpacing = 38
+    const titleFontSize = Math.floor(baseFontSize * scaleFactor)
+    const letterSpacing = baseLetterSpacing * scaleFactor
     const totalWidth = titleText.length * letterSpacing
     const startX = this.cameras.main.centerX - totalWidth / 2
+    const titleY = 100 * scaleFactor
 
     for (let i = 0; i < titleText.length; i++) {
       const letter = this.add.text(
         startX + i * letterSpacing,
-        100,
+        titleY,
         titleText[i],
         {
           fontFamily: 'Courier New',
-          fontSize: '56px',
+          fontSize: `${titleFontSize}px`,
           color: '#00ffff',
           fontStyle: 'bold',
         }
@@ -125,46 +133,47 @@ export default class MainMenuScene extends Phaser.Scene {
     const selectedCharType = this.gameState.getSelectedCharacter()
     const selectedCharConfig = CHARACTER_CONFIGS[selectedCharType]
 
-    const shipDisplayY = 250
+    const shipDisplayY = 250 * scaleFactor
     const shipLabel = this.add.text(
       this.cameras.main.centerX,
-      shipDisplayY - 45,
+      shipDisplayY - 45 * scaleFactor,
       'SELECTED SHIP',
       {
         fontFamily: 'Courier New',
-        fontSize: '14px',
+        fontSize: `${Math.floor(14 * scaleFactor)}px`,
         color: '#888888',
       }
     ).setOrigin(0.5)
 
     const shipSymbol = this.add.text(
-      this.cameras.main.centerX - 100,
-      shipDisplayY + 10,
+      this.cameras.main.centerX - 100 * scaleFactor,
+      shipDisplayY + 10 * scaleFactor,
       selectedCharConfig.symbol,
       {
         fontFamily: 'Courier New',
-        fontSize: '96px',  // 100% bigger than 48px
+        fontSize: `${Math.floor(96 * scaleFactor)}px`,
         color: selectedCharConfig.color,
       }
     ).setOrigin(0.5)
 
     const shipName = this.add.text(
-      this.cameras.main.centerX + 20,
-      shipDisplayY + 10,
+      this.cameras.main.centerX + 20 * scaleFactor,
+      shipDisplayY + 10 * scaleFactor,
       selectedCharConfig.name,
       {
         fontFamily: 'Courier New',
-        fontSize: '24px',
+        fontSize: `${Math.floor(24 * scaleFactor)}px`,
         color: '#ffffff',
         fontStyle: 'bold',
       }
     ).setOrigin(0, 0.5)
 
-    // Menu buttons
-    const buttonWidth = 400
-    const buttonHeight = 80
-    const buttonSpacing = 20
-    const startY = 425  // Moved up 25 pixels
+    // Menu buttons - scale to fit screen
+    const baseButtonWidth = 400
+    const buttonWidth = Math.min(baseButtonWidth * scaleFactor, screenWidth - 40)
+    const buttonHeight = 80 * scaleFactor
+    const buttonSpacing = 20 * scaleFactor
+    const startY = 425 * scaleFactor
 
     // Campaign Button (1st position)
     const campaignButton = this.add.rectangle(
@@ -176,23 +185,23 @@ export default class MainMenuScene extends Phaser.Scene {
     ).setInteractive({ useHandCursor: true })
 
     const campaignIcon = this.add.text(
-      this.cameras.main.centerX - 150,
+      this.cameras.main.centerX - 150 * scaleFactor,
       startY,
       '►',
       {
         fontFamily: 'Courier New',
-        fontSize: '48px',
+        fontSize: `${Math.floor(48 * scaleFactor)}px`,
         color: '#00ff00',
       }
     ).setOrigin(0.5)
 
     const campaignText = this.add.text(
-      this.cameras.main.centerX + 20,
+      this.cameras.main.centerX + 20 * scaleFactor,
       startY,
       'CAMPAIGN',
       {
         fontFamily: 'Courier New',
-        fontSize: '24px',
+        fontSize: `${Math.floor(24 * scaleFactor)}px`,
         color: '#00ff00',
         align: 'center',
       }
@@ -234,23 +243,23 @@ export default class MainMenuScene extends Phaser.Scene {
     ).setInteractive({ useHandCursor: true })
 
     const coopIcon = this.add.text(
-      this.cameras.main.centerX - 150,
+      this.cameras.main.centerX - 150 * scaleFactor,
       coopButtonY,
       '👥',
       {
         fontFamily: 'Courier New',
-        fontSize: '48px',
+        fontSize: `${Math.floor(48 * scaleFactor)}px`,
         color: '#ff00ff',
       }
     ).setOrigin(0.5)
 
     const coopButtonText = this.add.text(
-      this.cameras.main.centerX + 20,
+      this.cameras.main.centerX + 20 * scaleFactor,
       coopButtonY,
       'CO-OP',
       {
         fontFamily: 'Courier New',
-        fontSize: '24px',
+        fontSize: `${Math.floor(24 * scaleFactor)}px`,
         color: '#ff00ff',
         align: 'center',
       }
@@ -273,7 +282,7 @@ export default class MainMenuScene extends Phaser.Scene {
         'Synchronous Co-op Coming Soon!',
         {
           fontFamily: 'Courier New',
-          fontSize: '18px',
+          fontSize: `${Math.floor(18 * scaleFactor)}px`,
           color: '#ffff00',
           fontStyle: 'bold',
         }
@@ -282,7 +291,7 @@ export default class MainMenuScene extends Phaser.Scene {
       // Animate it floating up and fading out
       this.tweens.add({
         targets: comingSoonText,
-        y: coopButtonY - 100,
+        y: coopButtonY - 100 * scaleFactor,
         alpha: 0,
         duration: 2000,
         ease: 'Cubic.easeOut',
@@ -302,23 +311,23 @@ export default class MainMenuScene extends Phaser.Scene {
     ).setInteractive({ useHandCursor: true })
 
     const buildIcon = this.add.text(
-      this.cameras.main.centerX - 150,
+      this.cameras.main.centerX - 150 * scaleFactor,
       startY + (buttonHeight + buttonSpacing) * 2,
       '⚙',
       {
         fontFamily: 'Courier New',
-        fontSize: '48px',
+        fontSize: `${Math.floor(48 * scaleFactor)}px`,
         color: '#ffaa00',
       }
     ).setOrigin(0.5)
 
     const buildText = this.add.text(
-      this.cameras.main.centerX + 20,
+      this.cameras.main.centerX + 20 * scaleFactor,
       startY + (buttonHeight + buttonSpacing) * 2,
       'UPGRADES',
       {
         fontFamily: 'Courier New',
-        fontSize: '24px',
+        fontSize: `${Math.floor(24 * scaleFactor)}px`,
         color: '#ffaa00',
         align: 'center',
       }
@@ -357,23 +366,23 @@ export default class MainMenuScene extends Phaser.Scene {
     ).setInteractive({ useHandCursor: true })
 
     const hangarIcon = this.add.text(
-      this.cameras.main.centerX - 150,
+      this.cameras.main.centerX - 150 * scaleFactor,
       startY + (buttonHeight + buttonSpacing) * 3,
       '◈',
       {
         fontFamily: 'Courier New',
-        fontSize: '48px',
+        fontSize: `${Math.floor(48 * scaleFactor)}px`,
         color: '#00ffff',
       }
     ).setOrigin(0.5)
 
     const hangarText = this.add.text(
-      this.cameras.main.centerX + 20,
+      this.cameras.main.centerX + 20 * scaleFactor,
       startY + (buttonHeight + buttonSpacing) * 3,
       'HANGAR',
       {
         fontFamily: 'Courier New',
-        fontSize: '24px',
+        fontSize: `${Math.floor(24 * scaleFactor)}px`,
         color: '#00ffff',
         align: 'center',
       }
@@ -414,23 +423,23 @@ export default class MainMenuScene extends Phaser.Scene {
     ).setInteractive({ useHandCursor: true })
 
     const statsIcon = this.add.text(
-      this.cameras.main.centerX - 150,
+      this.cameras.main.centerX - 150 * scaleFactor,
       statsButtonY,
       'ℹ',
       {
         fontFamily: 'Courier New',
-        fontSize: '48px',
+        fontSize: `${Math.floor(48 * scaleFactor)}px`,
         color: '#ffffff',
       }
     ).setOrigin(0.5)
 
     const statsButtonText = this.add.text(
-      this.cameras.main.centerX + 20,
+      this.cameras.main.centerX + 20 * scaleFactor,
       statsButtonY,
       'INFORMATION',
       {
         fontFamily: 'Courier New',
-        fontSize: '24px',
+        fontSize: `${Math.floor(24 * scaleFactor)}px`,
         color: '#ffffff',
         align: 'center',
       }
@@ -498,9 +507,10 @@ export default class MainMenuScene extends Phaser.Scene {
       soundManager.play(SoundType.BUTTON_CLICK)
       if (confirm('Are you sure you want to reset all progress? This cannot be undone!')) {
         console.log('Resetting game save...')
-        // Clear localStorage first
+        // Clear all localStorage data
         localStorage.removeItem('roguecraft_gamestate')
         localStorage.removeItem('roguecraft_highscore')
+        localStorage.removeItem('roguecraft_progression') // Clear ship unlocks and purchases
         // Reset the singleton instance so it creates a fresh one on reload
         GameState.resetInstance()
         // Reload the page to start fresh with tutorial
