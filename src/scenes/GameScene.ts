@@ -1793,9 +1793,14 @@ export default class GameScene extends Phaser.Scene {
       this.waveProgressBar.width = 0
     }
 
-    // Update boss health bar if boss is active
+    // Update boss health bar if boss wave is active
     const waveData = this.waveSystem.getWaveData()
     if (waveData && (waveData.isBoss || waveData.isMiniBoss)) {
+      // Keep health bar visible during entire boss wave
+      this.bossHealthBarBg.setVisible(true)
+      this.bossHealthBar.setVisible(true)
+      this.bossHealthText.setVisible(true)
+
       // Find boss enemy
       const boss = this.enemies.getChildren().find((e: any) => {
         const enemy = e as Enemy
@@ -1803,11 +1808,6 @@ export default class GameScene extends Phaser.Scene {
       }) as Enemy | undefined
 
       if (boss) {
-        // Ensure boss health bar is visible
-        this.bossHealthBarBg.setVisible(true)
-        this.bossHealthBar.setVisible(true)
-        this.bossHealthText.setVisible(true)
-
         const bossHealth = boss.getHealth()
         const bossMaxHealth = boss.getMaxHealth()
         const healthPercent = bossHealth / bossMaxHealth
@@ -1815,7 +1815,15 @@ export default class GameScene extends Phaser.Scene {
         this.bossHealthBar.width = bossBarWidth * healthPercent
         const bossName = boss.getName() || (waveData.isBoss ? 'BOSS' : 'MINI-BOSS')
         this.bossHealthText.setText(`${bossName} - ${Math.ceil(bossHealth)} / ${bossMaxHealth}`)
+      } else {
+        // Boss not found yet or already defeated, show waiting message
+        this.bossHealthText.setText(waveData.isBoss ? 'BOSS INCOMING...' : 'MINI-BOSS INCOMING...')
       }
+    } else {
+      // Hide health bar when not in boss wave
+      this.bossHealthBarBg.setVisible(false)
+      this.bossHealthBar.setVisible(false)
+      this.bossHealthText.setVisible(false)
     }
   }
 
@@ -4482,6 +4490,9 @@ export default class GameScene extends Phaser.Scene {
       this.highScore = this.score
     }
 
+    // Unlock Scattershot after first game (lose)
+    const scattershotUnlocked = gameProgression.unlockScattershot()
+
     // Clear any existing game over UI
     this.gameOverUI.forEach(obj => obj.destroy())
     this.gameOverUI = []
@@ -4532,6 +4543,33 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5).setDepth(201)
     this.gameOverUI.push(statsText)
+
+    // Display Scattershot unlock notification if newly unlocked
+    if (scattershotUnlocked) {
+      const unlockNotification = this.add.text(
+        this.cameras.main.centerX,
+        this.cameras.main.centerY - 20,
+        '★ SHIP UNLOCKED: SCATTERSHOT ★\n(Close-Range Brawler - Ready to fly!)',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '20px',
+          color: '#00ff00',
+          align: 'center',
+          backgroundColor: '#001100',
+          padding: { x: 10, y: 5 }
+        }
+      ).setOrigin(0.5).setDepth(201)
+      this.gameOverUI.push(unlockNotification)
+
+      // Pulse animation
+      this.tweens.add({
+        targets: unlockNotification,
+        scale: { from: 1.0, to: 1.1 },
+        duration: 800,
+        yoyo: true,
+        repeat: -1
+      })
+    }
 
     // Interactive Weapons and Passives display with icons and pips
     const weaponPassiveElements = this.createWeaponPassiveDisplay(this.cameras.main.centerY + 30)
@@ -4698,9 +4736,17 @@ export default class GameScene extends Phaser.Scene {
     gameProgression.completeLevel(levelNumber)
     gameProgression.addCredits(creditsReward)
 
+    // Unlock Scattershot after first game (win)
+    const scattershotUnlocked = gameProgression.unlockScattershot()
+
     // Check for newly unlocked ships
     const shipsAfter = gameProgression.getUnlockedUnpurchasedShips()
     const newlyUnlockedShips = shipsAfter.filter(ship => !shipsBefore.includes(ship))
+
+    // Add Scattershot to newly unlocked ships if it was just unlocked
+    if (scattershotUnlocked && !newlyUnlockedShips.includes(CharacterType.SCATTERSHOT)) {
+      newlyUnlockedShips.push(CharacterType.SCATTERSHOT)
+    }
 
     // Record stats
     this.gameState.recordRun(this.score, this.survivalTime, this.killCount)
@@ -4740,11 +4786,11 @@ export default class GameScene extends Phaser.Scene {
 
     const victoryText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 200,
+      80,
       'VICTORY!',
       {
         fontFamily: 'Courier New',
-        fontSize: '64px',
+        fontSize: '52px',
         color: '#00ff00',
       }
     ).setOrigin(0.5).setDepth(201)
@@ -4763,27 +4809,27 @@ export default class GameScene extends Phaser.Scene {
 
     const statsText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 100,
-      `Time Survived: ${minutes}:${seconds.toString().padStart(2, '0')}\nKills: ${this.killCount}\nScore: ${this.score}\nDPS: ${dps}`,
+      150,
+      `Time: ${minutes}:${seconds.toString().padStart(2, '0')} | Kills: ${this.killCount} | Score: ${this.score} | DPS: ${dps}`,
       {
         fontFamily: 'Courier New',
-        fontSize: '24px',
+        fontSize: '16px',
         color: '#ffffff',
         align: 'center'
       }
     ).setOrigin(0.5).setDepth(201)
 
-    // Interactive Weapons and Passives display with icons and pips
-    this.createWeaponPassiveDisplay(this.cameras.main.centerY + 20)
+    // Interactive Weapons and Passives display with icons and pips - closer to stats
+    this.createWeaponPassiveDisplay(190)
 
-    // Credits earned display - with more spacing
+    // Credits earned display - moved up
     const creditsText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 180,
+      400,
       `REWARDS`,
       {
         fontFamily: 'Courier New',
-        fontSize: '20px',
+        fontSize: '18px',
         color: '#ffdd00',
         fontStyle: 'bold',
       }
@@ -4791,20 +4837,20 @@ export default class GameScene extends Phaser.Scene {
 
     const creditsValue = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 210,
+      425,
       `${creditsEarned} ¤`,
       {
         fontFamily: 'Courier New',
-        fontSize: '28px',
+        fontSize: '24px',
         color: '#ffdd00',
       }
     ).setOrigin(0.5).setDepth(201)
 
-    // Display newly unlocked ships - with more spacing
-    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, this.cameras.main.centerY + 250)
+    // Display newly unlocked ships - moved up
+    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, 470)
 
-    // Position continue button below everything
-    const continueButtonY = this.cameras.main.centerY + 165 + unlockSectionHeight
+    // Position continue button at bottom of screen
+    const continueButtonY = this.cameras.main.height - 60
 
     const continueButton = this.add.rectangle(
       this.cameras.main.centerX,
