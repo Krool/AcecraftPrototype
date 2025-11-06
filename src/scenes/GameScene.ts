@@ -14,7 +14,7 @@ import { CampaignManager } from '../game/Campaign'
 import { soundManager, SoundType } from '../game/SoundManager'
 import { WaveSystem } from '../game/WaveSystem'
 import { gameProgression } from '../game/GameProgression'
-import { MobileDetection } from '../utils/mobileDetection'
+import { MobileDetection } from '../utils/MobileDetection'
 
 export default class GameScene extends Phaser.Scene {
   private gameState!: GameState
@@ -73,7 +73,7 @@ export default class GameScene extends Phaser.Scene {
   private score: number = 0
   private scoreText!: Phaser.GameObjects.Text
   private survivalTime: number = 0
-  private timerText!: Phaser.GameObjects.Text
+  // timerText removed - no countdown display in combat
   private waveSystem!: WaveSystem
   private waveText!: Phaser.GameObjects.Text
   private waveProgressBar!: Phaser.GameObjects.Rectangle
@@ -84,6 +84,7 @@ export default class GameScene extends Phaser.Scene {
   private currentWaveEnemyCount: number = 0
   private waveInProgress: boolean = false
   private waveStartTime: number = 0 // Failsafe: track when wave started
+  private lastPoolLogTime: number = 0 // Track last pool status log
   private highScore: number = 0
 
   // Character stats tracking
@@ -247,6 +248,9 @@ export default class GameScene extends Phaser.Scene {
     // Setup keyboard controls
     this.cursors = this.input.keyboard!.createCursorKeys()
 
+    // Get font multiplier for mobile scaling
+    const fontMult = MobileDetection.getFontSizeMultiplier()
+
     // Add score and timer (top right, on same line)
     this.scoreText = this.add.text(
       this.cameras.main.width - 10,
@@ -254,25 +258,14 @@ export default class GameScene extends Phaser.Scene {
       `Score: 0 | 👑: ${this.highScore}`,
       {
         fontFamily: 'Courier New',
-        fontSize: '14px',
+        fontSize: MobileDetection.scaleFontSize(14),
         color: '#ffff00',
         align: 'right'
       }
     ).setOrigin(1, 0).setDepth(11)
 
-    // Add timer for campaign mode (top center)
-    this.timerText = this.add.text(
-      this.cameras.main.width / 2,
-      10,
-      '0:00',
-      {
-        fontFamily: 'Courier New',
-        fontSize: '24px',
-        color: '#00ffff',
-        fontStyle: 'bold',
-        align: 'center'
-      }
-    ).setOrigin(0.5, 0).setDepth(11)
+    // Timer removed - no countdown display in combat
+    // (survivalTime still tracked internally for stats)
 
     // Add wave counter (top right, second line)
     this.waveText = this.add.text(
@@ -281,16 +274,16 @@ export default class GameScene extends Phaser.Scene {
       'Wave 0/15',
       {
         fontFamily: 'Courier New',
-        fontSize: '16px',
+        fontSize: MobileDetection.scaleFontSize(16),
         color: '#ffaa00',
         align: 'right',
         fontStyle: 'bold'
       }
     ).setOrigin(1, 0).setDepth(11)
 
-    // Add wave progress bar (below wave counter)
-    const progressBarWidth = 200
-    const progressBarHeight = 8
+    // Add wave progress bar (below wave counter) - scaled for mobile
+    const progressBarWidth = Math.floor(200 * fontMult)
+    const progressBarHeight = Math.floor(8 * fontMult)
     this.waveProgressBarBg = this.add.rectangle(
       this.cameras.main.width - 10 - progressBarWidth,
       55,
@@ -307,9 +300,9 @@ export default class GameScene extends Phaser.Scene {
       0x00ffff
     ).setOrigin(0, 0).setDepth(11)
 
-    // Boss health bar (initially hidden)
-    const bossBarWidth = 400
-    const bossBarHeight = 20
+    // Boss health bar (initially hidden) - scaled for mobile
+    const bossBarWidth = Math.floor(400 * fontMult)
+    const bossBarHeight = Math.floor(20 * fontMult)
     this.bossHealthBarBg = this.add.rectangle(
       this.cameras.main.centerX,
       80,
@@ -332,7 +325,7 @@ export default class GameScene extends Phaser.Scene {
       'BOSS',
       {
         fontFamily: 'Courier New',
-        fontSize: '16px',
+        fontSize: MobileDetection.scaleFontSize(16),
         color: '#ff0000',
         align: 'center',
         fontStyle: 'bold'
@@ -347,18 +340,18 @@ export default class GameScene extends Phaser.Scene {
       '0¤',
       {
         fontFamily: 'Courier New',
-        fontSize: '14px',
+        fontSize: MobileDetection.scaleFontSize(14),
         color: '#ffdd00',
         align: 'left'
       }
     ).setOrigin(0, 0).setDepth(11)
 
-    // Add menu button (top center)
+    // Add menu button (top center) - scaled for mobile
     const menuButton = this.add.rectangle(
       this.cameras.main.centerX,
       10,
-      120,
-      40,
+      Math.floor(120 * fontMult),
+      Math.floor(40 * fontMult),
       0x2a2a4a,
       0.8
     ).setOrigin(0.5, 0).setDepth(11).setInteractive({ useHandCursor: true })
@@ -369,7 +362,7 @@ export default class GameScene extends Phaser.Scene {
       'MENU',
       {
         fontFamily: 'Courier New',
-        fontSize: '18px',
+        fontSize: MobileDetection.scaleFontSize(18),
         color: '#ffffff',
       }
     ).setOrigin(0.5).setDepth(12)
@@ -398,14 +391,14 @@ export default class GameScene extends Phaser.Scene {
     // Add Level counter (just the number)
     this.levelText = this.add.text(10, 18, '1', {
       fontFamily: 'Courier New',
-      fontSize: '20px',
+      fontSize: MobileDetection.scaleFontSize(20),
       color: '#00ffff',
       fontStyle: 'bold'
     }).setDepth(11)
 
-    // Create XP bar next to level number
-    const xpBarWidth = 105 // 30% smaller than original 150
-    const xpBarHeight = 20
+    // Create XP bar next to level number (scaled for mobile)
+    const xpBarWidth = Math.floor(105 * fontMult) // Scale with font size
+    const xpBarHeight = Math.floor(20 * fontMult)
     const xpBarX = 40
     const xpBarY = 13
 
@@ -428,7 +421,7 @@ export default class GameScene extends Phaser.Scene {
     // XP text overlaid on bar
     this.xpText = this.add.text(xpBarX + xpBarWidth / 2, xpBarY + xpBarHeight / 2, 'XP: 0 / 10', {
       fontFamily: 'Courier New',
-      fontSize: '12px',
+      fontSize: MobileDetection.scaleFontSize(12),
       color: '#000000',
       fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(12)
@@ -1131,7 +1124,15 @@ export default class GameScene extends Phaser.Scene {
         WeaponType.DARK,
         WeaponType.LASER_BEAM,
         WeaponType.RICOCHET_DISK,
-        WeaponType.MISSILE_POD
+        WeaponType.MISSILE_POD,
+        WeaponType.FIREBALL_RING,
+        WeaponType.BLOOD_LANCE,
+        WeaponType.PLASMA_AURA,
+        WeaponType.VORTEX_BLADE,
+        WeaponType.ORBITAL_STRIKE,
+        WeaponType.MINIGUN,
+        WeaponType.TRAP_LAYER,
+        WeaponType.SNIPER_RIFLE
       ]
       const ownedTypes = this.weapons.map(w => w.getConfig().type)
 
@@ -1211,7 +1212,15 @@ export default class GameScene extends Phaser.Scene {
         PassiveType.THRUSTER_MOD,
         PassiveType.OVERDRIVE_REACTOR,
         PassiveType.SALVAGE_UNIT,
-        PassiveType.DRONE_BAY_EXPANSION
+        PassiveType.DRONE_BAY_EXPANSION,
+        PassiveType.VAMPIRIC_FIRE,
+        PassiveType.FROST_HASTE,
+        PassiveType.STATIC_FORTUNE,
+        PassiveType.WINGMAN_PROTOCOL,
+        PassiveType.TOXIC_ROUNDS,
+        PassiveType.PYROMANIAC,
+        PassiveType.SHATTER_STRIKE,
+        PassiveType.HEMORRHAGE
       ]
       const ownedTypes = this.passives.map(p => p.getConfig().type)
 
@@ -1648,10 +1657,19 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private startNextWave() {
+    // Prevent starting a new wave if one is already in progress
+    if (this.waveInProgress) {
+      console.warn('Attempted to start wave while one is already in progress - ignoring')
+      return
+    }
+
     const waveData = this.waveSystem.startNextWave()
     if (!waveData) {
+      console.log('No more waves - level complete')
       return // No more waves
     }
+
+    console.log(`Starting wave ${this.waveSystem.getCurrentWave()}/${this.waveSystem.getTotalWaves()}`)
 
     this.waveInProgress = true
     this.currentWaveEnemyCount = 0
@@ -1681,14 +1699,35 @@ export default class GameScene extends Phaser.Scene {
         const formation = bucket.formations[Math.floor(Math.random() * bucket.formations.length)]
         const enemyType = formation.enemyTypes[Math.floor(Math.random() * formation.enemyTypes.length)]
 
-        this.spawnWaveFormation(formation, enemyType)
+        // Get actual spawned count (may be less than expected if pool is full)
+        const actualSpawned = this.spawnWaveFormation(formation, enemyType)
 
-        // Count how many enemies this formation spawns
-        const formationSize = this.getFormationSize(formation)
-        spawnedFromBucket += formationSize
-        this.currentWaveEnemyCount += formationSize
+        // Only count enemies that were actually spawned
+        spawnedFromBucket += actualSpawned
+        this.currentWaveEnemyCount += actualSpawned
+
+        // Break if we couldn't spawn any enemies (pool exhausted)
+        if (actualSpawned === 0) {
+          console.warn('Enemy pool exhausted, ending wave spawn early')
+          break
+        }
       }
     })
+
+    // Log pool status after spawning
+    const poolStatus = this.enemies.getPoolStatus()
+    console.log(`Wave ${this.waveSystem.getCurrentWave()} spawned ${this.currentWaveEnemyCount} enemies`)
+    console.log(`[Pool Status] Total: ${poolStatus.total}, Active: ${poolStatus.active}, Inactive: ${poolStatus.inactive}, Body Disabled: ${poolStatus.bodyDisabled}`)
+
+    // If no enemies could be spawned, immediately advance to next wave
+    if (this.currentWaveEnemyCount === 0) {
+      console.warn('No enemies spawned for wave, advancing immediately')
+      this.waveInProgress = false
+      this.time.delayedCall(500, () => {
+        this.startNextWave()
+      })
+      return
+    }
 
     // Update wave UI
     this.updateWaveUI()
@@ -1700,10 +1739,11 @@ export default class GameScene extends Phaser.Scene {
     return Phaser.Math.Clamp(x, padding, this.cameras.main.width - padding)
   }
 
-  private spawnWaveFormation(formation: any, enemyType: EnemyType) {
+  private spawnWaveFormation(formation: any, enemyType: EnemyType): number {
     const centerX = this.cameras.main.centerX
     const y = -50 // Spawn above the screen
     const spacing = formation.spacing || 60
+    let spawnedCount = 0
 
     switch (formation.type) {
       case 'single':
@@ -1711,33 +1751,39 @@ export default class GameScene extends Phaser.Scene {
         for (let i = 0; i < count; i++) {
           const offsetX = (i - (count - 1) / 2) * 100
           const spawnX = this.clampSpawnX(centerX + offsetX)
-          this.enemies.spawnEnemy(spawnX, y, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType)
+          if (enemy) spawnedCount++
         }
         break
 
       case 'line':
         for (let i = -4; i <= 4; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          this.enemies.spawnEnemy(spawnX, y, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType)
+          if (enemy) spawnedCount++
         }
         break
 
       case 'v':
         for (let i = -2; i <= 2; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          this.enemies.spawnEnemy(spawnX, y, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType)
+          if (enemy) spawnedCount++
         }
         for (let i = -3; i <= 3; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          this.enemies.spawnEnemy(spawnX, y - 40, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 40, enemyType)
+          if (enemy) spawnedCount++
         }
         for (let i = -2; i <= 2; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          this.enemies.spawnEnemy(spawnX, y - 80, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 80, enemyType)
+          if (enemy) spawnedCount++
         }
         for (let i = -1; i <= 1; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          this.enemies.spawnEnemy(spawnX, y - 120, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 120, enemyType)
+          if (enemy) spawnedCount++
         }
         break
 
@@ -1747,7 +1793,8 @@ export default class GameScene extends Phaser.Scene {
           const offsetX = Math.cos(angle) * 80
           const offsetY = Math.sin(angle) * 40
           const spawnX = this.clampSpawnX(centerX + offsetX)
-          this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType)
+          if (enemy) spawnedCount++
         }
         break
 
@@ -1755,10 +1802,13 @@ export default class GameScene extends Phaser.Scene {
         for (let i = -5; i <= 5; i++) {
           const waveOffset = Math.sin((i / 5) * Math.PI) * 30
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          this.enemies.spawnEnemy(spawnX, y + waveOffset, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + waveOffset, enemyType)
+          if (enemy) spawnedCount++
         }
         break
     }
+
+    return spawnedCount
   }
 
   private getFormationSize(formation: any): number {
@@ -1766,13 +1816,13 @@ export default class GameScene extends Phaser.Scene {
       case 'single':
         return formation.count || 1
       case 'line':
-        return 9
+        return 9 // -4 to 4
       case 'v':
-        return 17 // 5 + 7 + 5
+        return 20 // 5 + 7 + 5 + 3
       case 'circle':
         return 10
       case 'wave':
-        return 11
+        return 11 // -5 to 5
       default:
         return 1
     }
@@ -1897,6 +1947,13 @@ export default class GameScene extends Phaser.Scene {
 
     // Wave-based spawning (only if not paused)
     if (!this.isPaused) {
+      // Periodic pool status logging (every 10 seconds)
+      if (time - this.lastPoolLogTime > 10000) {
+        const poolStatus = this.enemies.getPoolStatus()
+        console.log(`[Pool Health Check] Active: ${poolStatus.active}/${this.enemies.getChildren().length}, Inactive: ${poolStatus.inactive}, Body Disabled: ${poolStatus.bodyDisabled}`)
+        this.lastPoolLogTime = time
+      }
+
       const activeEnemyCount = this.enemies.getChildren().filter((e: any) => e.active).length
 
       // Start first wave if not started yet
@@ -1905,7 +1962,10 @@ export default class GameScene extends Phaser.Scene {
       }
 
       // Check if all enemies are cleared and wave is in progress
-      if (this.waveInProgress && activeEnemyCount === 0 && this.currentWaveEnemyCount > 0) {
+      // Add grace period: don't check for completion until at least 2 seconds after wave starts
+      const timeSinceWaveStart = time - this.waveStartTime
+      if (this.waveInProgress && activeEnemyCount === 0 && this.currentWaveEnemyCount > 0 && timeSinceWaveStart > 2000) {
+        console.log(`Wave ${this.waveSystem.getCurrentWave()} complete! Time: ${timeSinceWaveStart}ms, Enemies spawned: ${this.currentWaveEnemyCount}`)
         // Wave cleared! Apply wave heal bonus
         const bonuses = this.gameState.getTotalBonuses()
         if (bonuses.waveHeal && bonuses.waveHeal > 0) {
@@ -1974,10 +2034,11 @@ export default class GameScene extends Phaser.Scene {
 
       // Failsafe 2: If no wave is in progress and no enemies are active, start next wave
       // This handles cases where the wave system got stuck
-      if (!this.waveInProgress && activeEnemyCount === 0 && this.waveSystem.getCurrentWave() > 0) {
+      // Increased delay to 5 seconds to avoid rapid wave advancement
+      if (!this.waveInProgress && activeEnemyCount === 0 && this.waveSystem.getCurrentWave() > 0 && !this.waveSystem.isComplete()) {
         const timeSinceWaveStart = time - this.waveStartTime
-        // Only trigger if it's been at least 2 seconds since last wave start (avoid rapid re-trigger)
-        if (timeSinceWaveStart > 2000) {
+        // Only trigger if it's been at least 5 seconds since last wave start (avoid rapid re-trigger)
+        if (timeSinceWaveStart > 5000) {
           console.warn('Wave system stuck - no wave in progress but no enemies. Starting next wave.')
           this.startNextWave()
         }
@@ -2035,12 +2096,8 @@ export default class GameScene extends Phaser.Scene {
         this.updatePowerUpDisplay()
       }
 
-      // Update survival timer and countdown (excluding paused time)
+      // Update survival timer (excluding paused time) - no display, just tracking for stats
       this.survivalTime = Math.floor((time - this.runStartTime - this.totalPausedTime) / 1000)
-      const timeRemaining = this.campaignManager.getWinTime() - this.survivalTime
-      const minutes = Math.floor(timeRemaining / 60)
-      const seconds = timeRemaining % 60
-      this.timerText.setText(`${minutes}:${seconds.toString().padStart(2, '0')}`)
 
       // Update health bar position to follow player
       this.updateHealthDisplay()
@@ -2245,8 +2302,10 @@ export default class GameScene extends Phaser.Scene {
     // Update XP text overlaid on bar
     this.xpText.setText(`XP: ${this.totalXP} / ${this.xpToNextLevel}`)
 
-    // Update XP bar width
-    const xpBarMaxWidth = 101 // 105 - 4 for padding (30% smaller than original)
+    // Update XP bar width (scaled for mobile)
+    const fontMult = MobileDetection.getFontSizeMultiplier()
+    const xpBarWidth = Math.floor(105 * fontMult)
+    const xpBarMaxWidth = xpBarWidth - 4 // Subtract padding
     const xpPercent = this.totalXP / this.xpToNextLevel
     const newWidth = xpBarMaxWidth * xpPercent
 
@@ -2768,11 +2827,21 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5).setDepth(302)
 
-    // Description
+    // Description with detailed stats
+    let descriptionText = config.description
+
+    // Add level-specific stats for passives
+    if (type === 'passive') {
+      const statsInfo = this.getPassiveStatsInfo(config.type, level)
+      if (statsInfo) {
+        descriptionText = `${config.description}\n\n${statsInfo}`
+      }
+    }
+
     const desc = this.add.text(
       panelX,
       panelY - panelHeight / 2 + 190,
-      config.description,
+      descriptionText,
       {
         fontFamily: 'Courier New',
         fontSize: '14px',
@@ -2813,7 +2882,56 @@ export default class GameScene extends Phaser.Scene {
     closeButton.on('pointerout', () => closeButton.setColor('#00ff00'))
   }
 
+  private getPassiveStatsInfo(passiveType: PassiveType, level: number): string | null {
+    switch (passiveType) {
+      case PassiveType.BALLISTICS:
+        return `+${20 * level}% Physical Damage`
+      case PassiveType.WEAPON_SPEED_UP:
+        return `+${10 * level}% Fire Rate`
+      case PassiveType.SHIP_ARMOR:
+        return `${5 * level} Damage Reduction`
+      case PassiveType.ENERGY_CORE:
+        return `+${15 * level}% Projectile Size\n+${10 * level}% Range`
+      case PassiveType.PICKUP_RADIUS:
+        return `+${30 * level}% Pickup Radius`
+      case PassiveType.EVASION_DRIVE:
+        return `${5 * level}% Dodge Chance`
+      case PassiveType.CRITICAL_SYSTEMS:
+        return `+${10 * level}% Crit Chance\n+${25 * level}% Crit Damage`
+      case PassiveType.THRUSTER_MOD:
+        return `+${15 * level}% Projectile Speed\n+${10 * level}% Move Speed`
+      case PassiveType.OVERDRIVE_REACTOR:
+        return `+${level * 20}% Attack Speed\nfor ${2 + level}s after XP pickup`
+      case PassiveType.SALVAGE_UNIT:
+        return `${level * 10}% Chance for\nGolden Pinata Enemies`
+      case PassiveType.DRONE_BAY_EXPANSION:
+        return `+${20 * level}% Drone Damage\n+${15 * level}% Drone Attack Speed`
+      case PassiveType.VAMPIRIC_FIRE:
+        return `Heal ${1 + level}% of\nFire Damage Dealt`
+      case PassiveType.FROST_HASTE:
+        return `+${5 * level}% Attack Speed\nper Cold Damage Hit (stacks)`
+      case PassiveType.STATIC_FORTUNE:
+        return `${10 * level}% Chance for\nLightning to Drop Credits`
+      case PassiveType.WINGMAN_PROTOCOL:
+        return `Summon ${level} Wingmen\n(${10 + level * 5} damage each)`
+      case PassiveType.TOXIC_ROUNDS:
+        return `${15 * level}% Poison Chance\n(${5 + level * 2} DPS for 3s)`
+      case PassiveType.PYROMANIAC:
+        return `+${30 * level}% Damage to\nBurning Enemies`
+      case PassiveType.SHATTER_STRIKE:
+        return `+${25 * level}% Damage to\nFrozen Enemies`
+      case PassiveType.HEMORRHAGE:
+        return `Apply Bleed on Hit\n+${10 * level}% Damage Taken`
+      default:
+        return null
+    }
+  }
+
   private showUpgradeOptions() {
+    // Get mobile spacing
+    const sceneHeight = this.cameras.main.height
+    const spacingMult = MobileDetection.getVerticalSpacingMultiplier()
+
     // Create semi-transparent overlay
     const overlay = this.add.rectangle(
       0, 0,
@@ -2823,25 +2941,27 @@ export default class GameScene extends Phaser.Scene {
       0.7
     ).setOrigin(0, 0).setDepth(100)
 
-    // Title
+    // Title - mobile responsive
+    const titleY = MobileDetection.getCompactYPosition(150, sceneHeight)
     const title = this.add.text(
       this.cameras.main.centerX,
-      150,
+      titleY,
       'LEVEL UP!',
       {
         fontFamily: 'Courier New',
-        fontSize: '48px',
+        fontSize: MobileDetection.scaleFontSize(48),
         color: '#ffff00',
       }
     ).setOrigin(0.5).setDepth(101)
 
+    const subtitleY = MobileDetection.getCompactYPosition(200, sceneHeight)
     const subtitle = this.add.text(
       this.cameras.main.centerX,
-      200,
+      subtitleY,
       'Choose an upgrade:',
       {
         fontFamily: 'Courier New',
-        fontSize: '24px',
+        fontSize: MobileDetection.scaleFontSize(24),
         color: '#ffffff',
       }
     ).setOrigin(0.5).setDepth(101)
@@ -2853,11 +2973,11 @@ export default class GameScene extends Phaser.Scene {
     const shuffled = Phaser.Utils.Array.Shuffle([...upgrades])
     const selectedUpgrades = shuffled.slice(0, 3)
 
-    // Create upgrade buttons
-    const buttonHeight = 140
-    const buttonWidth = 480
-    const buttonSpacing = 15
-    const startY = 280
+    // Create upgrade buttons - mobile responsive
+    const buttonHeight = Math.floor(140 * spacingMult)
+    const buttonWidth = 460  // Reduced to fit 540px screen with proper margins
+    const buttonSpacing = Math.floor(15 * spacingMult)
+    const startY = MobileDetection.getCompactYPosition(280, sceneHeight)
 
     const buttons: Phaser.GameObjects.GameObject[] = [overlay, title, subtitle]
 
@@ -2874,16 +2994,16 @@ export default class GameScene extends Phaser.Scene {
         bgColor
       ).setDepth(101).setInteractive({ useHandCursor: true })
 
-      // Add recommendation star indicator (bigger and positioned to avoid clipping)
+      // Add recommendation star indicator (positioned within button bounds)
       let starIcon: Phaser.GameObjects.Text | null = null
       if (upgrade.recommended) {
         starIcon = this.add.text(
-          this.cameras.main.centerX + 220,
+          this.cameras.main.centerX + 200,
           y - 20,
           '⭐',
           {
             fontFamily: 'Courier New',
-            fontSize: '48px',
+            fontSize: MobileDetection.scaleFontSize(48),
             color: '#ffff00',
           }
         ).setOrigin(0.5).setDepth(102)
@@ -2893,12 +3013,12 @@ export default class GameScene extends Phaser.Scene {
       let iconText: Phaser.GameObjects.Text | null = null
       if (upgrade.icon) {
         iconText = this.add.text(
-          this.cameras.main.centerX - 210,
+          this.cameras.main.centerX - 195,
           y,
           upgrade.icon,
           {
             fontFamily: 'Courier New',
-            fontSize: '56px',
+            fontSize: MobileDetection.scaleFontSize(56),
             color: upgrade.color || '#ffffff',
           }
         ).setOrigin(0.5).setDepth(102)
@@ -2908,12 +3028,12 @@ export default class GameScene extends Phaser.Scene {
       let evoBadge: Phaser.GameObjects.Text | null = null
       if (upgrade.enablesEvolution) {
         evoBadge = this.add.text(
-          this.cameras.main.centerX - 210,
+          this.cameras.main.centerX - 195,
           y + 45,
           'EVO',
           {
             fontFamily: 'Courier New',
-            fontSize: '16px',
+            fontSize: MobileDetection.scaleFontSize(16),
             color: '#000000',
             backgroundColor: '#ffff00',
             padding: { x: 4, y: 2 }
@@ -2923,26 +3043,26 @@ export default class GameScene extends Phaser.Scene {
 
       // Button text
       const nameText = this.add.text(
-        this.cameras.main.centerX - 135,
+        this.cameras.main.centerX - 125,
         y - 40,
         upgrade.name,
         {
           fontFamily: 'Courier New',
-          fontSize: '22px',
+          fontSize: MobileDetection.scaleFontSize(22),
           color: '#00ff00',
-          wordWrap: { width: 320, useAdvancedWrap: true }
+          wordWrap: { width: 300, useAdvancedWrap: true }
         }
       ).setOrigin(0, 0).setDepth(102)
 
       const descText = this.add.text(
-        this.cameras.main.centerX - 135,
+        this.cameras.main.centerX - 125,
         y + 0,
         upgrade.description,
         {
           fontFamily: 'Courier New',
-          fontSize: '16px',
+          fontSize: MobileDetection.scaleFontSize(16),
           color: '#aaaaaa',
-          wordWrap: { width: 320, useAdvancedWrap: true }
+          wordWrap: { width: 300, useAdvancedWrap: true }
         }
       ).setOrigin(0, 0).setDepth(102)
 
@@ -4498,9 +4618,6 @@ export default class GameScene extends Phaser.Scene {
       this.highScore = this.score
     }
 
-    // Unlock Scattershot after first game (lose)
-    const scattershotUnlocked = gameProgression.unlockScattershot()
-
     // Clear any existing game over UI
     this.gameOverUI.forEach(obj => obj.destroy())
     this.gameOverUI = []
@@ -4519,7 +4636,7 @@ export default class GameScene extends Phaser.Scene {
     ).setOrigin(0, 0).setDepth(200)
     this.gameOverUI.push(overlay)
 
-    const gameOverTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY - 200, sceneHeight)
+    const gameOverTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY - 260, sceneHeight)
     const gameOverText = this.add.text(
       this.cameras.main.centerX,
       gameOverTextY,
@@ -4544,7 +4661,7 @@ export default class GameScene extends Phaser.Scene {
     // Get passive names
     const passiveNames = this.passives.map(p => p.getConfig().name).join(', ')
 
-    const statsTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY - 100, sceneHeight)
+    const statsTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY - 160, sceneHeight)
     const statsText = this.add.text(
       this.cameras.main.centerX,
       statsTextY,
@@ -4558,41 +4675,13 @@ export default class GameScene extends Phaser.Scene {
     ).setOrigin(0.5).setDepth(201)
     this.gameOverUI.push(statsText)
 
-    // Display Scattershot unlock notification if newly unlocked
-    if (scattershotUnlocked) {
-      const unlockY = MobileDetection.getCompactYPosition(this.cameras.main.centerY - 20, sceneHeight)
-      const unlockNotification = this.add.text(
-        this.cameras.main.centerX,
-        unlockY,
-        '★ SHIP UNLOCKED: SCATTERSHOT ★\n(Close-Range Brawler - Ready to fly!)',
-        {
-          fontFamily: 'Courier New',
-          fontSize: '20px',
-          color: '#00ff00',
-          align: 'center',
-          backgroundColor: '#001100',
-          padding: { x: 10, y: 5 }
-        }
-      ).setOrigin(0.5).setDepth(201)
-      this.gameOverUI.push(unlockNotification)
-
-      // Pulse animation
-      this.tweens.add({
-        targets: unlockNotification,
-        scale: { from: 1.0, to: 1.1 },
-        duration: 800,
-        yoyo: true,
-        repeat: -1
-      })
-    }
-
     // Interactive Weapons and Passives display with icons and pips
-    const weaponsPassivesY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 30, sceneHeight)
+    const weaponsPassivesY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 50, sceneHeight)
     const weaponPassiveElements = this.createWeaponPassiveDisplay(weaponsPassivesY)
     this.gameOverUI.push(...weaponPassiveElements)
 
     // Revive button - positioned after weapons/passives display
-    const reviveButtonY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 200, sceneHeight)
+    const reviveButtonY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 240, sceneHeight)
     const reviveButton = this.add.rectangle(
       this.cameras.main.centerX,
       reviveButtonY,
@@ -4626,7 +4715,7 @@ export default class GameScene extends Phaser.Scene {
     // Revive handler - Coming Soon
     reviveButton.on('pointerdown', () => {
       // Show floating "Coming Soon" text
-      const comingSoonTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 200, sceneHeight)
+      const comingSoonTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 240, sceneHeight)
       const comingSoonText = this.add.text(
         this.cameras.main.centerX,
         comingSoonTextY,
@@ -4640,7 +4729,7 @@ export default class GameScene extends Phaser.Scene {
       ).setOrigin(0.5).setDepth(1000)
 
       // Animate it floating up and fading out
-      const animEndY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 100, sceneHeight)
+      const animEndY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 140, sceneHeight)
       this.tweens.add({
         targets: comingSoonText,
         y: animEndY,
@@ -4654,7 +4743,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Main menu button (positioned lower)
-    const mainMenuButtonY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 290, sceneHeight)
+    const mainMenuButtonY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 340, sceneHeight)
     const mainMenuButton = this.add.rectangle(
       this.cameras.main.centerX,
       mainMenuButtonY,
@@ -4779,17 +4868,9 @@ export default class GameScene extends Phaser.Scene {
     gameProgression.completeLevel(levelNumber)
     gameProgression.addCredits(creditsReward)
 
-    // Unlock Scattershot after first game (win)
-    const scattershotUnlocked = gameProgression.unlockScattershot()
-
     // Check for newly unlocked ships
     const shipsAfter = gameProgression.getUnlockedUnpurchasedShips()
     const newlyUnlockedShips = shipsAfter.filter(ship => !shipsBefore.includes(ship))
-
-    // Add Scattershot to newly unlocked ships if it was just unlocked
-    if (scattershotUnlocked && !newlyUnlockedShips.includes(CharacterType.SCATTERSHOT)) {
-      newlyUnlockedShips.push(CharacterType.SCATTERSHOT)
-    }
 
     // Record stats
     this.gameState.recordRun(this.score, this.survivalTime, this.killCount)
@@ -4977,18 +5058,22 @@ export default class GameScene extends Phaser.Scene {
   private handleEnemySplit(data: { x: number; y: number; count: number }) {
     // Spawn smaller enemies (swarmers) at the split location
     const swarmerHealth = ENEMY_CONFIGS[EnemyType.SWARMER].health
+    let actuallySpawned = 0
 
     for (let i = 0; i < data.count; i++) {
       const angle = (i / data.count) * Math.PI * 2
       const offsetX = Math.cos(angle) * 40
       const offsetY = Math.sin(angle) * 40
-      this.enemies.spawnEnemy(this.clampSpawnX(data.x + offsetX), data.y + offsetY, EnemyType.SWARMER)
-      this.healthTrackingWindow.push({ timestamp: this.time.now, health: swarmerHealth })
+      const enemy = this.enemies.spawnEnemy(this.clampSpawnX(data.x + offsetX), data.y + offsetY, EnemyType.SWARMER)
+      if (enemy) {
+        this.healthTrackingWindow.push({ timestamp: this.time.now, health: swarmerHealth })
+        actuallySpawned++
+      }
     }
 
-    // Update wave enemy count to track the newly spawned enemies
+    // Update wave enemy count to track the newly spawned enemies (only ones that actually spawned)
     if (this.waveInProgress) {
-      this.currentWaveEnemyCount += data.count
+      this.currentWaveEnemyCount += actuallySpawned
     }
   }
 
