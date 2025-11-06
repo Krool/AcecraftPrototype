@@ -371,16 +371,8 @@ export class Enemy extends Phaser.GameObjects.Text {
     this.scoreValue = config.scoreValue
     this.behavior = config.behavior
 
-    // Add to scene and physics immediately
-    scene.add.existing(this)
-    scene.physics.add.existing(this)
-
-    // Set body size to 1x1 initially and disable (will be restored when spawned)
-    const size = parseInt(config.fontSize)
-    this.body.setSize(1, 1)
-    this.body.enable = false
-
     // Start inactive and move off-screen to prevent collisions at 0,0
+    // Note: Will be added to scene and physics by the EnemyGroup
     this.setActive(false)
     this.setVisible(false)
     this.setPosition(-1000, -1000)
@@ -400,19 +392,26 @@ export class Enemy extends Phaser.GameObjects.Text {
       const config = ENEMY_CONFIGS[type]
 
       try {
-        // Set text first to ensure texture is initialized, then apply style
-        // This order prevents the "this.data is null" error
-        this.setText(config.symbol)
+        // Set all properties together using setStyle which handles text + style atomically
+        // This prevents the "this.data is null" error by doing everything in one operation
         this.setStyle({
           fontFamily: 'Courier New',
           fontSize: config.fontSize,
           color: config.color,
         })
+        this.setText(config.symbol)
         this.setStroke('#000000', 2)
       } catch (error) {
         console.error('Error setting enemy text/style:', error)
-        // If text setting fails, the enemy won't be usable
-        return
+        // Fallback: just set basic text without style updates
+        try {
+          this.setText(config.symbol)
+        } catch (e) {
+          // If even basic text fails, disable this enemy
+          this.setActive(false)
+          this.setVisible(false)
+          return
+        }
       }
 
       this.originalColor = config.color
@@ -440,16 +439,30 @@ export class Enemy extends Phaser.GameObjects.Text {
       this.createShield()
     }
 
+    // Ensure physics body exists (safety check)
+    if (!this.body && this.scene) {
+      console.error('Enemy body is null, recreating physics body')
+      this.scene.physics.add.existing(this)
+    } else if (!this.body && !this.scene) {
+      console.error('Enemy has no body and no scene reference - cannot spawn')
+      this.setActive(false)
+      this.setVisible(false)
+      return
+    }
+
     // Configure body FIRST, before activating
     // Update body size based on actual rendered text dimensions
     // This ensures hitbox matches the visual representation of multi-character symbols
     const textWidth = this.width
     const textHeight = this.height
-    this.body.setSize(textWidth, textHeight)
-    this.body.reset(x, y)
-    this.body.enable = true // Explicitly enable body
-    // Force Phaser to update collision bounds
-    this.body.updateFromGameObject()
+
+    if (this.body) {
+      this.body.setSize(textWidth, textHeight)
+      this.body.reset(x, y)
+      this.body.enable = true // Explicitly enable body
+      // Force Phaser to update collision bounds
+      this.body.updateFromGameObject()
+    }
 
     // Set position
     this.setPosition(x, y)
@@ -473,6 +486,8 @@ export class Enemy extends Phaser.GameObjects.Text {
   }
 
   private updateMovementPattern() {
+    if (!this.body) return // Safety check
+
     switch (this.behavior.movementPattern) {
       case 'straight':
         this.body.setVelocity(0, this.speed)
@@ -1207,8 +1222,14 @@ export class EnemyGroup extends Phaser.Physics.Arcade.Group {
 
     for (let i = 0; i < poolSize; i++) {
       const enemy = new Enemy(scene, 0, 0, EnemyType.DRONE)
-      this.add(enemy, false)  // false = already added to scene and physics in constructor
+      this.add(enemy, true)  // Let the group properly add to scene and physics
       this.pool.push(enemy)
+
+      // Ensure body is set up after being added by the group
+      if (enemy.body) {
+        enemy.body.setSize(1, 1)
+        enemy.body.enable = false
+      }
     }
   }
 
