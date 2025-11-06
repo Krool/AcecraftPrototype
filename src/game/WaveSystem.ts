@@ -27,6 +27,28 @@ export interface LevelWaves {
 }
 
 // Wave buckets for different difficulty tiers
+const VERY_EASY_BUCKET: WaveBucket = {
+  formations: [
+    {
+      type: 'line',
+      enemyTypes: [EnemyType.DRONE],
+      spacing: 60,
+    },
+    {
+      type: 'single',
+      enemyTypes: [EnemyType.DRONE],
+      count: 3,
+    },
+    {
+      type: 'wave',
+      enemyTypes: [EnemyType.DRONE],
+      spacing: 60,
+    },
+  ],
+  minEnemies: 3,
+  maxEnemies: 6,
+}
+
 const EASY_BUCKET: WaveBucket = {
   formations: [
     {
@@ -139,8 +161,18 @@ export class WaveSystem {
     const totalWaves = 15
     const waves: Wave[] = []
 
-    // Waves 1-4: Easy (small formations)
-    for (let i = 1; i <= 4; i++) {
+    // Waves 1-2: Very Easy (only basic drones)
+    for (let i = 1; i <= 2; i++) {
+      waves.push({
+        waveNumber: i,
+        buckets: [VERY_EASY_BUCKET],
+        isBoss: false,
+        isMiniBoss: false,
+      })
+    }
+
+    // Waves 3-4: Easy (small formations with sidewinders)
+    for (let i = 3; i <= 4; i++) {
       waves.push({
         waveNumber: i,
         buckets: [EASY_BUCKET],
