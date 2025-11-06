@@ -205,7 +205,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.PLASMA_AURA,
     damageType: DamageType.FIRE,
     baseDamage: 5,
-    baseFireRate: 130, // Reduced by 30% (was 100)
+    baseFireRate: 800, // Slowed down significantly (fires 12-20 projectiles per shot)
     description: 'Constant AOE damage around you',
     maxLevel: 3,
     icon: '⊛',
