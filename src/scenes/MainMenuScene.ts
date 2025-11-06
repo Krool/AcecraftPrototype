@@ -581,7 +581,7 @@ export default class MainMenuScene extends Phaser.Scene {
     })
 
     // Level selection panel
-    const panelWidth = 700
+    const panelWidth = 500
     const panelHeight = 600
     const panel = this.add.rectangle(
       centerX, centerY,
