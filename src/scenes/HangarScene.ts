@@ -152,7 +152,7 @@ export default class HangarScene extends Phaser.Scene {
     const characters = Object.values(CharacterType)
 
     const listX = 20
-    const itemWidth = 220
+    const itemWidth = 150 // Reduced from 220 to make detail panel wider
     const itemHeight = 45 // Reduced from 60 to fit more ships
     const padding = 3 // Reduced from 5 for tighter spacing
 
@@ -172,15 +172,6 @@ export default class HangarScene extends Phaser.Scene {
     const canPurchase = unlocked && !purchased && !autoPurchased
     const isSelected = this.selectedCharacter === type
     const isViewing = this.viewingCharacter === type
-
-    // Debug logging for Scattershot
-    if (type === CharacterType.SCATTERSHOT) {
-      console.log('[HangarScene] Scattershot status:')
-      console.log('  - unlocked:', unlocked)
-      console.log('  - purchased:', purchased)
-      console.log('  - isUnlocked (both):', isUnlocked)
-      console.log('  - canPurchase:', canPurchase)
-    }
 
     const container = this.add.container(x, y)
 
@@ -217,11 +208,11 @@ export default class HangarScene extends Phaser.Scene {
 
     // Ship symbol (ASCII art)
     const symbolText = this.add.text(
-      isSelected ? 35 : 20, height / 2,
+      isSelected ? 30 : 15, height / 2, // Adjusted for narrower list
       config.symbol,
       {
         fontFamily: 'Courier New',
-        fontSize: '20px', // Reduced from 24px
+        fontSize: '18px', // Reduced further for narrower list
         color: isUnlocked ? config.color : '#555555',
       }
     ).setOrigin(0, 0.5)
@@ -230,11 +221,11 @@ export default class HangarScene extends Phaser.Scene {
 
     // Ship name
     const nameText = this.add.text(
-      isSelected ? 75 : 60, height / 2 - 8, // Adjusted x positions
+      isSelected ? 60 : 45, height / 2 - 8, // Adjusted for narrower list
       config.name,
       {
         fontFamily: 'Courier New',
-        fontSize: '12px', // Reduced from 14px
+        fontSize: '11px', // Reduced for narrower list
         color: isUnlocked ? '#ffffff' : '#888888',
         fontStyle: 'bold',
       }
@@ -246,11 +237,11 @@ export default class HangarScene extends Phaser.Scene {
     if (!isUnlocked) {
       // Check if ship can be purchased (unlocked but not purchased)
       const lockText = this.add.text(
-        isSelected ? 75 : 60, height / 2 + 4, // Adjusted x positions and y offset
+        isSelected ? 60 : 45, height / 2 + 4, // Adjusted for narrower list
         canPurchase ? `${config.cost}¤` : `Unlock: Lv${config.unlockLevel}`,
         {
           fontFamily: 'Courier New',
-          fontSize: '10px', // Reduced from 11px
+          fontSize: '9px', // Reduced for narrower list
           color: canPurchase ? '#ffdd00' : '#ff6666',
         }
       ).setOrigin(0, 0)
@@ -273,11 +264,11 @@ export default class HangarScene extends Phaser.Scene {
     } else {
       const weaponConfig = WEAPON_CONFIGS[config.startingWeapon]
       const weaponText = this.add.text(
-        isSelected ? 75 : 60, height / 2 + 4, // Adjusted x positions and y offset
+        isSelected ? 60 : 45, height / 2 + 4, // Adjusted for narrower list
         `${weaponConfig.icon} ${weaponConfig.name}`,
         {
           fontFamily: 'Courier New',
-          fontSize: '10px', // Reduced from 11px
+          fontSize: '9px', // Reduced for narrower list
           color: '#ffaa00',
         }
       ).setOrigin(0, 0)
@@ -323,7 +314,7 @@ export default class HangarScene extends Phaser.Scene {
     const canPurchase = gameProgression.isShipUnlocked(this.viewingCharacter) && !gameProgression.isShipPurchased(this.viewingCharacter) && !autoPurchased
     const isSelected = this.selectedCharacter === this.viewingCharacter
 
-    const panelX = 260
+    const panelX = 180 // Reduced from 260 to give detail panel more space
     const panelY = 0
     const panelWidth = this.cameras.main.width - panelX - 20
     const panelHeight = this.cameras.main.height - 160
@@ -699,7 +690,7 @@ export default class HangarScene extends Phaser.Scene {
     // Set up interactive area for dragging (only over list area)
     const dragZone = this.add.zone(
       0, 140,
-      240, // Width of list area
+      170, // Width of list area (match itemWidth + margins)
       visibleHeight
     ).setOrigin(0, 0).setDepth(-1).setInteractive()
 
@@ -746,7 +737,7 @@ export default class HangarScene extends Phaser.Scene {
     // Add mouse wheel scrolling
     this.input.on('wheel', (pointer: Phaser.Input.Pointer, gameObjects: any[], deltaX: number, deltaY: number) => {
       // Only scroll if pointer is over the list area
-      if (pointer.x < 240 && pointer.y > 140) {
+      if (pointer.x < 170 && pointer.y > 140) {
         const scrollSpeed = 30 // Pixels per wheel tick
         this.scrollY = Phaser.Math.Clamp(
           this.scrollY + (deltaY > 0 ? scrollSpeed : -scrollSpeed),
@@ -766,7 +757,7 @@ export default class HangarScene extends Phaser.Scene {
   private createScrollIndicator(visibleHeight: number) {
     // Scrollbar background
     const scrollbarBg = this.add.rectangle(
-      235, 140,
+      165, 140, // Adjusted to match new list width
       4, visibleHeight,
       0x333344
     ).setOrigin(0, 0).setDepth(100)
@@ -774,7 +765,7 @@ export default class HangarScene extends Phaser.Scene {
     // Scrollbar thumb
     const thumbHeight = Math.max(40, (visibleHeight / (visibleHeight + this.maxScroll)) * visibleHeight)
     const scrollbarThumb = this.add.rectangle(
-      235, 140,
+      165, 140, // Adjusted to match new list width
       4, thumbHeight,
       0x00ffff
     ).setOrigin(0, 0).setDepth(101)
