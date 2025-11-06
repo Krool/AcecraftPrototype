@@ -14,6 +14,7 @@ import { CampaignManager } from '../game/Campaign'
 import { soundManager, SoundType } from '../game/SoundManager'
 import { WaveSystem } from '../game/WaveSystem'
 import { gameProgression } from '../game/GameProgression'
+import { MobileDetection } from '../utils/mobileDetection'
 
 export default class GameScene extends Phaser.Scene {
   private gameState!: GameState
@@ -47,6 +48,7 @@ export default class GameScene extends Phaser.Scene {
   private xpBarFill!: Phaser.GameObjects.Rectangle
   private isPaused: boolean = false
   private upgradeContainer!: Phaser.GameObjects.Container
+  private pendingLevelUps: number = 0 // Queue of pending level ups to show
 
   // Combo system
   private comboCount: number = 0
@@ -2207,8 +2209,22 @@ export default class GameScene extends Phaser.Scene {
     this.totalXP += xpValue
     this.updateXPDisplay()
 
-    // Check for level up
-    if (this.totalXP >= this.xpToNextLevel) {
+    // Check for level up (only allow one level up per XP collection)
+    // This prevents multiple level up prompts from stacking
+    if (this.totalXP >= this.xpToNextLevel && !this.isPaused) {
+      // Calculate how many levels we can gain
+      let levelsGained = 0
+      let remainingXP = this.totalXP
+      let nextLevelRequirement = this.xpToNextLevel
+
+      while (remainingXP >= nextLevelRequirement && levelsGained < 1) {
+        remainingXP -= nextLevelRequirement
+        nextLevelRequirement = Math.floor(nextLevelRequirement * 1.5)
+        levelsGained++
+      }
+
+      // Queue up level ups (but only trigger the first one immediately)
+      this.pendingLevelUps = levelsGained
       this.levelUp()
     }
   }
@@ -2245,6 +2261,11 @@ export default class GameScene extends Phaser.Scene {
     this.totalXP = 0
     this.xpToNextLevel = Math.floor(this.xpToNextLevel * 1.5) // XP requirement increases by 50% each level (flattened curve)
 
+    // Decrement pending level ups
+    if (this.pendingLevelUps > 0) {
+      this.pendingLevelUps--
+    }
+
     // Create sparkle burst effect around player
     this.createLevelUpBurst()
 
@@ -2259,6 +2280,25 @@ export default class GameScene extends Phaser.Scene {
     // Pause star field
     this.starFieldTweens.forEach(tween => tween.pause())
     this.showUpgradeOptions()
+  }
+
+  private resumeGame() {
+    // Track paused time before unpausing
+    if (this.pauseStartTime > 0) {
+      this.totalPausedTime += this.time.now - this.pauseStartTime
+      this.pauseStartTime = 0
+    }
+
+    // Check if there are pending level ups to show
+    if (this.pendingLevelUps > 0) {
+      // Don't unpause, show next level up instead
+      this.levelUp()
+    } else {
+      // Resume game normally
+      this.isPaused = false
+      this.physics.resume()
+      this.starFieldTweens.forEach(tween => tween.resume())
+    }
   }
 
   private createLevelUpBurst() {
@@ -2929,16 +2969,8 @@ export default class GameScene extends Phaser.Scene {
         if (evoBadge) evoBadge.destroy()
         button.destroy()
 
-        // Track paused time before unpausing
-        if (this.pauseStartTime > 0) {
-          this.totalPausedTime += this.time.now - this.pauseStartTime
-          this.pauseStartTime = 0
-        }
-
-        this.isPaused = false
-        this.physics.resume()
-        // Resume star field
-        this.starFieldTweens.forEach(tween => tween.resume())
+        // Resume game (will handle pending level ups automatically)
+        this.resumeGame()
       })
 
       buttons.push(button, nameText, descText)
@@ -3253,16 +3285,8 @@ export default class GameScene extends Phaser.Scene {
               upgradesText.destroy()
               overlay.destroy()
 
-              // Track paused time before unpausing
-              if (this.pauseStartTime > 0) {
-                this.totalPausedTime += this.time.now - this.pauseStartTime
-                this.pauseStartTime = 0
-              }
-
-              // Resume game
-              this.isPaused = false
-              this.physics.resume()
-              this.starFieldTweens.forEach(tween => tween.resume())
+              // Resume game (will handle pending level ups automatically)
+              this.resumeGame()
             }
           })
         })
@@ -3536,16 +3560,8 @@ export default class GameScene extends Phaser.Scene {
       closeButton.destroy()
       closeText.destroy()
 
-      // Track paused time before unpausing
-      if (this.pauseStartTime > 0) {
-        this.totalPausedTime += this.time.now - this.pauseStartTime
-        this.pauseStartTime = 0
-      }
-
       // Resume game
-      this.isPaused = false
-      this.physics.resume()
-      this.starFieldTweens.forEach(tween => tween.resume())
+      this.resumeGame()
     })
 
     uiElements.push(closeButton, closeText)
@@ -3793,16 +3809,8 @@ export default class GameScene extends Phaser.Scene {
         confirmButton.destroy()
         confirmText.destroy()
 
-        // Track paused time before unpausing
-        if (this.pauseStartTime > 0) {
-          this.totalPausedTime += this.time.now - this.pauseStartTime
-          this.pauseStartTime = 0
-        }
-
         // Resume game
-        this.isPaused = false
-        this.physics.resume()
-        this.starFieldTweens.forEach(tween => tween.resume())
+        this.resumeGame()
       }
     })
 
@@ -4497,6 +4505,10 @@ export default class GameScene extends Phaser.Scene {
     this.gameOverUI.forEach(obj => obj.destroy())
     this.gameOverUI = []
 
+    // Get mobile spacing multiplier
+    const spacingMult = MobileDetection.getVerticalSpacingMultiplier()
+    const sceneHeight = this.cameras.main.height
+
     // Create game over overlay
     const overlay = this.add.rectangle(
       0, 0,
@@ -4507,9 +4519,10 @@ export default class GameScene extends Phaser.Scene {
     ).setOrigin(0, 0).setDepth(200)
     this.gameOverUI.push(overlay)
 
+    const gameOverTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY - 200, sceneHeight)
     const gameOverText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 200,
+      gameOverTextY,
       'RUN COMPLETE',
       {
         fontFamily: 'Courier New',
@@ -4531,9 +4544,10 @@ export default class GameScene extends Phaser.Scene {
     // Get passive names
     const passiveNames = this.passives.map(p => p.getConfig().name).join(', ')
 
+    const statsTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY - 100, sceneHeight)
     const statsText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 100,
+      statsTextY,
       `Score: ${this.score}\nLevel: ${this.level}\nTime: ${minutes}:${seconds.toString().padStart(2, '0')}\nDPS: ${dps}\n\n${this.score === this.highScore && this.score > 0 ? 'NEW HIGH SCORE!' : `High Score: ${this.highScore}`}`,
       {
         fontFamily: 'Courier New',
@@ -4546,9 +4560,10 @@ export default class GameScene extends Phaser.Scene {
 
     // Display Scattershot unlock notification if newly unlocked
     if (scattershotUnlocked) {
+      const unlockY = MobileDetection.getCompactYPosition(this.cameras.main.centerY - 20, sceneHeight)
       const unlockNotification = this.add.text(
         this.cameras.main.centerX,
-        this.cameras.main.centerY - 20,
+        unlockY,
         '★ SHIP UNLOCKED: SCATTERSHOT ★\n(Close-Range Brawler - Ready to fly!)',
         {
           fontFamily: 'Courier New',
@@ -4572,13 +4587,15 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Interactive Weapons and Passives display with icons and pips
-    const weaponPassiveElements = this.createWeaponPassiveDisplay(this.cameras.main.centerY + 30)
+    const weaponsPassivesY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 30, sceneHeight)
+    const weaponPassiveElements = this.createWeaponPassiveDisplay(weaponsPassivesY)
     this.gameOverUI.push(...weaponPassiveElements)
 
     // Revive button - positioned after weapons/passives display
+    const reviveButtonY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 200, sceneHeight)
     const reviveButton = this.add.rectangle(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 200,
+      reviveButtonY,
       300,
       70,
       0x4a2a4a
@@ -4587,7 +4604,7 @@ export default class GameScene extends Phaser.Scene {
 
     const reviveText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 200,
+      reviveButtonY,
       'Revive Watch Ad',
       {
         fontFamily: 'Courier New',
@@ -4606,15 +4623,41 @@ export default class GameScene extends Phaser.Scene {
       reviveButton.setFillStyle(0x4a2a4a)
     })
 
-    // Revive handler
+    // Revive handler - Coming Soon
     reviveButton.on('pointerdown', () => {
-      this.revivePlayer()
+      // Show floating "Coming Soon" text
+      const comingSoonTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 200, sceneHeight)
+      const comingSoonText = this.add.text(
+        this.cameras.main.centerX,
+        comingSoonTextY,
+        'Revive Feature Coming Soon!',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '18px',
+          color: '#ffff00',
+          fontStyle: 'bold',
+        }
+      ).setOrigin(0.5).setDepth(1000)
+
+      // Animate it floating up and fading out
+      const animEndY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 100, sceneHeight)
+      this.tweens.add({
+        targets: comingSoonText,
+        y: animEndY,
+        alpha: 0,
+        duration: 2000,
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+          comingSoonText.destroy()
+        }
+      })
     })
 
     // Main menu button (positioned lower)
+    const mainMenuButtonY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 290, sceneHeight)
     const mainMenuButton = this.add.rectangle(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 290,
+      mainMenuButtonY,
       300,
       70,
       0x2a2a4a
@@ -4623,7 +4666,7 @@ export default class GameScene extends Phaser.Scene {
 
     const mainMenuText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY + 290,
+      mainMenuButtonY,
       'MAIN MENU',
       {
         fontFamily: 'Courier New',
@@ -4772,6 +4815,10 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private showVictoryOverlay(creditsEarned: number, newlyUnlockedShips: CharacterType[] = []) {
+    // Get mobile spacing multiplier
+    const spacingMult = MobileDetection.getVerticalSpacingMultiplier()
+    const sceneHeight = this.cameras.main.height
+
     // Create victory overlay
     const overlay = this.add.rectangle(
       0, 0,
@@ -4784,9 +4831,10 @@ export default class GameScene extends Phaser.Scene {
     // Create victory confetti burst
     this.createVictoryConfetti()
 
+    const victoryTextY = MobileDetection.getCompactYPosition(80, sceneHeight)
     const victoryText = this.add.text(
       this.cameras.main.centerX,
-      80,
+      victoryTextY,
       'VICTORY!',
       {
         fontFamily: 'Courier New',
@@ -4807,9 +4855,10 @@ export default class GameScene extends Phaser.Scene {
     // Get passive names
     const passiveNames = this.passives.map(p => p.getConfig().name).join(', ')
 
+    const statsTextY = MobileDetection.getCompactYPosition(150, sceneHeight)
     const statsText = this.add.text(
       this.cameras.main.centerX,
-      150,
+      statsTextY,
       `Time: ${minutes}:${seconds.toString().padStart(2, '0')} | Kills: ${this.killCount} | Score: ${this.score} | DPS: ${dps}`,
       {
         fontFamily: 'Courier New',
@@ -4820,12 +4869,14 @@ export default class GameScene extends Phaser.Scene {
     ).setOrigin(0.5).setDepth(201)
 
     // Interactive Weapons and Passives display with icons and pips - closer to stats
-    this.createWeaponPassiveDisplay(190)
+    const weaponsPassivesY = MobileDetection.getCompactYPosition(190, sceneHeight)
+    this.createWeaponPassiveDisplay(weaponsPassivesY)
 
     // Credits earned display - moved up
+    const creditsTextY = MobileDetection.getCompactYPosition(400, sceneHeight)
     const creditsText = this.add.text(
       this.cameras.main.centerX,
-      400,
+      creditsTextY,
       `REWARDS`,
       {
         fontFamily: 'Courier New',
@@ -4835,9 +4886,10 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5).setDepth(201)
 
+    const creditsValueY = MobileDetection.getCompactYPosition(425, sceneHeight)
     const creditsValue = this.add.text(
       this.cameras.main.centerX,
-      425,
+      creditsValueY,
       `${creditsEarned} ¤`,
       {
         fontFamily: 'Courier New',
@@ -4847,7 +4899,8 @@ export default class GameScene extends Phaser.Scene {
     ).setOrigin(0.5).setDepth(201)
 
     // Display newly unlocked ships - moved up
-    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, 470)
+    const unlocksY = MobileDetection.getCompactYPosition(470, sceneHeight)
+    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, unlocksY)
 
     // Position continue button at bottom of screen
     const continueButtonY = this.cameras.main.height - 60
@@ -5052,15 +5105,8 @@ export default class GameScene extends Phaser.Scene {
       noButton.destroy()
       noText.destroy()
 
-      // Track paused time before unpausing
-      if (this.pauseStartTime > 0) {
-        this.totalPausedTime += this.time.now - this.pauseStartTime
-        this.pauseStartTime = 0
-      }
-
-      this.isPaused = false
-      this.physics.resume()
-      this.starFieldTweens.forEach(tween => tween.resume())
+      // Resume game
+      this.resumeGame()
     })
   }
 
