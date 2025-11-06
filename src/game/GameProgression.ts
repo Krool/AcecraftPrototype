@@ -19,22 +19,44 @@ export class GameProgression {
   private loadProgression(): ProgressionData {
     const saved = localStorage.getItem(GameProgression.STORAGE_KEY)
 
+    let data: ProgressionData
     if (saved) {
       try {
-        return JSON.parse(saved)
+        data = JSON.parse(saved)
+        console.log('[GameProgression] Loaded progression from localStorage:', data)
       } catch (e) {
         console.error('Failed to load progression data:', e)
+        // Default progression - start with Vulcan unlocked and purchased
+        console.log('[GameProgression] No saved data, using default progression')
+        data = {
+          levelsCompleted: [],
+          unlockedShips: [CharacterType.VULCAN],
+          purchasedShips: [CharacterType.VULCAN],
+          totalCredits: 0,
+          highestLevelReached: 0,
+        }
+      }
+    } else {
+      // Default progression - start with Vulcan unlocked and purchased
+      console.log('[GameProgression] No saved data, using default progression')
+      data = {
+        levelsCompleted: [],
+        unlockedShips: [CharacterType.VULCAN],
+        purchasedShips: [CharacterType.VULCAN],
+        totalCredits: 0,
+        highestLevelReached: 0,
       }
     }
 
-    // Default progression - start with Vulcan unlocked and purchased
-    return {
-      levelsCompleted: [],
-      unlockedShips: [CharacterType.VULCAN],
-      purchasedShips: [CharacterType.VULCAN],
-      totalCredits: 0,
-      highestLevelReached: 0,
-    }
+    // Auto-unlock all ships with unlockLevel: 0 (starter ships)
+    Object.values(CHARACTER_CONFIGS).forEach(config => {
+      if (config.unlockLevel === 0 && !data.unlockedShips.includes(config.type)) {
+        data.unlockedShips.push(config.type)
+        console.log(`[GameProgression] Auto-unlocked ${config.name} (unlockLevel: 0)`)
+      }
+    })
+
+    return data
   }
 
   private saveProgression(): void {
@@ -174,6 +196,14 @@ export class GameProgression {
       totalCredits: 0,
       highestLevelReached: 0,
     }
+
+    // Auto-unlock all ships with unlockLevel: 0 (starter ships)
+    Object.values(CHARACTER_CONFIGS).forEach(config => {
+      if (config.unlockLevel === 0 && !this.data.unlockedShips.includes(config.type)) {
+        this.data.unlockedShips.push(config.type)
+      }
+    })
+
     this.saveProgression()
   }
 
@@ -200,23 +230,34 @@ export class GameProgression {
 
   // Unlock and purchase Scattershot for free (first game reward)
   unlockScattershot(): boolean {
+    console.log('[GameProgression] unlockScattershot called')
+    console.log('[GameProgression] Before - unlocked:', this.data.unlockedShips)
+    console.log('[GameProgression] Before - purchased:', this.data.purchasedShips)
+
     // Check if already unlocked and purchased
     if (this.data.unlockedShips.includes(CharacterType.SCATTERSHOT) &&
         this.data.purchasedShips.includes(CharacterType.SCATTERSHOT)) {
+      console.log('[GameProgression] Scattershot already unlocked and purchased')
       return false // Already unlocked
     }
 
     // Unlock Scattershot
     if (!this.data.unlockedShips.includes(CharacterType.SCATTERSHOT)) {
       this.data.unlockedShips.push(CharacterType.SCATTERSHOT)
+      console.log('[GameProgression] Added Scattershot to unlocked ships')
     }
 
     // Purchase Scattershot for free
     if (!this.data.purchasedShips.includes(CharacterType.SCATTERSHOT)) {
       this.data.purchasedShips.push(CharacterType.SCATTERSHOT)
+      console.log('[GameProgression] Added Scattershot to purchased ships')
     }
 
+    console.log('[GameProgression] After - unlocked:', this.data.unlockedShips)
+    console.log('[GameProgression] After - purchased:', this.data.purchasedShips)
+
     this.saveProgression()
+    console.log('[GameProgression] Progression saved')
     return true // Newly unlocked
   }
 }
