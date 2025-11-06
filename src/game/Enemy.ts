@@ -387,13 +387,20 @@ export class Enemy extends Phaser.GameObjects.Text {
   }
 
   spawn(x: number, y: number, type?: EnemyType) {
-    if (type) {
+    if (type && this.enemyType !== type) {
+      // Only update if changing type
       this.enemyType = type
       const config = ENEMY_CONFIGS[type]
 
       try {
-        // Set all properties together using setStyle which handles text + style atomically
-        // This prevents the "this.data is null" error by doing everything in one operation
+        // Check if text canvas is valid, if not we need to reinitialize
+        // @ts-ignore - accessing internal Phaser property
+        if (!this.canvas || !this.context) {
+          // Text object is corrupted, recreate it by setting text first
+          this.setText(config.symbol)
+        }
+
+        // Now safe to set style
         this.setStyle({
           fontFamily: 'Courier New',
           fontSize: config.fontSize,
@@ -417,6 +424,13 @@ export class Enemy extends Phaser.GameObjects.Text {
       this.originalColor = config.color
       this.maxHealth = config.health
       this.speed = config.speed
+      this.xpValue = config.xpValue
+      this.scoreValue = config.scoreValue
+      this.behavior = config.behavior
+    } else if (type) {
+      // Same type, just use existing config
+      const config = ENEMY_CONFIGS[type]
+      this.maxHealth = config.health
       this.xpValue = config.xpValue
       this.scoreValue = config.scoreValue
       this.behavior = config.behavior
