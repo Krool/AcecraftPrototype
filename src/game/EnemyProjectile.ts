@@ -8,7 +8,7 @@ export class EnemyProjectile extends Phaser.GameObjects.Text {
     super(scene, x, y, '●', {
       fontFamily: 'Courier New',
       fontSize: '48px',
-      color: '#ff8888',
+      color: '#ff0000', // Saturated red for enemy projectiles
     })
 
     this.setOrigin(0.5)

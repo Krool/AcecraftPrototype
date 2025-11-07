@@ -55,7 +55,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Basic pellets fired upward',
     maxLevel: 3,
     icon: '|',
-    color: '#ffff00',
+    color: '#ffff00', // Yellow for PHYSICAL
   },
   [WeaponType.SHOTGUN]: {
     name: 'Shotgun',
@@ -66,7 +66,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Wide spread, slow fire rate',
     maxLevel: 3,
     icon: '╪',
-    color: '#ff8800',
+    color: '#ffff00', // Yellow for PHYSICAL
   },
   [WeaponType.LIGHTNING]: {
     name: 'Lightning',
@@ -77,7 +77,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Chain lightning between enemies',
     maxLevel: 3,
     icon: '⚡',
-    color: '#00ffff',
+    color: '#00ff00', // Green for NATURE
   },
   [WeaponType.FIRE]: {
     name: 'Fire',
@@ -88,7 +88,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Explodes on contact (AOE)',
     maxLevel: 3,
     icon: '※',
-    color: '#ff4400',
+    color: '#ff8800', // Orange for FIRE
   },
   [WeaponType.GUN_BUDDY]: {
     name: 'Gun Buddy',
@@ -99,7 +99,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Floating ally that shoots',
     maxLevel: 3,
     icon: '◉',
-    color: '#88ff00',
+    color: '#ffff00', // Yellow for PHYSICAL
   },
   [WeaponType.ICE]: {
     name: 'Ice',
@@ -110,7 +110,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Freezes and slows enemies',
     maxLevel: 3,
     icon: '❄',
-    color: '#aaffff',
+    color: '#00aaff', // Blue for COLD
   },
   [WeaponType.WATER]: {
     name: 'Water',
@@ -121,7 +121,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Oscillating wave projectiles',
     maxLevel: 3,
     icon: '≈',
-    color: '#00aaff',
+    color: '#00aaff', // Blue for COLD
   },
   [WeaponType.EARTH]: {
     name: 'Earth',
@@ -132,7 +132,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Persistent damage zone',
     maxLevel: 3,
     icon: '▓',
-    color: '#884400',
+    color: '#00ff00', // Green for NATURE
   },
   [WeaponType.DARK]: {
     name: 'Dark',
@@ -143,7 +143,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Powerful slow projectiles',
     maxLevel: 3,
     icon: '●',
-    color: '#8800ff',
+    color: '#00aaff', // Blue for COLD
   },
   [WeaponType.LASER_BEAM]: {
     name: 'Laser Beam',
@@ -154,7 +154,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Burst fire beam, overheats',
     maxLevel: 3,
     icon: '━',
-    color: '#ff0000',
+    color: '#ff8800', // Orange for FIRE
   },
   [WeaponType.RICOCHET_DISK]: {
     name: 'Ricochet Disk',
@@ -165,7 +165,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Bounces off edges and enemies',
     maxLevel: 3,
     icon: '◇',
-    color: '#ffaa00',
+    color: '#ffff00', // Yellow for PHYSICAL
   },
   [WeaponType.MISSILE_POD]: {
     name: 'Missile Pod',
@@ -176,7 +176,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Seeking rockets with splash',
     maxLevel: 3,
     icon: '▲',
-    color: '#ff6600',
+    color: '#ffff00', // Yellow for PHYSICAL
   },
   [WeaponType.FIREBALL_RING]: {
     name: 'Fireball Ring',
@@ -187,7 +187,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Rotating fireballs orbit around you',
     maxLevel: 3,
     icon: '◉',
-    color: '#ff4400',
+    color: '#ff8800', // Orange for FIRE
   },
   [WeaponType.BLOOD_LANCE]: {
     name: 'Quill',
@@ -198,7 +198,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Ricochet weapon that applies poison',
     maxLevel: 3,
     icon: '╬',
-    color: '#00cc44',
+    color: '#00ff00', // Green for NATURE
   },
   [WeaponType.PLASMA_AURA]: {
     name: 'Plasma Aura',
@@ -209,7 +209,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Constant AOE damage around you',
     maxLevel: 3,
     icon: '⊛',
-    color: '#ff00ff',
+    color: '#ff8800', // Orange for FIRE
   },
   [WeaponType.VORTEX_BLADE]: {
     name: 'Blizzard',
@@ -220,7 +220,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Spiraling ice projectiles expand outward',
     maxLevel: 3,
     icon: '◈',
-    color: '#00ffff',
+    color: '#00aaff', // Blue for COLD
   },
   [WeaponType.ORBITAL_STRIKE]: {
     name: 'Orbital Strike',
@@ -231,7 +231,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Row of explosions across screen top',
     maxLevel: 3,
     icon: '▼',
-    color: '#ff8800',
+    color: '#ff8800', // Orange for FIRE
   },
   [WeaponType.MINIGUN]: {
     name: 'Minigun',
@@ -253,7 +253,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'Creates damage traps at your location',
     maxLevel: 3,
     icon: '✻',
-    color: '#88ff00',
+    color: '#00ff00', // Green for NATURE
   },
   [WeaponType.SNIPER_RIFLE]: {
     name: 'Sniper Rifle',
@@ -264,7 +264,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     description: 'High damage shots at nearest enemy',
     maxLevel: 3,
     icon: '═',
-    color: '#00aaff',
+    color: '#ffff00', // Yellow for PHYSICAL
   },
 }
 
