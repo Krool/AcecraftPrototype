@@ -5,7 +5,7 @@ import { EnemyProjectileGroup } from '../game/EnemyProjectile'
 import { XPDropGroup } from '../game/XPDrop'
 import { CreditDropGroup } from '../game/CreditDrop'
 import { PowerUpGroup, PowerUpType, POWERUP_CONFIGS } from '../game/PowerUp'
-import { Weapon, WeaponType, WeaponFactory, WeaponModifiers, DEFAULT_MODIFIERS } from '../game/Weapon'
+import { Weapon, WeaponType, WeaponFactory, WeaponModifiers, DEFAULT_MODIFIERS, DamageType } from '../game/Weapon'
 import { Passive, PassiveType, PassiveFactory, PlayerStats } from '../game/Passive'
 import { Character, CharacterType, CharacterFactory, CHARACTER_CONFIGS } from '../game/Character'
 import { EvolutionManager, EVOLUTION_RECIPES } from '../game/Evolution'
@@ -15,6 +15,35 @@ import { soundManager, SoundType } from '../game/SoundManager'
 import { WaveSystem } from '../game/WaveSystem'
 import { gameProgression } from '../game/GameProgression'
 import { MobileDetection } from '../utils/MobileDetection'
+
+// XP requirements for each level (index 0 = level 1→2, index 1 = level 2→3, etc.)
+const XP_REQUIREMENTS = [
+  75,   // Level 1→2 (was 25)
+  120,  // Level 2→3 (was 40)
+  150,  // Level 3→4 (was 50)
+  180,  // Level 4→5 (was 60)
+  210,  // Level 5→6 (was 70)
+  240,  // Level 6→7 (was 80)
+  300,  // Level 7→8 (was 100)
+  360,  // Level 8→9 (was 120)
+  420,  // Level 9→10 (was 140)
+  480,  // Level 10→11 (was 160)
+  540,  // Level 11→12 (was 180)
+  600,  // Level 12→13 (was 200)
+  750,  // Level 13→14 (was 250)
+  900,  // Level 14→15 (was 300)
+  1200, // Level 15→16 (was 400)
+  1500, // Level 16→17 (was 500)
+  2250, // Level 17→18 (was 750)
+  3000, // Level 18→19 (was 1000)
+  4500, // Level 19→20 (was 1500)
+  6000, // Level 20→21 (was 2000)
+  9000, // Level 21→22 (was 3000)
+  12000, // Level 22→23 (was 4000)
+  15000, // Level 23→24 (was 5000)
+  22500, // Level 24→25 (was 7500)
+  30000, // Level 25+ (was 10000)
+]
 
 export default class GameScene extends Phaser.Scene {
   private gameState!: GameState
@@ -37,7 +66,7 @@ export default class GameScene extends Phaser.Scene {
   private totalXP: number = 0
   private xpText!: Phaser.GameObjects.Text
   private level: number = 1
-  private xpToNextLevel: number = 10
+  private xpToNextLevel: number = 75 // Will be set from XP_REQUIREMENTS table
   private levelText!: Phaser.GameObjects.Text
   private health: number = 100
   private maxHealth: number = 100
@@ -85,6 +114,7 @@ export default class GameScene extends Phaser.Scene {
   private waveInProgress: boolean = false
   private waveStartTime: number = 0 // Failsafe: track when wave started
   private lastPoolLogTime: number = 0 // Track last pool status log
+  private consecutiveFailedWaves: number = 0 // Track consecutive waves that failed to spawn enemies
   private highScore: number = 0
 
   // Character stats tracking
@@ -157,7 +187,7 @@ export default class GameScene extends Phaser.Scene {
     // Reset all game state variables (important for scene restart)
     this.totalXP = 0
     this.level = 1
-    this.xpToNextLevel = 10
+    this.xpToNextLevel = XP_REQUIREMENTS[0] // Level 1→2 requires 25 XP
     this.health = 100
     this.maxHealth = 100
     this.isPaused = false
@@ -623,6 +653,7 @@ export default class GameScene extends Phaser.Scene {
     this.events.on('enemyExplosion', this.handleEnemyExplosion, this)
     this.events.on('enemySplit', this.handleEnemySplit, this)
     this.events.on('healNearbyEnemies', this.handleHealNearby, this)
+    this.events.on('laserFire', this.handleLaserFire, this)
 
     // Add touch/mouse controls (invisible joystick simulation)
     this.setupTouchControls()
@@ -962,7 +993,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Apply power-up effects
     if (this.hasRapidFirePowerUp) {
-      this.weaponModifiers.fireRateMultiplier *= 4.0 // 4x faster fire rate
+      this.weaponModifiers.damageMultiplier *= 3.0 // 3x damage boost
     }
 
     // Apply calculated stats to game state
@@ -1039,6 +1070,22 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  private getDamageTypeName(damageType: DamageType): string {
+    switch (damageType) {
+      case DamageType.FIRE:
+        return 'Fire'
+      case DamageType.COLD:
+        return 'Cold'
+      case DamageType.NATURE:
+        return 'Nature'
+      case DamageType.CONTROL:
+        return 'Control'
+      case DamageType.PHYSICAL:
+      default:
+        return 'Physical'
+    }
+  }
+
   private generateUpgradeOptions(): Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean }> {
     const options: Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean }> = []
 
@@ -1091,9 +1138,11 @@ export default class GameScene extends Phaser.Scene {
         const nextDamage = Math.floor(config.baseDamage * (1 + currentLevel * 0.2))
         const nextFireRate = Math.floor((config.baseFireRate * (1 - currentLevel * 0.1)) / this.weaponModifiers.fireRateMultiplier)
 
+        const damageTypeName = this.getDamageTypeName(config.damageType)
         const description = `Level ${currentLevel} → ${currentLevel + 1}\n` +
           `Damage: ${currentDamage} → ${nextDamage} (+${nextDamage - currentDamage})\n` +
-          `Fire Rate: ${Math.round(currentFireRate)}ms → ${Math.round(nextFireRate)}ms`
+          `Fire Rate: ${Math.round(currentFireRate)}ms → ${Math.round(nextFireRate)}ms\n` +
+          `Damage Type: ${damageTypeName}`
 
         options.push({
           name: `${config.name} Level Up`,
@@ -1142,7 +1191,8 @@ export default class GameScene extends Phaser.Scene {
           const evolutionHint = this.checkEvolutionHint(type, undefined)
 
           // Show initial stats for new weapon
-          const statsInfo = `Damage: ${config.baseDamage} | Fire Rate: ${config.baseFireRate}ms`
+          const damageTypeName = this.getDamageTypeName(config.damageType)
+          const statsInfo = `Damage: ${config.baseDamage} | Fire Rate: ${config.baseFireRate}ms\nDamage Type: ${damageTypeName}`
           const description = evolutionHint
             ? `${config.description}\n${statsInfo}\n\n${evolutionHint}`
             : `${config.description}\n${statsInfo}`
@@ -1668,6 +1718,25 @@ export default class GameScene extends Phaser.Scene {
 
     console.log(`Starting wave ${this.waveSystem.getCurrentWave()}/${this.waveSystem.getTotalWaves()}`)
 
+    // CRITICAL: Check if pool is too full before spawning
+    // If more than 100 enemies are still active, force clear them first to prevent cascading spawn failures
+    const poolStatus = this.enemies.getPoolStatus()
+    if (poolStatus.active > 100) {
+      console.warn(`[Wave Start] Pool has ${poolStatus.active} active enemies - force clearing to prevent spawn failures`)
+      this.enemies.getChildren().forEach((enemy: any) => {
+        if (enemy.active) {
+          // Properly deactivate without visual effects
+          enemy.setActive(false)
+          enemy.setVisible(false)
+          enemy.setPosition(-1000, -1000)
+          if (enemy.body) {
+            enemy.body.setVelocity(0, 0)
+            enemy.body.enable = false
+          }
+        }
+      })
+    }
+
     this.waveInProgress = true
     this.currentWaveEnemyCount = 0
     this.waveStartTime = this.time.now // Track when wave started for failsafe
@@ -1730,19 +1799,34 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Log pool status after spawning
-    const poolStatus = this.enemies.getPoolStatus()
+    const poolStatusAfter = this.enemies.getPoolStatus()
     console.log(`Wave ${this.waveSystem.getCurrentWave()} spawned ${this.currentWaveEnemyCount} enemies`)
-    console.log(`[Pool Status] Total: ${poolStatus.total}, Active: ${poolStatus.active}, Inactive: ${poolStatus.inactive}, Body Disabled: ${poolStatus.bodyDisabled}`)
+    console.log(`[Pool Status] Total: ${poolStatusAfter.total}, Active: ${poolStatusAfter.active}, Inactive: ${poolStatusAfter.inactive}, Body Disabled: ${poolStatusAfter.bodyDisabled}`)
 
-    // If no enemies could be spawned, immediately advance to next wave
+    // If no enemies could be spawned, check for cascading failure
     if (this.currentWaveEnemyCount === 0) {
-      console.warn('No enemies spawned for wave, advancing immediately')
+      this.consecutiveFailedWaves++
+      console.warn(`No enemies spawned for wave (${this.consecutiveFailedWaves} consecutive failures)`)
+
+      // If we've had 3+ consecutive failed spawns, something is seriously wrong
+      // Stop trying to advance waves and let the failsafe timer handle it
+      if (this.consecutiveFailedWaves >= 3) {
+        console.error('CRITICAL: 3+ consecutive wave spawn failures detected. Halting automatic wave advancement to prevent cascading failure.')
+        console.error('Pool will be cleared by failsafe timer, then wave will advance naturally.')
+        this.waveInProgress = false
+        return
+      }
+
+      // Try next wave with a longer delay to allow pool cleanup
       this.waveInProgress = false
-      this.time.delayedCall(500, () => {
+      this.time.delayedCall(2000, () => {
         this.startNextWave()
       })
       return
     }
+
+    // Successfully spawned enemies - reset failure counter
+    this.consecutiveFailedWaves = 0
 
     // Update wave UI
     this.updateWaveUI()
@@ -2014,6 +2098,7 @@ export default class GameScene extends Phaser.Scene {
         // Start next wave immediately
         this.waveInProgress = false
         this.currentWaveEnemyCount = 0
+        this.consecutiveFailedWaves = 0 // Reset failure counter on successful wave completion
         this.time.delayedCall(1000, () => {
           this.startNextWave()
         })
@@ -2026,7 +2111,7 @@ export default class GameScene extends Phaser.Scene {
         const waveDuration = time - this.waveStartTime
         const waveData = this.waveSystem.getWaveData()
         const isBossWave = waveData && (waveData.isBoss || waveData.isMiniBoss)
-        const WAVE_TIMEOUT = isBossWave ? 120000 : 15000 // 120 seconds for boss waves, 15 for normal
+        const WAVE_TIMEOUT = isBossWave ? 180000 : 45000 // 180 seconds for boss waves, 45 for normal (increased to allow enemies to despawn naturally)
 
         if (waveDuration > WAVE_TIMEOUT) {
           console.warn(`Wave failsafe triggered! Wave has been running for ${waveDuration / 1000}s. Active enemies: ${activeEnemyCount}`)
@@ -2049,11 +2134,11 @@ export default class GameScene extends Phaser.Scene {
 
       // Failsafe 2: If no wave is in progress and no enemies are active, start next wave
       // This handles cases where the wave system got stuck
-      // Increased delay to 5 seconds to avoid rapid wave advancement
+      // Increased delay to 10 seconds to avoid rapid wave advancement and allow time for enemies to despawn
       if (!this.waveInProgress && activeEnemyCount === 0 && this.waveSystem.getCurrentWave() > 0 && !this.waveSystem.isComplete()) {
         const timeSinceWaveStart = time - this.waveStartTime
-        // Only trigger if it's been at least 5 seconds since last wave start (avoid rapid re-trigger)
-        if (timeSinceWaveStart > 5000) {
+        // Only trigger if it's been at least 10 seconds since last wave start (avoid rapid re-trigger)
+        if (timeSinceWaveStart > 10000) {
           console.warn('Wave system stuck - no wave in progress but no enemies. Starting next wave.')
           this.startNextWave()
         }
@@ -2126,7 +2211,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Play enemy explosion sound
-    soundManager.play(SoundType.ENEMY_EXPLODE, 0.3)
+    soundManager.playEnemyExplode(0.3)
 
     // Increment combo and kill count
     this.comboCount++
@@ -2313,6 +2398,48 @@ export default class GameScene extends Phaser.Scene {
     this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
   }
 
+  private handleLaserFire(data: { x: number; y: number; damage: number; beamCount: number; maxRange: number; color: string }) {
+    // RAYCAST laser implementation - no projectiles!
+    // Find nearest enemies and draw laser lines to them
+
+    const activeEnemies = this.enemies.getChildren().filter((e: any) => e.active) as any[]
+    if (activeEnemies.length === 0) return
+
+    // Sort enemies by distance
+    activeEnemies.sort((a: any, b: any) => {
+      const distA = Phaser.Math.Distance.Between(data.x, data.y, a.x, a.y)
+      const distB = Phaser.Math.Distance.Between(data.x, data.y, b.x, b.y)
+      return distA - distB
+    })
+
+    // Fire beams at nearest enemies (up to beamCount)
+    const targetsToHit = Math.min(data.beamCount, activeEnemies.length)
+
+    for (let i = 0; i < targetsToHit; i++) {
+      const enemy = activeEnemies[i]
+      const distance = Phaser.Math.Distance.Between(data.x, data.y, enemy.x, enemy.y)
+
+      // Only hit enemies within range
+      if (distance <= data.maxRange) {
+        // Apply damage directly
+        enemy.takeDamage(data.damage)
+
+        // Draw visual laser line
+        const laserLine = this.add.line(0, 0, data.x, data.y, enemy.x, enemy.y, Phaser.Display.Color.HexStringToColor(data.color).color)
+        laserLine.setLineWidth(2)
+        laserLine.setDepth(25)
+
+        // Fade out and destroy the line
+        this.tweens.add({
+          targets: laserLine,
+          alpha: 0,
+          duration: 150,
+          onComplete: () => laserLine.destroy()
+        })
+      }
+    }
+  }
+
   private updateXPDisplay() {
     // Update XP text overlaid on bar
     this.xpText.setText(`XP: ${this.totalXP} / ${this.xpToNextLevel}`)
@@ -2331,7 +2458,11 @@ export default class GameScene extends Phaser.Scene {
 
     this.level++
     this.totalXP = 0
-    this.xpToNextLevel = Math.floor(this.xpToNextLevel * 1.5) // XP requirement increases by 50% each level (flattened curve)
+    // Use predefined XP requirements table, or use last value for levels beyond the table
+    const nextLevelIndex = this.level - 1 // level 2 uses index 1 (level 2→3)
+    this.xpToNextLevel = nextLevelIndex < XP_REQUIREMENTS.length
+      ? XP_REQUIREMENTS[nextLevelIndex]
+      : XP_REQUIREMENTS[XP_REQUIREMENTS.length - 1]
 
     // Decrement pending level ups
     if (this.pendingLevelUps > 0) {
@@ -2536,7 +2667,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Display each unlocked ship
-    let shipYOffset = baseY + 30
+    let shipYOffset = baseY + 50
     newlyUnlockedShips.forEach((shipType, index) => {
       const shipConfig = CHARACTER_CONFIGS[shipType]
 
@@ -2843,11 +2974,21 @@ export default class GameScene extends Phaser.Scene {
     // Description with detailed stats
     let descriptionText = config.description
 
-    // Add level-specific stats for passives
+    // Add level-specific stats
     if (type === 'passive') {
-      const statsInfo = this.getPassiveStatsInfo(config.type, level)
-      if (statsInfo) {
-        descriptionText = `${config.description}\n\n${statsInfo}`
+      const currentStats = this.getPassiveStatsInfo(config.type, level)
+      const maxStats = level < maxLevel ? this.getPassiveStatsInfo(config.type, maxLevel) : null
+
+      if (currentStats) {
+        descriptionText = `${config.description}\n\nCurrent (Lv.${level}):\n${currentStats}`
+        if (maxStats) {
+          descriptionText += `\n\nMax (Lv.${maxLevel}):\n${maxStats}`
+        }
+      }
+    } else if (type === 'weapon') {
+      const weaponStats = this.getWeaponStatsInfo(config.type, level, maxLevel)
+      if (weaponStats) {
+        descriptionText = `${config.description}\n\n${weaponStats}`
       }
     }
 
@@ -2906,7 +3047,7 @@ export default class GameScene extends Phaser.Scene {
       case PassiveType.ENERGY_CORE:
         return `+${15 * level}% Projectile Size\n+${10 * level}% Range`
       case PassiveType.PICKUP_RADIUS:
-        return `+${30 * level}% Pickup Radius`
+        return `+${50 * level} Pickup Radius`
       case PassiveType.EVASION_DRIVE:
         return `${5 * level}% Dodge Chance`
       case PassiveType.CRITICAL_SYSTEMS:
@@ -2924,7 +3065,7 @@ export default class GameScene extends Phaser.Scene {
       case PassiveType.FROST_HASTE:
         return `+${5 * level}% Attack Speed\nper Cold Damage Hit (stacks)`
       case PassiveType.STATIC_FORTUNE:
-        return `${10 * level}% Chance for\nLightning to Drop Credits`
+        return `${10 * level}% Chance for\nNature Damage to Drop Credits`
       case PassiveType.WINGMAN_PROTOCOL:
         return `Summon ${level} Wingmen\n(${10 + level * 5} damage each)`
       case PassiveType.TOXIC_ROUNDS:
@@ -2938,6 +3079,46 @@ export default class GameScene extends Phaser.Scene {
       default:
         return null
     }
+  }
+
+  private getWeaponStatsInfo(weaponType: WeaponType, level: number, maxLevel: number): string | null {
+    const weapon = this.weapons.find(w => w.getConfig().type === weaponType)
+    if (!weapon) return null
+
+    const config = weapon.getConfig()
+    let info = `Current (Lv.${level}):\n`
+
+    // Add weapon-specific stats based on type
+    switch (weaponType) {
+      case WeaponType.CANNON:
+        info += `${20 + (level - 1) * 5} Damage\n${1200 - (level - 1) * 100}ms Cooldown`
+        if (level < maxLevel) {
+          info += `\n\nMax (Lv.${maxLevel}):\n${20 + (maxLevel - 1) * 5} Damage\n${1200 - (maxLevel - 1) * 100}ms Cooldown`
+        }
+        break
+      case WeaponType.LIGHTNING:
+        info += `${12 + (level - 1) * 4} Damage\nChain ${2 + level} times\nInstant hit`
+        if (level < maxLevel) {
+          info += `\n\nMax (Lv.${maxLevel}):\n${12 + (maxLevel - 1) * 4} Damage\nChain ${2 + maxLevel} times`
+        }
+        break
+      case WeaponType.GUN_BUDDY:
+        info += `${10 + (level - 1) * 3} Damage\n${level} Buddy(ies)\nAuto-targeting`
+        if (level < maxLevel) {
+          info += `\n\nMax (Lv.${maxLevel}):\n${10 + (maxLevel - 1) * 3} Damage\n${maxLevel} Buddies`
+        }
+        break
+      case WeaponType.BLOOD_LANCE:
+        info += `${18 + (level - 1) * 6} Damage\nBounces ${5 + level * 2} times\nPierces ${5 + level * 2}`
+        if (level < maxLevel) {
+          info += `\n\nMax (Lv.${maxLevel}):\n${18 + (maxLevel - 1) * 6} Damage\nBounces ${5 + maxLevel * 2} times`
+        }
+        break
+      default:
+        return null
+    }
+
+    return info
   }
 
   private showUpgradeOptions() {
@@ -3485,7 +3666,7 @@ export default class GameScene extends Phaser.Scene {
       this.buffDisplays.forEach((buff, key) => {
         const timeRemaining = Math.max(0, Math.ceil((buff.duration - (this.time.now - buff.startTime)) / 1000))
         const buffName = key === 'shield' ? 'Shield' :
-                        key === 'rapidFire' ? 'Rapid Fire' :
+                        key === 'rapidFire' ? 'Damage Boost' :
                         key === 'magnet' ? 'Magnet' : key
 
         const buffText = this.add.text(
@@ -4187,6 +4368,11 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private showDamageNumber(x: number, y: number, damage: number, isCritical: boolean = false) {
+    // Only show damage numbers for critical hits
+    if (!isCritical) {
+      return
+    }
+
     const damageText = this.add.text(x, y, Math.floor(damage).toString(), {
       fontFamily: 'Courier New',
       fontSize: isCritical ? '48px' : '36px',
@@ -4309,10 +4495,14 @@ export default class GameScene extends Phaser.Scene {
         break
 
       case PowerUpType.NUKE:
-        // Kill all enemies on screen
+        // Kill all enemies on screen (except bosses and mini-bosses)
         this.enemies.getChildren().forEach((enemy: any) => {
           if (enemy.active) {
-            enemy.takeDamage(9999)
+            const enemyType = enemy.getType()
+            // Don't instantly kill bosses or mini-bosses
+            if (enemyType !== 'BOSS' && enemyType !== 'MINI_BOSS') {
+              enemy.takeDamage(9999)
+            }
           }
         })
         // Screen flash
@@ -4437,7 +4627,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.hasRapidFirePowerUp) {
       buffsToShow.push({
         key: 'rapidfire',
-        icon: '»',
+        icon: '↑',
         color: 0xff88ff, // Consistent pink/magenta for all buffs
         startTime: this.rapidFireEndTime - 8000,
         endTime: this.rapidFireEndTime,

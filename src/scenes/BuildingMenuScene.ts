@@ -755,6 +755,9 @@ export default class BuildingMenuScene extends Phaser.Scene {
     if (buttonBg && buttonBorder && buttonText && costText) {
       const originalX = buttonBg.x
 
+      // Kill existing tweens to prevent stacking
+      this.tweens.killTweensOf([buttonBg, buttonBorder, buttonText, costText])
+
       this.tweens.add({
         targets: [buttonBg, buttonBorder, buttonText, costText],
         x: originalX - 8,
@@ -768,6 +771,9 @@ export default class BuildingMenuScene extends Phaser.Scene {
     // Flash the credits display - scale pulse and color flash
     if (creditsDisplay) {
       const originalScale = creditsDisplay.scale
+
+      // Kill existing tweens to prevent stacking
+      this.tweens.killTweensOf(creditsDisplay)
 
       this.tweens.add({
         targets: creditsDisplay,

@@ -2,7 +2,7 @@ import Phaser from 'phaser'
 
 export enum PowerUpType {
   SHIELD = 'SHIELD',         // Temporary invincibility
-  RAPID_FIRE = 'RAPID_FIRE', // Temporary fire rate boost
+  RAPID_FIRE = 'RAPID_FIRE', // Temporary damage boost
   NUKE = 'NUKE',             // Instant clear all enemies
   MAGNET = 'MAGNET',         // Attract all XP
   CHEST = 'CHEST',           // Treasure chest: random 1, 3, or 5 upgrades
@@ -22,7 +22,7 @@ export const POWERUP_CONFIGS: Record<PowerUpType, PowerUpConfig> = {
     duration: 5000, // 5 seconds
   },
   [PowerUpType.RAPID_FIRE]: {
-    symbol: '»',
+    symbol: '↑',
     color: '#ff88ff', // Consistent pink/magenta for all power-ups
     duration: 8000, // 8 seconds
   },
@@ -70,6 +70,10 @@ export class PowerUp extends Phaser.GameObjects.Text {
     // Add to scene and enable physics
     scene.add.existing(this)
     scene.physics.add.existing(this)
+
+    // Make collision body larger for easier pickup (3x bigger)
+    this.body.setSize(144, 144) // 48px text * 3
+    this.body.setOffset(-48, -48) // Center the larger body
 
     // Start inactive and move off-screen to prevent collisions at 0,0
     this.setActive(false)

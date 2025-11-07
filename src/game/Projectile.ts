@@ -240,7 +240,7 @@ export class Projectile extends Phaser.GameObjects.Text {
   update() {
     // Create trail particles based on projectile type
     const currentTime = this.scene.time.now
-    if (currentTime - this.lastTrailTime > 60) {
+    if (currentTime - this.lastTrailTime > 150) {
       this.createTrailParticle()
       this.lastTrailTime = currentTime
     }

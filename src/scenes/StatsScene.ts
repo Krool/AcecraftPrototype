@@ -1,9 +1,10 @@
 import Phaser from 'phaser'
 import { GameState } from '../game/GameState'
 import { CharacterType, CHARACTER_CONFIGS, CharacterConfig } from '../game/Character'
-import { WeaponType, WEAPON_CONFIGS, WeaponConfig } from '../game/Weapon'
+import { WeaponType, WEAPON_CONFIGS, WeaponConfig, DamageType } from '../game/Weapon'
 import { PassiveType, PASSIVE_CONFIGS, PassiveConfig } from '../game/Passive'
 import { EvolutionType, EVOLUTION_RECIPES, EvolutionRecipe, EVOLUTION_CONFIGS } from '../game/Evolution'
+import { gameProgression } from '../game/GameProgression'
 
 type TabType = 'ships' | 'weapons' | 'passives' | 'evolutions'
 
@@ -150,10 +151,17 @@ export default class StatsScene extends Phaser.Scene {
 
     switch (this.currentTab) {
       case 'ships':
-        items = Object.values(CharacterType).map(type => ({
-          type,
-          config: CHARACTER_CONFIGS[type]
-        }))
+        // Only show ships that are unlockable at current progression level
+        const highestLevel = gameProgression.getHighestLevel()
+        items = Object.values(CharacterType)
+          .filter(type => {
+            const config = CHARACTER_CONFIGS[type]
+            return config.unlockLevel <= highestLevel + 1
+          })
+          .map(type => ({
+            type,
+            config: CHARACTER_CONFIGS[type]
+          }))
         break
       case 'weapons':
         items = Object.values(WeaponType).map(type => ({
@@ -354,8 +362,26 @@ export default class StatsScene extends Phaser.Scene {
 
     this.detailContainer.add([iconText, nameText, descText])
 
+    // Add damage type for weapons
+    if (this.currentTab === 'weapons') {
+      const weaponConfig = config as WeaponConfig
+      const damageTypeColor = this.getDamageTypeColor(weaponConfig.damageType)
+      const damageTypeText = this.add.text(
+        detailX + 100,
+        detailY + 100,
+        `Damage Type: ${weaponConfig.damageType}`,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: damageTypeColor,
+          fontStyle: 'bold',
+        }
+      )
+      this.detailContainer.add(damageTypeText)
+    }
+
     // Stats (placeholder for now)
-    const statsY = this.currentTab === 'evolutions' ? 180 : 140
+    const statsY = this.currentTab === 'evolutions' ? 180 : (this.currentTab === 'weapons' ? 165 : 140)
     const statsText = this.add.text(
       detailX + 20,
       detailY + statsY,
@@ -380,5 +406,21 @@ Expected DPS: N/A
 Actual DPS: N/A
 
 [Stats tracking coming soon]`
+  }
+
+  private getDamageTypeColor(damageType: DamageType): string {
+    switch (damageType) {
+      case DamageType.FIRE:
+        return '#ff4400'  // Orange-red
+      case DamageType.COLD:
+        return '#00ddff'  // Cyan-blue
+      case DamageType.NATURE:
+        return '#44ff44'  // Green
+      case DamageType.CONTROL:
+        return '#aa44ff'  // Purple
+      case DamageType.PHYSICAL:
+      default:
+        return '#ffffff'  // White
+    }
   }
 }

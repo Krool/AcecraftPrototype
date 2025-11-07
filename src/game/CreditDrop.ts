@@ -149,8 +149,8 @@ export class CreditDrop extends Phaser.GameObjects.Text {
     // Calculate distance to player
     const distance = Phaser.Math.Distance.Between(this.x, this.y, playerX, playerY)
 
-    // If within magnet radius, move towards player
-    if (distance < effectiveRadius) {
+    // If within magnet radius OR already being collected, move towards player
+    if (distance < effectiveRadius || this.isBeingCollected) {
       this.isBeingCollected = true
 
       // Calculate direction to player
@@ -162,14 +162,10 @@ export class CreditDrop extends Phaser.GameObjects.Text {
         Math.sin(angle) * this.magnetSpeed
       )
 
-      // If very close to player, collect it
-      if (distance < 30) {
+      // If very close to player, collect it (increased from 30 to 60 for easier pickup)
+      if (distance < 60) {
         this.collect()
       }
-    } else if (this.isBeingCollected) {
-      // Reset velocity if no longer in range - resume default drift
-      this.isBeingCollected = false
-      this.body.setVelocity(0, 50) // Reset X velocity to 0, Y to default drift
     }
 
     // Deactivate if off bottom of screen

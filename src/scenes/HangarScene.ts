@@ -93,8 +93,9 @@ export default class HangarScene extends Phaser.Scene {
 
     creditButton.on('pointerdown', () => {
       soundManager.play(SoundType.BUTTON_CLICK)
+      // Add to both systems to keep them in sync
+      this.gameState.addCredits(1000)
       gameProgression.addCredits(1000)
-      this.gameState.addCredits(1000) // Sync with old system
       creditsText.setText(`${gameProgression.getCredits()} ¤`)
       this.tweens.add({
         targets: creditsText,
@@ -149,13 +150,21 @@ export default class HangarScene extends Phaser.Scene {
   }
 
   private createShipList() {
-    const characters = Object.values(CharacterType)
+    const allCharacters = Object.values(CharacterType)
+    const highestLevel = gameProgression.getHighestLevel()
+
+    // Only show ships that are unlockable at current progression level
+    // Show all ships with unlockLevel <= highestLevel + 1
+    const characters = allCharacters.filter(type => {
+      const config = CHARACTER_CONFIGS[type]
+      return config.unlockLevel <= highestLevel + 1
+    })
 
     const listX = 10
     const screenWidth = this.cameras.main.width
     const itemWidth = (screenWidth / 2) - 20 // 50% of screen width minus margins
     const itemHeight = 45 // Reduced from 60 to fit more ships
-    const padding = 3 // Reduced from 5 for tighter spacing
+    const padding = 3 // Spacing between ships
 
     characters.forEach((type, index) => {
       const y = index * (itemHeight + padding)
@@ -792,22 +801,62 @@ export default class HangarScene extends Phaser.Scene {
   }
 
   private playCannotAffordFeedback() {
-    // Get button elements from detail container
-    const buyButton = this.detailContainer.getByName('buyButton') as Phaser.GameObjects.Rectangle
-    const buyButtonText = this.detailContainer.getByName('buyButtonText') as Phaser.GameObjects.Text
+    // Get button elements from detail container (search through all children)
+    let buyButton: Phaser.GameObjects.Rectangle | undefined
+    let buyButtonText: Phaser.GameObjects.Text | undefined
+
+    // Search recursively through container children
+    this.detailContainer.iterate((child: Phaser.GameObjects.GameObject) => {
+      if (child.name === 'buyButton') {
+        buyButton = child as Phaser.GameObjects.Rectangle
+      } else if (child.name === 'buyButtonText') {
+        buyButtonText = child as Phaser.GameObjects.Text
+      }
+      // If child is a container, search its children too
+      if (child instanceof Phaser.GameObjects.Container) {
+        child.iterate((subChild: Phaser.GameObjects.GameObject) => {
+          if (subChild.name === 'buyButton') {
+            buyButton = subChild as Phaser.GameObjects.Rectangle
+          } else if (subChild.name === 'buyButtonText') {
+            buyButtonText = subChild as Phaser.GameObjects.Text
+          }
+        })
+      }
+    })
+
     const creditsDisplay = this.children.getByName('creditsDisplay') as Phaser.GameObjects.Text
 
     // Wiggle the button - shake left and right
     if (buyButton && buyButtonText) {
-      const originalX = buyButton.x
+      const originalXButton = buyButton.x
+      const originalXText = buyButtonText.x
+
+      // Kill existing tweens to prevent stacking
+      this.tweens.killTweensOf(buyButton)
+      this.tweens.killTweensOf(buyButtonText)
 
       this.tweens.add({
-        targets: [buyButton, buyButtonText],
-        x: originalX - 8,
+        targets: buyButton,
+        x: originalXButton - 8,
         duration: 50,
         yoyo: true,
         repeat: 3,
-        ease: 'Sine.easeInOut'
+        ease: 'Sine.easeInOut',
+        onComplete: () => {
+          buyButton.setX(originalXButton) // Reset to original position
+        }
+      })
+
+      this.tweens.add({
+        targets: buyButtonText,
+        x: originalXText - 8,
+        duration: 50,
+        yoyo: true,
+        repeat: 3,
+        ease: 'Sine.easeInOut',
+        onComplete: () => {
+          buyButtonText.setX(originalXText) // Reset to original position
+        }
       })
     }
 

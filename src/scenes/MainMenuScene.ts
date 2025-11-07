@@ -9,7 +9,6 @@ export default class MainMenuScene extends Phaser.Scene {
   private gameState!: GameState
   private levelSelectionOverlay?: Phaser.GameObjects.Container
   private isLevelSelectionOpen: boolean = false
-  private titleLetters: Phaser.GameObjects.Text[] = []
 
   constructor() {
     super('MainMenuScene')
@@ -34,56 +33,47 @@ export default class MainMenuScene extends Phaser.Scene {
     const screenWidth = this.cameras.main.width
     const scaleFactor = Math.min(screenWidth / 540, 1.2) // Cap at 1.2x for larger screens
 
-    // Title - split into individual letters for animation
+    // Title - centered with animation
     const titleText = 'ROGUECRAFT'
     const baseFontSize = 56
-    const baseLetterSpacing = 38
     const titleFontSize = Math.floor(baseFontSize * scaleFactor)
-    const letterSpacing = baseLetterSpacing * scaleFactor
-    const totalWidth = titleText.length * letterSpacing
-    const startX = this.cameras.main.centerX - totalWidth / 2
-    const titleY = 100 * scaleFactor
+    const titleY = 120 * scaleFactor
 
-    console.log('[MainMenu] Title config:', {
-      screenWidth,
-      scaleFactor,
-      titleFontSize,
-      letterSpacing,
-      startX,
+    const title = this.add.text(
+      this.cameras.main.centerX,
       titleY,
-      centerX: this.cameras.main.centerX
+      titleText,
+      {
+        fontFamily: 'Courier New',
+        fontSize: `${titleFontSize}px`,
+        color: '#00ffff',
+        fontStyle: 'bold',
+      }
+    ).setOrigin(0.5).setDepth(100)
+
+    // Add pulsing glow/scale animation
+    this.tweens.add({
+      targets: title,
+      scale: 1.1,
+      duration: 1500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
     })
 
-    for (let i = 0; i < titleText.length; i++) {
-      const letter = this.add.text(
-        startX + i * letterSpacing,
-        titleY,
-        titleText[i],
-        {
-          fontFamily: 'Courier New',
-          fontSize: `${titleFontSize}px`,
-          color: '#00ffff',
-          fontStyle: 'bold',
-        }
-      ).setOrigin(0.5).setDepth(100) // Ensure it appears on top
-
-      this.titleLetters.push(letter)
-
-      // Add color cycling animation with staggered delay
-      this.tweens.add({
-        targets: letter,
-        duration: 3000,
-        delay: i * 100, // Stagger each letter by 100ms
-        repeat: -1,
-        yoyo: false,
-        onUpdate: (tween) => {
-          const progress = tween.progress
-          const hue = (progress * 360 + i * 36) % 360 // Each letter offset by 36 degrees
-          const color = Phaser.Display.Color.HSVToRGB(hue / 360, 1, 1) as Phaser.Types.Display.ColorObject
-          letter.setColor(Phaser.Display.Color.RGBToString(color.r, color.g, color.b))
-        }
-      })
-    }
+    // Add rainbow color cycling animation
+    this.tweens.add({
+      targets: title,
+      duration: 3000,
+      repeat: -1,
+      yoyo: false,
+      onUpdate: (tween) => {
+        const progress = tween.progress
+        const hue = (progress * 360) % 360
+        const color = Phaser.Display.Color.HSVToRGB(hue / 360, 0.8, 1) as Phaser.Types.Display.ColorObject
+        title.setColor(Phaser.Display.Color.RGBToString(color.r, color.g, color.b))
+      }
+    })
 
     // Display credits - moved left to make room for $ button
     const creditsText = this.add.text(

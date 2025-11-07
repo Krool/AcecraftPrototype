@@ -140,10 +140,10 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
   [PassiveType.STATIC_FORTUNE]: {
     name: 'Static Fortune',
     type: PassiveType.STATIC_FORTUNE,
-    description: 'Lightning damage has chance to drop credits',
+    description: 'Nature damage has chance to drop credits',
     maxLevel: 3,
     icon: '⚡',
-    color: '#ffdd00',
+    color: '#44ff44',
   },
   [PassiveType.WINGMAN_PROTOCOL]: {
     name: 'Wingman Protocol',
@@ -257,8 +257,8 @@ export class BallisticsPassive extends Passive {
 // Weapon Speed Up Implementation
 export class WeaponSpeedUpPassive extends Passive {
   applyModifiers(modifiers: WeaponModifiers): void {
-    // +15% fire rate per level (lower is better for fire rate)
-    modifiers.fireRateMultiplier *= 1 - (0.15 * this.level)
+    // +10% fire rate per level (lower is better for fire rate)
+    modifiers.fireRateMultiplier *= 1 - (0.10 * this.level)
   }
 
   applyPlayerEffects(playerStats: PlayerStats): void {
@@ -273,16 +273,16 @@ export class ShipArmorPassive extends Passive {
   }
 
   applyPlayerEffects(playerStats: PlayerStats): void {
-    // Flat damage reduction: 2/4/6
-    playerStats.damageReduction += 2 * this.level
+    // Flat damage reduction: 5/10/15
+    playerStats.damageReduction += 5 * this.level
   }
 }
 
 // Energy Core Implementation
 export class EnergyCorePassive extends Passive {
   applyModifiers(modifiers: WeaponModifiers): void {
-    // +25% projectile size per level
-    modifiers.projectileSizeMultiplier += 0.25 * this.level
+    // +15% projectile size per level
+    modifiers.projectileSizeMultiplier += 0.15 * this.level
     // Projectile speed slightly increased for "range"
     modifiers.projectileSpeedMultiplier += 0.1 * this.level
   }
@@ -309,6 +309,8 @@ export class CriticalSystemsPassive extends Passive {
   applyModifiers(modifiers: WeaponModifiers): void {
     // +10% crit chance per level
     modifiers.critChance += 0.1 * this.level
+    // +25% crit damage per level
+    modifiers.critDamage += 0.25 * this.level
   }
 
   applyPlayerEffects(playerStats: PlayerStats): void {
@@ -319,8 +321,8 @@ export class CriticalSystemsPassive extends Passive {
 // Thruster Mod Implementation
 export class ThrusterModPassive extends Passive {
   applyModifiers(modifiers: WeaponModifiers): void {
-    // +20% projectile speed per level
-    modifiers.projectileSpeedMultiplier += 0.2 * this.level
+    // +15% projectile speed per level
+    modifiers.projectileSpeedMultiplier += 0.15 * this.level
   }
 
   applyPlayerEffects(playerStats: PlayerStats): void {
@@ -344,8 +346,8 @@ export class EvasionDrivePassive extends Passive {
 // Overdrive Reactor Implementation
 export class OverdriveReactorPassive extends Passive {
   applyModifiers(modifiers: WeaponModifiers): void {
-    // +10% fire rate per level (implemented as on-pickup burst)
-    modifiers.fireRateMultiplier *= 1 - (0.1 * this.level)
+    // +20% fire rate per level (implemented as on-pickup burst)
+    modifiers.fireRateMultiplier *= 1 - (0.2 * this.level)
   }
 
   applyPlayerEffects(playerStats: PlayerStats): void {
@@ -367,8 +369,10 @@ export class SalvageUnitPassive extends Passive {
 // Drone Bay Expansion Implementation
 export class DroneBayExpansionPassive extends Passive {
   applyModifiers(modifiers: WeaponModifiers): void {
-    // +15% damage per level for gun buddy type weapons
-    modifiers.damageMultiplier += 0.15 * this.level
+    // +20% damage per level for gun buddy type weapons
+    modifiers.damageMultiplier += 0.20 * this.level
+    // +15% attack speed per level for gun buddy type weapons
+    modifiers.fireRateMultiplier *= 1 - (0.15 * this.level)
   }
 
   applyPlayerEffects(playerStats: PlayerStats): void {

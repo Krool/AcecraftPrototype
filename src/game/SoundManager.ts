@@ -15,7 +15,17 @@ export enum SoundType {
   PLAYER_SHOOT_MISSILE = 'PLAYER_SHOOT_MISSILE',
   PLAYER_SHOOT_PLASMA = 'PLAYER_SHOOT_PLASMA',
   ENEMY_HIT = 'ENEMY_HIT',
+  ENEMY_HIT_1 = 'ENEMY_HIT_1',
+  ENEMY_HIT_2 = 'ENEMY_HIT_2',
+  ENEMY_HIT_3 = 'ENEMY_HIT_3',
+  ENEMY_HIT_4 = 'ENEMY_HIT_4',
+  ENEMY_HIT_5 = 'ENEMY_HIT_5',
   ENEMY_EXPLODE = 'ENEMY_EXPLODE',
+  ENEMY_EXPLODE_1 = 'ENEMY_EXPLODE_1',
+  ENEMY_EXPLODE_2 = 'ENEMY_EXPLODE_2',
+  ENEMY_EXPLODE_3 = 'ENEMY_EXPLODE_3',
+  ENEMY_EXPLODE_4 = 'ENEMY_EXPLODE_4',
+  ENEMY_EXPLODE_5 = 'ENEMY_EXPLODE_5',
   PLAYER_HIT = 'PLAYER_HIT',
 
   // Pickups
@@ -52,11 +62,25 @@ const SOUND_DEFINITIONS: Record<SoundType, number[]> = {
   // Plasma - electric zap
   [SoundType.PLAYER_SHOOT_PLASMA]: [0.3, 0.1, 600, 0.01, 0.05, 0.05, 0, 2, 20, 0, 0, 0, 0, 0, 0, 0],
 
-  // Enemy hit - impact sound
+  // Enemy hit - impact sound (base)
   [SoundType.ENEMY_HIT]: [0.2, 0, 200, 0.01, 0.02, 0.05, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 
-  // Enemy explosion - big boom
+  // Enemy hit variations
+  [SoundType.ENEMY_HIT_1]: [0.2, 0, 180, 0.01, 0.02, 0.05, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [SoundType.ENEMY_HIT_2]: [0.2, 0, 220, 0.01, 0.025, 0.06, 2, 0.5, 0, 0, 0, 0, 0, 0, 0, 0],
+  [SoundType.ENEMY_HIT_3]: [0.2, 0, 190, 0.01, 0.018, 0.05, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+  [SoundType.ENEMY_HIT_4]: [0.2, 0, 210, 0.01, 0.022, 0.055, 2, 0.3, 0, 0, 0, 0, 0, 0, 0, 0],
+  [SoundType.ENEMY_HIT_5]: [0.2, 0, 195, 0.01, 0.02, 0.05, 2, 0.7, 0, 0, 0, 0, 0, 0, 0, 0],
+
+  // Enemy explosion - big boom (base)
   [SoundType.ENEMY_EXPLODE]: [0.5, 0, 100, 0.02, 0.3, 0.4, 3, 0, 0, 0, 0, 0, 0.2, 0, 0, 0],
+
+  // Enemy explosion variations
+  [SoundType.ENEMY_EXPLODE_1]: [0.5, 0, 90, 0.02, 0.3, 0.4, 3, 0.2, 0, 0, 0, 0, 0.2, 0, 0, 0],
+  [SoundType.ENEMY_EXPLODE_2]: [0.5, 0, 110, 0.02, 0.32, 0.42, 3, 0.5, 0, 0, 0, 0, 0.22, 0, 0, 0],
+  [SoundType.ENEMY_EXPLODE_3]: [0.5, 0, 95, 0.02, 0.28, 0.38, 3, 0.3, 0, 0, 0, 0, 0.18, 0, 0, 0],
+  [SoundType.ENEMY_EXPLODE_4]: [0.5, 0, 105, 0.02, 0.31, 0.41, 3, 0.4, 0, 0, 0, 0, 0.21, 0, 0, 0],
+  [SoundType.ENEMY_EXPLODE_5]: [0.5, 0, 98, 0.02, 0.29, 0.39, 3, 0.1, 0, 0, 0, 0, 0.19, 0, 0, 0],
 
   // Player hit - damage taken
   [SoundType.PLAYER_HIT]: [0.4, 0, 300, 0.01, 0.1, 0.2, 2, 1.5, -20, 0, 0, 0, 0, 0, 0, 0],
@@ -193,6 +217,36 @@ export class SoundManager {
     } else if (upgradeCount === 5) {
       this.play(SoundType.CHEST_EPIC)
     }
+  }
+
+  /**
+   * Play a random enemy hit sound variation
+   */
+  playEnemyHit(volumeMultiplier: number = 1.0): void {
+    const hitSounds = [
+      SoundType.ENEMY_HIT_1,
+      SoundType.ENEMY_HIT_2,
+      SoundType.ENEMY_HIT_3,
+      SoundType.ENEMY_HIT_4,
+      SoundType.ENEMY_HIT_5,
+    ]
+    const randomSound = hitSounds[Math.floor(Math.random() * hitSounds.length)]
+    this.play(randomSound, volumeMultiplier)
+  }
+
+  /**
+   * Play a random enemy explosion sound variation
+   */
+  playEnemyExplode(volumeMultiplier: number = 1.0): void {
+    const explodeSounds = [
+      SoundType.ENEMY_EXPLODE_1,
+      SoundType.ENEMY_EXPLODE_2,
+      SoundType.ENEMY_EXPLODE_3,
+      SoundType.ENEMY_EXPLODE_4,
+      SoundType.ENEMY_EXPLODE_5,
+    ]
+    const randomSound = explodeSounds[Math.floor(Math.random() * explodeSounds.length)]
+    this.play(randomSound, volumeMultiplier)
   }
 
   // === VOLUME CONTROLS ===

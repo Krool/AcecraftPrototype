@@ -49,7 +49,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '<o>',
     color: '#ff3333',
     fontSize: '36px',
-    health: 60, // Doubled again from 30
+    health: 36, // Reduced by 40% from 60
     speed: 84, // Reduced by 30% (was 120)
     xpValue: 5,
     scoreValue: 8,
@@ -62,7 +62,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: 'vv',
     color: '#ff3333',
     fontSize: '42px',
-    health: 60, // Doubled again from 30
+    health: 42, // Reduced by 30% from 60
     speed: 126, // Reduced by 30% (was 180)
     xpValue: 12,
     scoreValue: 15,
@@ -75,7 +75,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '[■]',
     color: '#ff3333',
     fontSize: '60px',
-    health: 400, // Doubled again from 200
+    health: 280, // Reduced by 30% from 400
     speed: 42, // Reduced by 30% (was 60)
     xpValue: 40,
     scoreValue: 50,
@@ -90,7 +90,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '<+>',
     color: '#ff3333',
     fontSize: '48px',
-    health: 120, // Doubled again from 60
+    health: 84, // Reduced by 30% from 120
     speed: 56, // Reduced by 30% (was 80)
     xpValue: 25,
     scoreValue: 30,
@@ -105,7 +105,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '>x<',
     color: '#ff3333',
     fontSize: '30px',
-    health: 40, // Doubled again from 20
+    health: 28, // Reduced by 30% from 40
     speed: 98, // Reduced by 30% (was 140)
     xpValue: 6,
     scoreValue: 8,
@@ -119,7 +119,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '{H}',
     color: '#ff3333',
     fontSize: '48px',
-    health: 160, // Doubled again from 80
+    health: 112, // Reduced by 30% from 160
     speed: 63, // Reduced by 30% (was 90)
     xpValue: 35,
     scoreValue: 40,
@@ -133,7 +133,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '(o)',
     color: '#ff3333',
     fontSize: '42px',
-    health: 140, // Doubled again from 70
+    health: 98, // Reduced by 30% from 140
     speed: 70, // Reduced by 30% (was 100)
     xpValue: 20,
     scoreValue: 25,
@@ -147,7 +147,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: ')B(',
     color: '#ff3333',
     fontSize: '54px',
-    health: 100, // Doubled again from 50
+    health: 70, // Reduced by 30% from 100
     speed: 84, // Reduced by 30% (was 120)
     xpValue: 30,
     scoreValue: 35,
@@ -161,7 +161,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '<◆>',
     color: '#ff3333',
     fontSize: '48px',
-    health: 180, // Doubled again from 90
+    health: 126, // Reduced by 30% from 180
     speed: 49, // Reduced by 30% (was 70)
     xpValue: 28,
     scoreValue: 32,
@@ -175,7 +175,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '>>►',
     color: '#ff3333',
     fontSize: '45px',
-    health: 140, // Doubled again from 70
+    health: 98, // Reduced by 30% from 140
     speed: 105, // Reduced by 30% (was 150)
     xpValue: 22,
     scoreValue: 28,
@@ -189,7 +189,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '/▲\\',
     color: '#ff3333',
     fontSize: '54px',
-    health: 240, // Doubled again from 120
+    health: 168, // Reduced by 30% from 240
     speed: 0,
     xpValue: 18,
     scoreValue: 22,
@@ -203,7 +203,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '»»»',
     color: '#ff3333',
     fontSize: '48px',
-    health: 112, // Doubled again from 56
+    health: 78, // Reduced by 30% from 112
     speed: 154, // Reduced by 30% (was 220)
     xpValue: 18,
     scoreValue: 20,
@@ -216,7 +216,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '@*@',
     color: '#ff3333',
     fontSize: '52px',
-    health: 200,
+    health: 140, // Reduced by 30% from 200
     speed: 50,
     xpValue: 32,
     scoreValue: 40,
@@ -231,7 +231,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '[*]',
     color: '#ff3333',
     fontSize: '64px',
-    health: 300,
+    health: 210, // Reduced by 30% from 300
     speed: 35,
     xpValue: 50,
     scoreValue: 60,
@@ -245,7 +245,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '<=>',
     color: '#ff3333',
     fontSize: '42px',
-    health: 140,
+    health: 98, // Reduced by 30% from 140
     speed: 70,
     xpValue: 20,
     scoreValue: 25,
@@ -259,7 +259,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '[▼]',
     color: '#ff3333',
     fontSize: '54px',
-    health: 240,
+    health: 168, // Reduced by 30% from 240
     speed: 60,
     xpValue: 38,
     scoreValue: 45,
@@ -274,7 +274,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '(!))',
     color: '#ff3333',
     fontSize: '48px',
-    health: 120,
+    health: 84, // Reduced by 30% from 120
     speed: 90,
     xpValue: 28,
     scoreValue: 35,
@@ -288,7 +288,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '▓▓▓',
     color: '#ff0000',
     fontSize: '64px',
-    health: 2000,
+    health: 1400, // Reduced by 30% from 2000
     speed: 40,
     xpValue: 150,
     scoreValue: 200,
@@ -303,7 +303,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '█████',
     color: '#ff00ff',
     fontSize: '96px',
-    health: 5000,
+    health: 3500, // Reduced by 30% from 5000
     speed: 30,
     xpValue: 500,
     scoreValue: 1000,
@@ -555,7 +555,7 @@ export class Enemy extends Phaser.GameObjects.Text {
     }
 
     // Play enemy hit sound (only when damaged but not killed)
-    soundManager.play(SoundType.ENEMY_HIT, 0.2)
+    soundManager.playEnemyHit(0.2)
 
     return false
   }

@@ -9,12 +9,12 @@ function App() {
     <div className="app">
       {!gameStarted ? (
         <div className="menu">
-          <h1 className="title">ROGUECRAFT</h1>
+          <h1 className="title">RC</h1>
           <button
             className="start-button"
             onClick={() => setGameStarted(true)}
           >
-            START GAME
+            Start
           </button>
         </div>
       ) : (

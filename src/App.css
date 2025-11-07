@@ -26,22 +26,23 @@
 
 .menu {
   text-align: center;
-  padding: 2rem;
+  padding: clamp(1rem, 4vw, 2rem); /* Scales padding for different screen sizes */
+  max-width: 90vw; /* Prevents overflow on small screens */
 }
 
 .title {
-  font-size: 4rem;
+  font-size: clamp(2rem, 10vw, 6rem); /* Scales between 2rem and 6rem based on viewport width */
   color: #0f0;
   text-shadow: 0 0 10px #0f0;
   margin-bottom: 2rem;
   font-family: 'Courier New', monospace;
-  letter-spacing: 0.5rem;
+  letter-spacing: clamp(0.2rem, 1vw, 0.8rem); /* Letter spacing also scales */
 }
 
 .start-button {
   font-family: 'Courier New', monospace;
-  font-size: 1.5rem;
-  padding: 1rem 2rem;
+  font-size: clamp(1rem, 4vw, 2rem); /* Scales between 1rem and 2rem */
+  padding: clamp(0.5rem, 2vw, 1rem) clamp(1rem, 4vw, 2rem); /* Padding also scales */
   background-color: transparent;
   color: #0f0;
   border: 2px solid #0f0;

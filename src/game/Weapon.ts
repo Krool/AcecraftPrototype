@@ -51,7 +51,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.CANNON,
     damageType: DamageType.PHYSICAL,
     baseDamage: 10,
-    baseFireRate: 325, // Reduced by 30% (was 250)
+    baseFireRate: 244, // Reduced by 25% from 325 (faster fire rate)
     description: 'Basic pellets fired upward',
     maxLevel: 3,
     icon: '|',
@@ -62,7 +62,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.SHOTGUN,
     damageType: DamageType.PHYSICAL,
     baseDamage: 5,
-    baseFireRate: 650, // Reduced by 30% (was 500)
+    baseFireRate: 488, // Reduced by 25% from 650 (faster fire rate)
     description: 'Wide spread, slow fire rate',
     maxLevel: 3,
     icon: '╪',
@@ -73,7 +73,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.LIGHTNING,
     damageType: DamageType.NATURE,
     baseDamage: 12,
-    baseFireRate: 520, // Reduced by 30% (was 400)
+    baseFireRate: 390, // Reduced by 25% from 520 (faster fire rate)
     description: 'Chain lightning between enemies',
     maxLevel: 3,
     icon: '⚡',
@@ -84,7 +84,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.FIRE,
     damageType: DamageType.FIRE,
     baseDamage: 15,
-    baseFireRate: 780, // Reduced by 30% (was 600)
+    baseFireRate: 585, // Reduced by 25% from 780 (faster fire rate)
     description: 'Explodes on contact (AOE)',
     maxLevel: 3,
     icon: '※',
@@ -95,7 +95,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.GUN_BUDDY,
     damageType: DamageType.PHYSICAL,
     baseDamage: 6,
-    baseFireRate: 390, // Reduced by 30% (was 300)
+    baseFireRate: 293, // Reduced by 25% from 390 (faster fire rate)
     description: 'Floating ally that shoots',
     maxLevel: 3,
     icon: '◉',
@@ -106,7 +106,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.ICE,
     damageType: DamageType.COLD,
     baseDamage: 10,
-    baseFireRate: 455, // Reduced by 30% (was 350)
+    baseFireRate: 341, // Reduced by 25% from 455 (faster fire rate)
     description: 'Freezes and slows enemies',
     maxLevel: 3,
     icon: '❄',
@@ -117,7 +117,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.WATER,
     damageType: DamageType.COLD,
     baseDamage: 11,
-    baseFireRate: 585, // Reduced by 30% (was 450)
+    baseFireRate: 439, // Reduced by 25% from 585 (faster fire rate)
     description: 'Oscillating wave projectiles',
     maxLevel: 3,
     icon: '≈',
@@ -128,7 +128,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.EARTH,
     damageType: DamageType.NATURE,
     baseDamage: 14,
-    baseFireRate: 910, // Reduced by 30% (was 700)
+    baseFireRate: 683, // Reduced by 25% from 910 (faster fire rate)
     description: 'Persistent damage zone',
     maxLevel: 3,
     icon: '▓',
@@ -137,9 +137,9 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
   [WeaponType.DARK]: {
     name: 'Dark',
     type: WeaponType.DARK,
-    damageType: DamageType.CONTROL,
+    damageType: DamageType.COLD,
     baseDamage: 25,
-    baseFireRate: 1560, // Reduced by 30% (was 1200)
+    baseFireRate: 1170, // Reduced by 25% from 1560 (faster fire rate)
     description: 'Powerful slow projectiles',
     maxLevel: 3,
     icon: '●',
@@ -150,7 +150,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.LASER_BEAM,
     damageType: DamageType.FIRE,
     baseDamage: 5,
-    baseFireRate: 195, // Reduced by 30% (was 150)
+    baseFireRate: 146, // Reduced by 25% from 195 (faster fire rate)
     description: 'Burst fire beam, overheats',
     maxLevel: 3,
     icon: '━',
@@ -161,7 +161,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.RICOCHET_DISK,
     damageType: DamageType.PHYSICAL,
     baseDamage: 13,
-    baseFireRate: 520, // Reduced by 30% (was 400)
+    baseFireRate: 390, // Reduced by 25% from 520 (faster fire rate)
     description: 'Bounces off edges and enemies',
     maxLevel: 3,
     icon: '◇',
@@ -172,7 +172,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.MISSILE_POD,
     damageType: DamageType.PHYSICAL,
     baseDamage: 9,
-    baseFireRate: 1040, // Reduced by 30% (was 800)
+    baseFireRate: 780, // Reduced by 25% from 1040 (faster fire rate)
     description: 'Seeking rockets with splash',
     maxLevel: 3,
     icon: '▲',
@@ -183,41 +183,41 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.FIREBALL_RING,
     damageType: DamageType.FIRE,
     baseDamage: 15,
-    baseFireRate: 1300, // Reduced by 30% (was 1000)
+    baseFireRate: 975, // Reduced by 25% from 1300 (faster fire rate)
     description: 'Rotating fireballs orbit around you',
     maxLevel: 3,
     icon: '◉',
     color: '#ff4400',
   },
   [WeaponType.BLOOD_LANCE]: {
-    name: 'Blood Lance',
+    name: 'Quill',
     type: WeaponType.BLOOD_LANCE,
-    damageType: DamageType.PHYSICAL,
+    damageType: DamageType.NATURE,
     baseDamage: 8,
-    baseFireRate: 390, // Reduced by 30% (was 300)
-    description: 'Ricochet weapon that applies bleed',
+    baseFireRate: 293, // Reduced by 25% from 390 (faster fire rate)
+    description: 'Ricochet weapon that applies poison',
     maxLevel: 3,
     icon: '╬',
-    color: '#cc0000',
+    color: '#00cc44',
   },
   [WeaponType.PLASMA_AURA]: {
     name: 'Plasma Aura',
     type: WeaponType.PLASMA_AURA,
     damageType: DamageType.FIRE,
-    baseDamage: 5,
-    baseFireRate: 800, // Slowed down significantly (fires 12-20 projectiles per shot)
+    baseDamage: 10, // Doubled from 5 for performance (fire rate also doubled)
+    baseFireRate: 1200, // Doubled from 600 for performance (50% fewer projectiles)
     description: 'Constant AOE damage around you',
     maxLevel: 3,
     icon: '⊛',
     color: '#ff00ff',
   },
   [WeaponType.VORTEX_BLADE]: {
-    name: 'Vortex Blade',
+    name: 'Blizzard',
     type: WeaponType.VORTEX_BLADE,
-    damageType: DamageType.PHYSICAL,
+    damageType: DamageType.COLD,
     baseDamage: 12,
-    baseFireRate: 650, // Reduced by 30% (was 500)
-    description: 'Spiraling projectiles expand outward',
+    baseFireRate: 488, // Reduced by 25% from 650 (faster fire rate)
+    description: 'Spiraling ice projectiles expand outward',
     maxLevel: 3,
     icon: '◈',
     color: '#00ffff',
@@ -227,7 +227,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.ORBITAL_STRIKE,
     damageType: DamageType.FIRE,
     baseDamage: 3,
-    baseFireRate: 1040, // Reduced by 30% (was 800)
+    baseFireRate: 780, // Reduced by 25% from 1040 (faster fire rate)
     description: 'Row of explosions across screen top',
     maxLevel: 3,
     icon: '▼',
@@ -238,7 +238,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.MINIGUN,
     damageType: DamageType.PHYSICAL,
     baseDamage: 2,
-    baseFireRate: 65, // Reduced by 30% (was 50)
+    baseFireRate: 65, // Increased from 49 for performance (33% slower fire)
     description: 'Rapid-fire low-damage bullets',
     maxLevel: 3,
     icon: '▪',
@@ -249,7 +249,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.TRAP_LAYER,
     damageType: DamageType.NATURE,
     baseDamage: 25,
-    baseFireRate: 1950, // Reduced by 30% (was 1500)
+    baseFireRate: 1463, // Reduced by 25% from 1950 (faster fire rate)
     description: 'Creates damage traps at your location',
     maxLevel: 3,
     icon: '✻',
@@ -260,7 +260,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.SNIPER_RIFLE,
     damageType: DamageType.PHYSICAL,
     baseDamage: 50,
-    baseFireRate: 2600, // Reduced by 30% (was 2000)
+    baseFireRate: 1950, // Reduced by 25% from 2600 (faster fire rate)
     description: 'High damage shots at nearest enemy',
     maxLevel: 3,
     icon: '═',
@@ -667,23 +667,21 @@ export class LaserBeamWeapon extends Weapon {
   fire(x: number, y: number, modifiers: WeaponModifiers): void {
     soundManager.playWeaponSound(this.config.name)
     const damage = this.getDamage() * modifiers.damageMultiplier
-    const pierce = 10 // Laser pierces many enemies
 
-    // Rapid fire laser beams
+    // RAYCAST implementation - instant hit, no projectiles!
     const beamCount = this.level
-    const speed = -800 // Very fast
+    const maxRange = 600 // Max laser range
 
-    if (beamCount === 1) {
-      this.projectileGroup.fireProjectile(x, y, damage, pierce, 0, speed, this.config.icon, this.config.color)
-    } else {
-      const spacing = 10
-      const totalWidth = (beamCount - 1) * spacing
-      const startX = x - totalWidth / 2
-
-      for (let i = 0; i < beamCount; i++) {
-        this.projectileGroup.fireProjectile(startX + i * spacing, y, damage, pierce, 0, speed, this.config.icon, this.config.color)
-      }
-    }
+    // Emit laser fire event for GameScene to handle damage + visual effects
+    // This avoids creating projectiles entirely
+    this.scene.events.emit('laserFire', {
+      x,
+      y,
+      damage,
+      beamCount,
+      maxRange,
+      color: this.config.color
+    })
 
     // Increase heat
     this.heat += this.heatPerShot
@@ -918,14 +916,15 @@ export class MinigunWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount
 
-    // Fire rapid bullets with slight spread
+    // Fire rapid bullets with slight spread - FAST projectiles
     const bulletCount = this.level
     const spread = 30 // Slight inaccuracy
 
     for (let i = 0; i < bulletCount; i++) {
       const spreadAngle = (Math.random() - 0.5) * spread * (Math.PI / 180)
+      // Fast bullets for quick screen clearing
       const velocityX = Math.sin(spreadAngle) * 500
-      const velocityY = Math.cos(spreadAngle) * -600
+      const velocityY = Math.cos(spreadAngle) * -700
 
       this.projectileGroup.fireProjectile(
         x, y, damage, pierce, velocityX, velocityY,
@@ -982,7 +981,7 @@ export class SniperRifleWeapon extends Weapon {
 
     // Fire powerful single shot with trail effect
     const shotCount = this.level
-    const speed = -900 // Very fast
+    const speed = -1500 // EXTREMELY fast for sniper feel
 
     if (shotCount === 1) {
       this.projectileGroup.fireProjectile(
