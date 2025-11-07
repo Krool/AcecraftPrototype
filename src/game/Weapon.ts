@@ -237,8 +237,8 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     name: 'Minigun',
     type: WeaponType.MINIGUN,
     damageType: DamageType.PHYSICAL,
-    baseDamage: 2,
-    baseFireRate: 65, // Increased from 49 for performance (33% slower fire)
+    baseDamage: 4, // Doubled from 2 for performance (fewer projectiles)
+    baseFireRate: 130, // Halved fire rate for performance (was 65ms)
     description: 'Rapid-fire low-damage bullets',
     maxLevel: 3,
     icon: '▪',
@@ -342,6 +342,12 @@ export interface WeaponModifiers {
   projectileSizeMultiplier: number
   critChance: number
   critDamage: number
+  projectileCount?: number // Extra projectiles per shot
+  explosionRadiusMultiplier?: number // Multiplier for explosion radius
+  additionalShots?: number // Fire weapon multiple times
+  dotDurationMultiplier?: number // Duration multiplier for DoT effects
+  homingEnabled?: boolean // Enable homing for projectiles
+  projectileLifetimeMultiplier?: number // Lifetime multiplier for projectiles
 }
 
 export const DEFAULT_MODIFIERS: WeaponModifiers = {
@@ -352,6 +358,12 @@ export const DEFAULT_MODIFIERS: WeaponModifiers = {
   projectileSizeMultiplier: 1.0,
   critChance: 0,
   critDamage: 1.5,
+  projectileCount: 0,
+  explosionRadiusMultiplier: 1.0,
+  additionalShots: 0,
+  dotDurationMultiplier: 1.0,
+  homingEnabled: false,
+  projectileLifetimeMultiplier: 1.0,
 }
 
 // Cannon Implementation
@@ -922,9 +934,9 @@ export class MinigunWeapon extends Weapon {
 
     for (let i = 0; i < bulletCount; i++) {
       const spreadAngle = (Math.random() - 0.5) * spread * (Math.PI / 180)
-      // Fast bullets for quick screen clearing
-      const velocityX = Math.sin(spreadAngle) * 500
-      const velocityY = Math.cos(spreadAngle) * -700
+      // Fast bullets for quick screen clearing (3x faster for performance)
+      const velocityX = Math.sin(spreadAngle) * 1500
+      const velocityY = Math.cos(spreadAngle) * -2100
 
       this.projectileGroup.fireProjectile(
         x, y, damage, pierce, velocityX, velocityY,

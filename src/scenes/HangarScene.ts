@@ -93,17 +93,16 @@ export default class HangarScene extends Phaser.Scene {
 
     creditButton.on('pointerdown', () => {
       soundManager.play(SoundType.BUTTON_CLICK)
-      // Add to both systems to keep them in sync
+      // GameState now delegates to GameProgression - only need one call
       this.gameState.addCredits(1000)
-      gameProgression.addCredits(1000)
-      creditsText.setText(`${gameProgression.getCredits()} ¤`)
+      creditsText.setText(`${this.gameState.getCredits()} ¤`)
       this.tweens.add({
         targets: creditsText,
         scale: 1.3,
         duration: 100,
         yoyo: true,
         onComplete: () => {
-          creditsText.setText(`${gameProgression.getCredits()} ¤`)
+          creditsText.setText(`${this.gameState.getCredits()} ¤`)
           this.refreshScene()
         }
       })

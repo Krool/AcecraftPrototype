@@ -612,8 +612,8 @@ export class Enemy extends Phaser.GameObjects.Text {
     const sizeScale = parseInt(this.config.fontSize) / 36 // Base 36px = scale 1
     const explosionScale = Math.max(0.5, Math.min(3, (healthScale + sizeScale) / 2))
 
-    // Number of particles scales with size
-    const particleCount = Math.floor(8 + explosionScale * 8)
+    // Fixed particle count for performance (reduced from 8-24 to 4)
+    const particleCount = 4
 
     // Color variations based on enemy type
     const explosionColors = [this.config.color, '#ff6600', '#ffaa00', '#ffdd00']
@@ -675,33 +675,33 @@ export class Enemy extends Phaser.GameObjects.Text {
       onComplete: () => shockwave.destroy(),
     })
 
-    // Extra large enemies get extra flash particles
-    if (explosionScale >= 1.5) {
-      for (let i = 0; i < 6; i++) {
-        const angle = (i / 6) * Math.PI * 2 + Math.PI / 6
-        const offset = 20 * explosionScale
-
-        const spark = this.scene.add.text(
-          x + Math.cos(angle) * offset,
-          y + Math.sin(angle) * offset,
-          '✦',
-          {
-            fontFamily: 'Courier New',
-            fontSize: `${Math.floor(20 * explosionScale)}px`,
-            color: '#ffffff',
-          }
-        ).setOrigin(0.5).setDepth(47)
-
-        this.scene.tweens.add({
-          targets: spark,
-          scale: 2,
-          alpha: 0,
-          duration: 400,
-          ease: 'Cubic.easeOut',
-          onComplete: () => spark.destroy(),
-        })
-      }
-    }
+    // Extra large enemies - extra flash particles disabled for performance
+    // if (explosionScale >= 1.5) {
+    //   for (let i = 0; i < 6; i++) {
+    //     const angle = (i / 6) * Math.PI * 2 + Math.PI / 6
+    //     const offset = 20 * explosionScale
+    //
+    //     const spark = this.scene.add.text(
+    //       x + Math.cos(angle) * offset,
+    //       y + Math.sin(angle) * offset,
+    //       '✦',
+    //       {
+    //         fontFamily: 'Courier New',
+    //         fontSize: `${Math.floor(20 * explosionScale)}px`,
+    //         color: '#ffffff',
+    //       }
+    //     ).setOrigin(0.5).setDepth(47)
+    //
+    //     this.scene.tweens.add({
+    //       targets: spark,
+    //       scale: 2,
+    //       alpha: 0,
+    //       duration: 400,
+    //       ease: 'Cubic.easeOut',
+    //       onComplete: () => spark.destroy(),
+    //     })
+    //   }
+    // }
   }
 
   private explode() {

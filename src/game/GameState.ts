@@ -1,5 +1,6 @@
 import { Building, BuildingType, BuildingState, BUILDING_CONFIGS } from './Building'
 import { CharacterType } from './Character'
+import { gameProgression } from './GameProgression'
 
 export interface CharacterStats {
   timesSelected: number
@@ -10,7 +11,6 @@ export interface CharacterStats {
 }
 
 export interface GameStateData {
-  credits: number
   buildings: BuildingState[]
   unlockedCharacters: CharacterType[]
   selectedCharacter: CharacterType
@@ -25,7 +25,6 @@ export interface GameStateData {
 
 export class GameState {
   private static instance: GameState
-  private credits: number = 0
   private buildings: Map<BuildingType, Building> = new Map()
   private unlockedCharacters: Set<CharacterType> = new Set([CharacterType.VULCAN])
   private selectedCharacter: CharacterType = CharacterType.VULCAN
@@ -56,20 +55,20 @@ export class GameState {
     GameState.instance = null as any
   }
 
-  // Currency management
+  // Currency management - delegate to GameProgression
   getCredits(): number {
-    return this.credits
+    return gameProgression.getCredits()
   }
 
   addCredits(amount: number): void {
-    this.credits += amount
-    this.save()
+    gameProgression.addCredits(amount)
   }
 
   spendCredits(amount: number): boolean {
-    if (this.credits >= amount) {
-      this.credits -= amount
-      this.save()
+    const credits = gameProgression.getCredits()
+    if (credits >= amount) {
+      // GameProgression doesn't have spendCredits, so we manually deduct
+      gameProgression.addCredits(-amount)
       return true
     }
     return false
@@ -245,7 +244,6 @@ export class GameState {
     })
 
     const data: GameStateData = {
-      credits: this.credits,
       buildings: Array.from(this.buildings.values()).map(b => b.serialize()),
       unlockedCharacters: Array.from(this.unlockedCharacters),
       selectedCharacter: this.selectedCharacter,
@@ -267,7 +265,6 @@ export class GameState {
 
     try {
       const data: GameStateData = JSON.parse(saved)
-      this.credits = data.credits || 0
       this.totalRuns = data.totalRuns || 0
       this.totalKills = data.totalKills || 0
       this.bestScore = data.bestScore || 0
@@ -321,7 +318,8 @@ export class GameState {
   }
 
   reset(): void {
-    this.credits = 0
+    // Reset GameProgression credits too
+    gameProgression.resetProgression()
     this.buildings.forEach(building => {
       this.buildings.set(building.getConfig().type, new Building(building.getConfig().type, 0))
     })

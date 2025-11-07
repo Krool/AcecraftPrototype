@@ -40,39 +40,43 @@ export default class MainMenuScene extends Phaser.Scene {
     const titleFontSize = Math.floor(baseFontSize * scaleFactor)
     const titleY = 120 * scaleFactor
 
-    const title = this.add.text(
-      this.cameras.main.centerX,
-      titleY,
-      titleText,
-      {
-        fontFamily: 'Courier New',
-        fontSize: `${titleFontSize}px`,
-        color: '#00ffff',
-        fontStyle: 'bold',
-      }
-    ).setOrigin(0.5).setDepth(100)
+    // Create individual letters for rainbow flowing effect
+    const letterSpacing = titleFontSize * 0.6 // Spacing between letters
+    const totalWidth = letterSpacing * (titleText.length - 1)
+    const startX = this.cameras.main.centerX - totalWidth / 2
 
-    // Add pulsing glow/scale animation
-    this.tweens.add({
-      targets: title,
-      scale: 1.1,
-      duration: 1500,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    })
+    const titleLetters: Phaser.GameObjects.Text[] = []
+    for (let i = 0; i < titleText.length; i++) {
+      const letter = this.add.text(
+        startX + i * letterSpacing,
+        titleY,
+        titleText[i],
+        {
+          fontFamily: 'Courier New',
+          fontSize: `${titleFontSize}px`,
+          color: '#ffffff',
+          fontStyle: 'bold',
+        }
+      ).setOrigin(0.5).setDepth(100)
 
-    // Add rainbow color cycling animation
+      titleLetters.push(letter)
+    }
+
+    // Flowing rainbow animation - each letter cycles through rainbow with offset
     this.tweens.add({
-      targets: title,
+      targets: {},
       duration: 3000,
       repeat: -1,
       yoyo: false,
       onUpdate: (tween) => {
-        const progress = tween.progress
-        const hue = (progress * 360) % 360
-        const color = Phaser.Display.Color.HSVToRGB(hue / 360, 0.8, 1) as Phaser.Types.Display.ColorObject
-        title.setColor(Phaser.Display.Color.RGBToString(color.r, color.g, color.b))
+        const time = tween.progress
+        titleLetters.forEach((letter, index) => {
+          // Offset each letter's hue based on its position
+          const hueOffset = (index / titleText.length) * 360
+          const hue = ((time * 360) + hueOffset) % 360
+          const color = Phaser.Display.Color.HSVToRGB(hue / 360, 0.9, 1) as Phaser.Types.Display.ColorObject
+          letter.setColor(Phaser.Display.Color.RGBToString(color.r, color.g, color.b))
+        })
       }
     })
 
@@ -166,7 +170,7 @@ export default class MainMenuScene extends Phaser.Scene {
         fontSize: `${Math.floor(96 * scaleFactor)}px`,
         color: selectedCharConfig.color,
       }
-    ).setOrigin(0.5)
+    ).setOrigin(0.5).setInteractive({ useHandCursor: true })
 
     const shipName = this.add.text(
       this.cameras.main.centerX + 20 * scaleFactor,
@@ -178,7 +182,37 @@ export default class MainMenuScene extends Phaser.Scene {
         color: '#ffffff',
         fontStyle: 'bold',
       }
-    ).setOrigin(0, 0.5)
+    ).setOrigin(0, 0.5).setInteractive({ useHandCursor: true })
+
+    // Make ship clickable to open hangar
+    const openHangar = () => {
+      soundManager.play(SoundType.BUTTON_CLICK)
+      this.scene.start('HangarScene')
+    }
+
+    shipSymbol.on('pointerover', () => {
+      shipSymbol.setScale(1.1)
+      shipName.setColor('#00ff00')
+    })
+
+    shipSymbol.on('pointerout', () => {
+      shipSymbol.setScale(1)
+      shipName.setColor('#ffffff')
+    })
+
+    shipSymbol.on('pointerdown', openHangar)
+
+    shipName.on('pointerover', () => {
+      shipSymbol.setScale(1.1)
+      shipName.setColor('#00ff00')
+    })
+
+    shipName.on('pointerout', () => {
+      shipSymbol.setScale(1)
+      shipName.setColor('#ffffff')
+    })
+
+    shipName.on('pointerdown', openHangar)
 
     // Menu buttons - scale to fit screen
     const baseButtonWidth = 400
@@ -748,7 +782,7 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   private hasAffordableUpgrades(): boolean {
-    const credits = gameProgression.getCredits()
+    const credits = this.gameState.getCredits()
     const buildings = this.gameState.getAllBuildings()
 
     // Check if any building can be upgraded and is affordable

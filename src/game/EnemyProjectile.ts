@@ -68,10 +68,10 @@ export class EnemyProjectile extends Phaser.GameObjects.Text {
   }
 
   update() {
-    // Deactivate if off screen
+    // Deactivate if off screen (tighter bounds for better cleanup)
     if (this.active) {
       const cam = this.scene.cameras.main
-      if (this.y > cam.height + 50 || this.y < -50 || this.x < -50 || this.x > cam.width + 50) {
+      if (this.y > cam.height + 20 || this.y < -20 || this.x < -20 || this.x > cam.width + 20) {
         this.setActive(false)
         this.setVisible(false)
         this.body.setVelocity(0, 0)

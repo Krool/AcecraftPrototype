@@ -75,20 +75,20 @@ export class CreditDrop extends Phaser.GameObjects.Text {
   }
 
   private createSparkle() {
-    // Create more sparkles for higher value credits
-    // Low value (1-2): 3-4 sparkles
-    // Medium value (3-5): 5-6 sparkles
-    // High value (6+): 7-9 sparkles
+    // Create sparkles for credit drops (reduced for better performance)
+    // Low value (1-2): 1-2 sparkles
+    // Medium value (3-5): 2-3 sparkles
+    // High value (6+): 3-4 sparkles
     let sparkleCount: number
     let sparkleSize: string
     if (this.creditValue <= 2) {
-      sparkleCount = Phaser.Math.Between(3, 4)
+      sparkleCount = Phaser.Math.Between(1, 2)
       sparkleSize = '6px'
     } else if (this.creditValue <= 5) {
-      sparkleCount = Phaser.Math.Between(5, 6)
+      sparkleCount = Phaser.Math.Between(2, 3)
       sparkleSize = '7px'
     } else {
-      sparkleCount = Phaser.Math.Between(7, 9)
+      sparkleCount = Phaser.Math.Between(3, 4)
       sparkleSize = '8px'
     }
 

@@ -8,7 +8,7 @@ import { PowerUpGroup, PowerUpType, POWERUP_CONFIGS } from '../game/PowerUp'
 import { Weapon, WeaponType, WeaponFactory, WeaponModifiers, DEFAULT_MODIFIERS, DamageType } from '../game/Weapon'
 import { Passive, PassiveType, PassiveFactory, PlayerStats } from '../game/Passive'
 import { Character, CharacterType, CharacterFactory, CHARACTER_CONFIGS } from '../game/Character'
-import { EvolutionManager, EVOLUTION_RECIPES } from '../game/Evolution'
+import { EvolutionManager, EVOLUTION_RECIPES, EvolvedWeapon, SuperEvolvedWeapon } from '../game/Evolution'
 import { GameState } from '../game/GameState'
 import { CampaignManager } from '../game/Campaign'
 import { soundManager, SoundType } from '../game/SoundManager'
@@ -131,7 +131,6 @@ export default class GameScene extends Phaser.Scene {
   private healthSpawnedLastSecond: number = 0
   private damageTrackingWindow: { timestamp: number, damage: number }[] = []
   private healthTrackingWindow: { timestamp: number, health: number }[] = []
-  private debugText!: Phaser.GameObjects.Text
   private creditsCollectedThisRun: number = 0
   private creditsCollectedText!: Phaser.GameObjects.Text
   private lastEngineTrailTime: number = 0
@@ -511,18 +510,6 @@ export default class GameScene extends Phaser.Scene {
       10,
       this.cameras.main.height - 70
     ).setDepth(11)
-
-    // Create debug text (bottom left, below weapons)
-    this.debugText = this.add.text(
-      10,
-      this.cameras.main.height - 35,
-      'DPS Ratio: 0.00',
-      {
-        fontFamily: 'Courier New',
-        fontSize: '14px',
-        color: '#00ff00',
-      }
-    ).setOrigin(0, 0).setDepth(11)
 
     // Create passive slots container (bottom right)
     this.passiveSlotsContainer = this.add.container(
@@ -1009,7 +996,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // Check if adding this weapon or passive would create an evolution
-  private checkEvolutionHint(weaponType?: WeaponType, passiveType?: PassiveType): string | null {
+  private checkEvolutionHint(weaponType?: WeaponType, passiveType?: PassiveType): { text: string; partnerIcon?: string; partnerColor?: string; partnerName?: string } | null {
     // Only show hints if we've discovered at least one evolution
     if (this.discoveredEvolutions.size === 0) {
       return null
@@ -1026,7 +1013,15 @@ export default class GameScene extends Phaser.Scene {
           const recipeKey = `${recipe.baseWeapon}_${recipe.requiredPassive}`
           if (this.discoveredEvolutions.has(recipeKey)) {
             const evolutionConfig = this.evolutionManager.getEvolutionConfig(recipe.evolution)
-            return `⚡ Evolves → ${evolutionConfig.name}`
+            // Get partner passive info
+            const partnerPassive = PassiveFactory.create(this, recipe.requiredPassive)
+            const partnerConfig = partnerPassive.getConfig()
+            return {
+              text: `⚡ Evolves → ${evolutionConfig.name}`,
+              partnerIcon: partnerConfig.icon,
+              partnerColor: partnerConfig.color,
+              partnerName: partnerConfig.name
+            }
           }
         }
       }
@@ -1039,7 +1034,15 @@ export default class GameScene extends Phaser.Scene {
           const recipeKey = `${recipe.baseWeapon}_${recipe.requiredPassive}`
           if (this.discoveredEvolutions.has(recipeKey)) {
             const evolutionConfig = this.evolutionManager.getEvolutionConfig(recipe.evolution)
-            return `⚡ Evolves → ${evolutionConfig.name}`
+            // Get partner weapon info
+            const partnerWeapon = WeaponFactory.create(this, recipe.baseWeapon, this.projectiles)
+            const partnerConfig = partnerWeapon.getConfig()
+            return {
+              text: `⚡ Evolves → ${evolutionConfig.name}`,
+              partnerIcon: partnerConfig.icon,
+              partnerColor: partnerConfig.color,
+              partnerName: partnerConfig.name
+            }
           }
         }
       }
@@ -1093,8 +1096,8 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  private generateUpgradeOptions(): Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean }> {
-    const options: Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean }> = []
+  private generateUpgradeOptions(): Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean; synergyPartnerIcon?: string; synergyPartnerColor?: string; synergyPartnerName?: string }> {
+    const options: Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean; synergyPartnerIcon?: string; synergyPartnerColor?: string; synergyPartnerName?: string }> = []
 
     // Check for evolutions FIRST (highest priority - always recommended)
     const availableEvolution = this.evolutionManager.checkForEvolutions(this.weapons, this.passives)
@@ -1130,7 +1133,8 @@ export default class GameScene extends Phaser.Scene {
 
     // Add weapon upgrade options
     this.weapons.forEach(weapon => {
-      if (!weapon.isMaxLevel()) {
+      // Exclude evolved weapons from level up options
+      if (!weapon.isMaxLevel() && !(weapon instanceof EvolvedWeapon) && !(weapon instanceof SuperEvolvedWeapon)) {
         const config = weapon.getConfig()
         const currentLevel = weapon.getLevel()
         const maxLevel = config.maxLevel
@@ -1201,7 +1205,7 @@ export default class GameScene extends Phaser.Scene {
           const damageTypeName = this.getDamageTypeName(config.damageType)
           const statsInfo = `Damage: ${config.baseDamage} | Fire Rate: ${config.baseFireRate}ms\nDamage Type: ${damageTypeName}`
           const description = evolutionHint
-            ? `${config.description}\n${statsInfo}\n\n${evolutionHint}`
+            ? `${config.description}\n${statsInfo}\n\n${evolutionHint.text}`
             : `${config.description}\n${statsInfo}`
 
           // Recommend if first weapon slot is empty OR creates evolution
@@ -1215,6 +1219,9 @@ export default class GameScene extends Phaser.Scene {
             color: config.color,
             recommended: isFirstWeapon || createsEvolution,
             enablesEvolution: createsEvolution,
+            synergyPartnerIcon: evolutionHint?.partnerIcon,
+            synergyPartnerColor: evolutionHint?.partnerColor,
+            synergyPartnerName: evolutionHint?.partnerName,
             effect: () => {
               const newWeapon = WeaponFactory.create(this, type, this.projectiles)
               this.weapons.push(newWeapon)
@@ -1289,7 +1296,7 @@ export default class GameScene extends Phaser.Scene {
           // Show benefit for new passive
           const benefit = this.getPassiveBenefit(type)
           const description = evolutionHint
-            ? `${config.description}\n${benefit}\n\n${evolutionHint}`
+            ? `${config.description}\n${benefit}\n\n${evolutionHint.text}`
             : `${config.description}\n${benefit}`
 
           // Recommend if first passive slot is empty OR creates evolution
@@ -1303,6 +1310,9 @@ export default class GameScene extends Phaser.Scene {
             color: config.color,
             recommended: isFirstPassive || createsEvolution,
             enablesEvolution: createsEvolution,
+            synergyPartnerIcon: evolutionHint?.partnerIcon,
+            synergyPartnerColor: evolutionHint?.partnerColor,
+            synergyPartnerName: evolutionHint?.partnerName,
             effect: () => {
               const newPassive = PassiveFactory.create(this, type)
               this.passives.push(newPassive)
@@ -2184,9 +2194,6 @@ export default class GameScene extends Phaser.Scene {
         return isActive
       })
 
-      // Update debug metrics
-      this.updateDebugMetrics(time)
-
       // Update combo timer
       if (this.comboCount > 0) {
         this.comboTimer -= delta
@@ -2472,8 +2479,17 @@ export default class GameScene extends Phaser.Scene {
         // Apply damage directly
         enemy.takeDamage(data.damage)
 
-        // Draw visual laser line
-        const laserLine = this.add.line(0, 0, data.x, data.y, enemy.x, enemy.y, Phaser.Display.Color.HexStringToColor(data.color).color)
+        // Draw visual laser line from player to enemy
+        // Set line position to player, then draw from (0,0) to relative enemy position
+        const laserLine = this.add.line(
+          data.x,
+          data.y,
+          0,
+          0,
+          enemy.x - data.x,
+          enemy.y - data.y,
+          Phaser.Display.Color.HexStringToColor(data.color).color
+        )
         laserLine.setLineWidth(2)
         laserLine.setDepth(25)
 
@@ -3170,11 +3186,12 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private showUpgradeOptions() {
-    // Create semi-transparent overlay
+    // Create semi-transparent overlay (reduced height to not obscure bottom UI)
+    const overlayHeight = this.cameras.main.height - 90 // Leave 90px at bottom for weapon/passive UI
     const overlay = this.add.rectangle(
       0, 0,
       this.cameras.main.width,
-      this.cameras.main.height,
+      overlayHeight,
       0x000000,
       0.7
     ).setOrigin(0, 0).setDepth(100)
@@ -3204,6 +3221,47 @@ export default class GameScene extends Phaser.Scene {
 
     // Generate upgrade options from weapons, passives, and utility upgrades
     const upgrades = this.generateUpgradeOptions()
+
+    // If no upgrades available, give 50 credits instead
+    if (upgrades.length === 0) {
+      const creditAmount = 50
+      this.gameState.addCredits(creditAmount)
+      this.creditsCollectedThisRun += creditAmount
+      this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
+
+      // Show message
+      const message = this.add.text(
+        this.cameras.main.centerX,
+        this.cameras.main.centerY,
+        `No upgrades available!\nReceived ${creditAmount}¤ instead`,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '24px',
+          color: '#ffff00',
+          align: 'center',
+          stroke: '#000000',
+          strokeThickness: 4
+        }
+      ).setOrigin(0.5).setDepth(101)
+
+      // Fade out and clean up after a short delay
+      this.time.delayedCall(1500, () => {
+        this.tweens.add({
+          targets: [overlay, title, subtitle, message],
+          alpha: 0,
+          duration: 300,
+          onComplete: () => {
+            overlay.destroy()
+            title.destroy()
+            subtitle.destroy()
+            message.destroy()
+            this.resumeGame()
+          }
+        })
+      })
+
+      return
+    }
 
     // Randomly select 3 upgrades
     const shuffled = Phaser.Utils.Array.Shuffle([...upgrades])
@@ -3236,7 +3294,7 @@ export default class GameScene extends Phaser.Scene {
         starIcon = this.add.text(
           this.cameras.main.centerX + 200,
           y - 20,
-          '⭐',
+          '★',
           {
             fontFamily: 'Courier New',
             fontSize: '48px',
@@ -3256,6 +3314,35 @@ export default class GameScene extends Phaser.Scene {
             fontFamily: 'Courier New',
             fontSize: '56px',
             color: upgrade.color || '#ffffff',
+          }
+        ).setOrigin(0.5).setDepth(102)
+      }
+
+      // Synergy partner icon (if available) - shows what it synergizes with
+      let synergyIcon: Phaser.GameObjects.Text | null = null
+      let synergyPlus: Phaser.GameObjects.Text | null = null
+      if (upgrade.synergyPartnerIcon && upgrade.enablesEvolution) {
+        // Show "+" symbol
+        synergyPlus = this.add.text(
+          this.cameras.main.centerX - 195,
+          y - 50,
+          '+',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '24px',
+            color: '#ffff00',
+          }
+        ).setOrigin(0.5).setDepth(102)
+
+        // Show partner icon above
+        synergyIcon = this.add.text(
+          this.cameras.main.centerX - 195,
+          y - 70,
+          upgrade.synergyPartnerIcon,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '32px',
+            color: upgrade.synergyPartnerColor || '#ffffff',
           }
         ).setOrigin(0.5).setDepth(102)
       }
@@ -3323,6 +3410,8 @@ export default class GameScene extends Phaser.Scene {
         descText.destroy()
         if (iconText) iconText.destroy()
         if (evoBadge) evoBadge.destroy()
+        if (synergyIcon) synergyIcon.destroy()
+        if (synergyPlus) synergyPlus.destroy()
         button.destroy()
 
         // Resume game (will handle pending level ups automatically)
@@ -3333,6 +3422,8 @@ export default class GameScene extends Phaser.Scene {
       if (iconText) buttons.push(iconText)
       if (starIcon) buttons.push(starIcon)
       if (evoBadge) buttons.push(evoBadge)
+      if (synergyIcon) buttons.push(synergyIcon)
+      if (synergyPlus) buttons.push(synergyPlus)
     })
 
     // Store container reference for cleanup if needed
@@ -3925,11 +4016,12 @@ export default class GameScene extends Phaser.Scene {
 
   private showTreasureChest(upgradeCount: number) {
     // Game is already paused from openTreasureChest()
-    // Create semi-transparent overlay
+    // Create semi-transparent overlay (reduced height to not obscure bottom UI)
+    const overlayHeight = this.cameras.main.height - 90 // Leave 90px at bottom for weapon/passive UI
     const overlay = this.add.rectangle(
       0, 0,
       this.cameras.main.width,
-      this.cameras.main.height,
+      overlayHeight,
       0x000000,
       0.7
     ).setOrigin(0, 0).setDepth(100)
@@ -4019,7 +4111,7 @@ export default class GameScene extends Phaser.Scene {
         starIcon = this.add.text(
           this.cameras.main.centerX + 210,
           y - 15,
-          '⭐',
+          '★',
           {
             fontFamily: 'Courier New',
             fontSize: '40px',
@@ -4060,6 +4152,37 @@ export default class GameScene extends Phaser.Scene {
             color: upgrade.color || '#ffffff',
           }
         ).setOrigin(0.5).setDepth(102)
+      }
+
+      // Synergy partner icon (if available) - shows what it synergizes with
+      let synergyIcon: Phaser.GameObjects.Text | null = null
+      let synergyPlus: Phaser.GameObjects.Text | null = null
+      if (upgrade.synergyPartnerIcon && upgrade.enablesEvolution) {
+        // Show "+" symbol
+        synergyPlus = this.add.text(
+          this.cameras.main.centerX - 190,
+          y - 40,
+          '+',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '20px',
+            color: '#ffff00',
+          }
+        ).setOrigin(0.5).setDepth(102)
+        uiElements.push(synergyPlus)
+
+        // Show partner icon above
+        synergyIcon = this.add.text(
+          this.cameras.main.centerX - 190,
+          y - 55,
+          upgrade.synergyPartnerIcon,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '28px',
+            color: upgrade.synergyPartnerColor || '#ffffff',
+          }
+        ).setOrigin(0.5).setDepth(102)
+        uiElements.push(synergyIcon)
       }
 
       // Button text
@@ -4767,11 +4890,6 @@ export default class GameScene extends Phaser.Scene {
     // Screen shake on damage
     this.cameras.main.shake(200, 0.01)
 
-    // Update debug metrics
-    if (!this.isPaused) {
-      this.updateDebugMetrics(this.time.now)
-    }
-
     // Check for game over
     if (this.health <= 0) {
       this.gameOver()
@@ -4813,28 +4931,6 @@ export default class GameScene extends Phaser.Scene {
         this.healthBarFill.setFillStyle(0xff0000) // Red
       }
     }
-  }
-
-  private updateDebugMetrics(currentTime: number) {
-    // Remove old entries (older than 1 second)
-    const oneSecondAgo = currentTime - 1000
-    this.damageTrackingWindow = this.damageTrackingWindow.filter(entry => entry.timestamp >= oneSecondAgo)
-    this.healthTrackingWindow = this.healthTrackingWindow.filter(entry => entry.timestamp >= oneSecondAgo)
-
-    // Calculate totals for last second
-    this.damageDealtLastSecond = this.damageTrackingWindow.reduce((sum, entry) => sum + entry.damage, 0)
-    this.healthSpawnedLastSecond = this.healthTrackingWindow.reduce((sum, entry) => sum + entry.health, 0)
-
-    // Calculate ratio (damage per second / health per second)
-    const ratio = this.healthSpawnedLastSecond > 0
-      ? this.damageDealtLastSecond / this.healthSpawnedLastSecond
-      : 0
-
-    // Update debug text
-    const ratioText = ratio.toFixed(2)
-    const color = ratio < 1.0 ? '#00ff00' : '#ff0000'
-    this.debugText.setText(`${ratioText} (${this.damageDealtLastSecond.toFixed(0)} / ${this.healthSpawnedLastSecond.toFixed(0)})`)
-    this.debugText.setColor(color)
   }
 
   private gameOver() {
@@ -5084,6 +5180,7 @@ export default class GameScene extends Phaser.Scene {
       creditsReward += bonuses.bossBonus * this.bossesKilled
     }
 
+    // Add credits once (GameState now delegates to GameProgression)
     this.gameState.addCredits(creditsReward)
     this.creditsCollectedThisRun += creditsReward
     this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
@@ -5102,7 +5199,6 @@ export default class GameScene extends Phaser.Scene {
     // Complete level in progression system (unlocks ships)
     const levelNumber = currentLevel + 1 // Convert 0-based to 1-based
     gameProgression.completeLevel(levelNumber)
-    gameProgression.addCredits(creditsReward)
 
     // Check for newly unlocked ships
     const shipsAfter = gameProgression.getUnlockedUnpurchasedShips()

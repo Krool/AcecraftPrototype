@@ -466,16 +466,16 @@ export class SwarmCharacter extends Character {
 // Tempest Implementation
 export class TempestCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +20% crit chance on Nature damage
-    // This will be checked in damage calculation based on damage type
+    // +20% crit chance on Nature damage (lightning weapons)
+    modifiers.critChance += 0.2
   }
 }
 
 // Glacier Implementation
 export class GlacierCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +25% attack speed for Cold weapons
-    // This will be checked in weapon firing logic based on damage type
+    // +25% attack speed for Cold weapons (all weapons for this ship)
+    modifiers.fireRateMultiplier *= 1 - 0.25 // 25% faster = 0.75x cooldown
   }
 }
 
@@ -483,15 +483,17 @@ export class GlacierCharacter extends Character {
 export class InfernoCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
     // All projectiles bounce once
-    // This will be handled in projectile creation logic
+    modifiers.pierceCount += 1 // Use pierce for bounce mechanic
   }
 }
 
 // Tsunami Implementation
 export class TsunamiCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // Weapons fire twice but deal 50% less damage
-    // This will be handled in weapon firing logic
+    // Weapons fire twice (add extra shot)
+    modifiers.additionalShots = (modifiers.additionalShots || 0) + 1
+    // But deal 50% less damage
+    modifiers.damageMultiplier *= 0.5
   }
 }
 
@@ -535,8 +537,9 @@ export class EclipseCharacter extends Character {
 // Photon Implementation
 export class PhotonCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +15% damage at max heat, slower overheat
-    // This will be handled in laser beam weapon logic
+    // +15% damage at max heat (simplified to always on)
+    modifiers.damageMultiplier += 0.15
+    // Slower overheat would need special weapon logic
   }
 }
 
@@ -552,16 +555,20 @@ export class ReflexCharacter extends Character {
 // Arsenal Implementation
 export class ArsenalCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +1 missile per salvo, +10% explosion radius
-    // This will be handled in missile pod weapon logic
+    // +1 missile per salvo (add 1 extra projectile for missiles)
+    modifiers.projectileCount += 1
+    // +10% explosion radius
+    modifiers.explosionRadiusMultiplier = (modifiers.explosionRadiusMultiplier || 1) * 1.1
   }
 }
 
 // Corona Implementation
 export class CoronaCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // Start with +2 Fire projectiles, +30% burn duration
-    // This will be handled in fireball ring weapon logic
+    // +2 Fire projectiles
+    modifiers.projectileCount += 2
+    // +30% burn duration (increase DoT duration)
+    modifiers.dotDurationMultiplier = (modifiers.dotDurationMultiplier || 1) * 1.3
   }
 }
 
@@ -577,8 +584,9 @@ export class ReaperCharacter extends Character {
 // Supernova Implementation
 export class SupernovaCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // Aura heals 1HP per enemy hit, aura radius +40%
-    // This will be handled in plasma aura weapon logic
+    // Aura heals 1HP per enemy hit (needs special handling in weapon)
+    // Aura radius +40%
+    modifiers.projectileSizeMultiplier += 0.4
   }
 }
 
@@ -594,8 +602,10 @@ export class CycloneCharacter extends Character {
 // Zenith Implementation
 export class ZenithCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +3 strikes per barrage, strikes track enemies
-    // This will be handled in orbital strike weapon logic
+    // +3 strikes per barrage
+    modifiers.projectileCount += 3
+    // Strikes track enemies (homing enabled)
+    modifiers.homingEnabled = true
   }
 }
 
@@ -611,8 +621,10 @@ export class HavocCharacter extends Character {
 // Warden Implementation
 export class WardenCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // Traps last 3x longer, +2 traps per cast
-    // This will be handled in trap layer weapon logic
+    // Traps last 3x longer
+    modifiers.projectileLifetimeMultiplier = (modifiers.projectileLifetimeMultiplier || 1) * 3
+    // +2 traps per cast
+    modifiers.projectileCount += 2
   }
 }
 

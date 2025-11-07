@@ -81,20 +81,20 @@ export class XPDrop extends Phaser.GameObjects.Text {
   }
 
   private createSparkle() {
-    // Create more sparkles for higher value XP drops
-    // Small (5): 3-4 sparkles
-    // Medium (10): 5-6 sparkles
-    // Large (25): 7-9 sparkles
+    // Create sparkles for XP drops (reduced for better performance)
+    // Small (5): 1-2 sparkles
+    // Medium (10): 2-3 sparkles
+    // Large (25): 3-4 sparkles
     let sparkleCount: number
     let sparkleSize: string
     if (this.xpValue <= 5) {
-      sparkleCount = Phaser.Math.Between(3, 4)
+      sparkleCount = Phaser.Math.Between(1, 2)
       sparkleSize = '6px'
     } else if (this.xpValue <= 10) {
-      sparkleCount = Phaser.Math.Between(5, 6)
+      sparkleCount = Phaser.Math.Between(2, 3)
       sparkleSize = '7px'
     } else {
-      sparkleCount = Phaser.Math.Between(7, 9)
+      sparkleCount = Phaser.Math.Between(3, 4)
       sparkleSize = '8px'
     }
 

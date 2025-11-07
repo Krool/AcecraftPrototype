@@ -238,12 +238,12 @@ export class Projectile extends Phaser.GameObjects.Text {
   }
 
   update() {
-    // Create trail particles based on projectile type
-    const currentTime = this.scene.time.now
-    if (currentTime - this.lastTrailTime > 150) {
-      this.createTrailParticle()
-      this.lastTrailTime = currentTime
-    }
+    // Trail particles disabled for performance
+    // const currentTime = this.scene.time.now
+    // if (currentTime - this.lastTrailTime > 150) {
+    //   this.createTrailParticle()
+    //   this.lastTrailTime = currentTime
+    // }
 
     // Apply wave motion for WAVE projectiles
     if (this.projectileType === ProjectileType.WAVE) {
@@ -339,8 +339,8 @@ export class Projectile extends Phaser.GameObjects.Text {
       }
     }
 
-    // Destroy if off screen (with margin for bouncing projectiles)
-    const margin = this.projectileType === ProjectileType.BOUNCING ? 100 : 50
+    // Destroy if off screen (tighter bounds for better cleanup)
+    const margin = this.projectileType === ProjectileType.BOUNCING ? 50 : 20
     if (this.y < -margin || this.y > this.scene.cameras.main.height + margin ||
         this.x < -margin || this.x > this.scene.cameras.main.width + margin) {
       this.destroy()
