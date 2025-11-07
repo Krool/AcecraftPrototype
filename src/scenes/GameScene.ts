@@ -212,7 +212,7 @@ export default class GameScene extends Phaser.Scene {
     this.campaignManager = new CampaignManager(levelIndex)
 
     // Initialize wave system
-    this.waveSystem = new WaveSystem(levelIndex + 1)
+    this.waveSystem = new WaveSystem(levelIndex + 1, this.cameras.main.width)
 
     // Load high score for this specific level
     this.highScore = this.gameState.getLevelHighScore(levelIndex)
@@ -248,9 +248,6 @@ export default class GameScene extends Phaser.Scene {
     // Setup keyboard controls
     this.cursors = this.input.keyboard!.createCursorKeys()
 
-    // Get font multiplier for mobile scaling
-    const fontMult = MobileDetection.getFontSizeMultiplier()
-
     // Add score and timer (top right, on same line)
     this.scoreText = this.add.text(
       this.cameras.main.width - 10,
@@ -258,7 +255,7 @@ export default class GameScene extends Phaser.Scene {
       `Score: 0 | 👑: ${this.highScore}`,
       {
         fontFamily: 'Courier New',
-        fontSize: MobileDetection.scaleFontSize(14),
+        fontSize: '14px',
         color: '#ffff00',
         align: 'right'
       }
@@ -274,16 +271,16 @@ export default class GameScene extends Phaser.Scene {
       'Wave 0/15',
       {
         fontFamily: 'Courier New',
-        fontSize: MobileDetection.scaleFontSize(16),
+        fontSize: '16px',
         color: '#ffaa00',
         align: 'right',
         fontStyle: 'bold'
       }
     ).setOrigin(1, 0).setDepth(11)
 
-    // Add wave progress bar (below wave counter) - scaled for mobile
-    const progressBarWidth = Math.floor(200 * fontMult)
-    const progressBarHeight = Math.floor(8 * fontMult)
+    // Add wave progress bar (below wave counter)
+    const progressBarWidth = 200
+    const progressBarHeight = 8
     this.waveProgressBarBg = this.add.rectangle(
       this.cameras.main.width - 10 - progressBarWidth,
       55,
@@ -300,9 +297,9 @@ export default class GameScene extends Phaser.Scene {
       0x00ffff
     ).setOrigin(0, 0).setDepth(11)
 
-    // Boss health bar (initially hidden) - scaled for mobile
-    const bossBarWidth = Math.floor(400 * fontMult)
-    const bossBarHeight = Math.floor(20 * fontMult)
+    // Boss health bar (initially hidden)
+    const bossBarWidth = 400
+    const bossBarHeight = 20
     this.bossHealthBarBg = this.add.rectangle(
       this.cameras.main.centerX,
       80,
@@ -325,7 +322,7 @@ export default class GameScene extends Phaser.Scene {
       'BOSS',
       {
         fontFamily: 'Courier New',
-        fontSize: MobileDetection.scaleFontSize(16),
+        fontSize: '16px',
         color: '#ff0000',
         align: 'center',
         fontStyle: 'bold'
@@ -340,18 +337,18 @@ export default class GameScene extends Phaser.Scene {
       '0¤',
       {
         fontFamily: 'Courier New',
-        fontSize: MobileDetection.scaleFontSize(14),
+        fontSize: '14px',
         color: '#ffdd00',
         align: 'left'
       }
     ).setOrigin(0, 0).setDepth(11)
 
-    // Add menu button (top center) - scaled for mobile
+    // Add menu button (top center)
     const menuButton = this.add.rectangle(
       this.cameras.main.centerX,
       10,
-      Math.floor(120 * fontMult),
-      Math.floor(40 * fontMult),
+      120,
+      40,
       0x2a2a4a,
       0.8
     ).setOrigin(0.5, 0).setDepth(11).setInteractive({ useHandCursor: true })
@@ -362,7 +359,7 @@ export default class GameScene extends Phaser.Scene {
       'MENU',
       {
         fontFamily: 'Courier New',
-        fontSize: MobileDetection.scaleFontSize(18),
+        fontSize: '18px',
         color: '#ffffff',
       }
     ).setOrigin(0.5).setDepth(12)
@@ -391,14 +388,14 @@ export default class GameScene extends Phaser.Scene {
     // Add Level counter (just the number)
     this.levelText = this.add.text(10, 18, '1', {
       fontFamily: 'Courier New',
-      fontSize: MobileDetection.scaleFontSize(20),
+      fontSize: '20px',
       color: '#00ffff',
       fontStyle: 'bold'
     }).setDepth(11)
 
-    // Create XP bar next to level number (scaled for mobile)
-    const xpBarWidth = Math.floor(105 * fontMult) // Scale with font size
-    const xpBarHeight = Math.floor(20 * fontMult)
+    // Create XP bar next to level number
+    const xpBarWidth = 105 // 30% smaller than original 150
+    const xpBarHeight = 20
     const xpBarX = 40
     const xpBarY = 13
 
@@ -421,7 +418,7 @@ export default class GameScene extends Phaser.Scene {
     // XP text overlaid on bar
     this.xpText = this.add.text(xpBarX + xpBarWidth / 2, xpBarY + xpBarHeight / 2, 'XP: 0 / 10', {
       fontFamily: 'Courier New',
-      fontSize: MobileDetection.scaleFontSize(12),
+      fontSize: '12px',
       color: '#000000',
       fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(12)
@@ -499,8 +496,8 @@ export default class GameScene extends Phaser.Scene {
     // Create projectile group (no pooling - creates/destroys as needed)
     this.projectiles = new ProjectileGroup(this)
 
-    // Create enemy group (start small, grows dynamically)
-    this.enemies = new EnemyGroup(this, 100, 50)
+    // Create enemy group with large pool to support hundreds of enemies
+    this.enemies = new EnemyGroup(this, 200, 150)
 
     // Give projectiles access to enemy group for homing missiles
     this.projectiles.setEnemyGroup(this.enemies)
@@ -1693,11 +1690,29 @@ export default class GameScene extends Phaser.Scene {
       // Determine how many enemies to spawn from this bucket
       const enemyCount = Phaser.Math.Between(bucket.minEnemies, bucket.maxEnemies)
 
+      // For boss/mini-boss waves, spawn the boss first
+      if (waveData.isBoss || waveData.isMiniBoss) {
+        const bossFormation = bucket.formations.find(f =>
+          f.enemyTypes.includes(EnemyType.BOSS) || f.enemyTypes.includes(EnemyType.MINI_BOSS)
+        )
+        if (bossFormation) {
+          const bossType = bossFormation.enemyTypes[0]
+          console.log(`[GameScene] Spawning ${waveData.isBoss ? 'BOSS' : 'MINI-BOSS'}: ${bossType}`)
+          const actualSpawned = this.spawnWaveFormation(bossFormation, bossType)
+          this.currentWaveEnemyCount += actualSpawned
+        }
+      }
+
       // Get random formations and spawn them
-      let spawnedFromBucket = 0
+      let spawnedFromBucket = waveData.isBoss || waveData.isMiniBoss ? 1 : 0 // Start at 1 if we already spawned boss
       while (spawnedFromBucket < enemyCount) {
         const formation = bucket.formations[Math.floor(Math.random() * bucket.formations.length)]
         const enemyType = formation.enemyTypes[Math.floor(Math.random() * formation.enemyTypes.length)]
+
+        // Skip boss/mini-boss formations for supporting enemies
+        if (enemyType === EnemyType.BOSS || enemyType === EnemyType.MINI_BOSS) {
+          continue
+        }
 
         // Get actual spawned count (may be less than expected if pool is full)
         const actualSpawned = this.spawnWaveFormation(formation, enemyType)
@@ -2302,10 +2317,8 @@ export default class GameScene extends Phaser.Scene {
     // Update XP text overlaid on bar
     this.xpText.setText(`XP: ${this.totalXP} / ${this.xpToNextLevel}`)
 
-    // Update XP bar width (scaled for mobile)
-    const fontMult = MobileDetection.getFontSizeMultiplier()
-    const xpBarWidth = Math.floor(105 * fontMult)
-    const xpBarMaxWidth = xpBarWidth - 4 // Subtract padding
+    // Update XP bar width
+    const xpBarMaxWidth = 101 // 105 - 4 for padding (30% smaller than original)
     const xpPercent = this.totalXP / this.xpToNextLevel
     const newWidth = xpBarMaxWidth * xpPercent
 
@@ -2928,10 +2941,6 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private showUpgradeOptions() {
-    // Get mobile spacing
-    const sceneHeight = this.cameras.main.height
-    const spacingMult = MobileDetection.getVerticalSpacingMultiplier()
-
     // Create semi-transparent overlay
     const overlay = this.add.rectangle(
       0, 0,
@@ -2941,27 +2950,25 @@ export default class GameScene extends Phaser.Scene {
       0.7
     ).setOrigin(0, 0).setDepth(100)
 
-    // Title - mobile responsive
-    const titleY = MobileDetection.getCompactYPosition(150, sceneHeight)
+    // Title
     const title = this.add.text(
       this.cameras.main.centerX,
-      titleY,
+      150,
       'LEVEL UP!',
       {
         fontFamily: 'Courier New',
-        fontSize: MobileDetection.scaleFontSize(48),
+        fontSize: '48px',
         color: '#ffff00',
       }
     ).setOrigin(0.5).setDepth(101)
 
-    const subtitleY = MobileDetection.getCompactYPosition(200, sceneHeight)
     const subtitle = this.add.text(
       this.cameras.main.centerX,
-      subtitleY,
+      200,
       'Choose an upgrade:',
       {
         fontFamily: 'Courier New',
-        fontSize: MobileDetection.scaleFontSize(24),
+        fontSize: '24px',
         color: '#ffffff',
       }
     ).setOrigin(0.5).setDepth(101)
@@ -2973,11 +2980,11 @@ export default class GameScene extends Phaser.Scene {
     const shuffled = Phaser.Utils.Array.Shuffle([...upgrades])
     const selectedUpgrades = shuffled.slice(0, 3)
 
-    // Create upgrade buttons - mobile responsive
-    const buttonHeight = Math.floor(140 * spacingMult)
+    // Create upgrade buttons
+    const buttonHeight = 140
     const buttonWidth = 460  // Reduced to fit 540px screen with proper margins
-    const buttonSpacing = Math.floor(15 * spacingMult)
-    const startY = MobileDetection.getCompactYPosition(280, sceneHeight)
+    const buttonSpacing = 15
+    const startY = 280
 
     const buttons: Phaser.GameObjects.GameObject[] = [overlay, title, subtitle]
 
@@ -3003,7 +3010,7 @@ export default class GameScene extends Phaser.Scene {
           '⭐',
           {
             fontFamily: 'Courier New',
-            fontSize: MobileDetection.scaleFontSize(48),
+            fontSize: '48px',
             color: '#ffff00',
           }
         ).setOrigin(0.5).setDepth(102)
@@ -3018,7 +3025,7 @@ export default class GameScene extends Phaser.Scene {
           upgrade.icon,
           {
             fontFamily: 'Courier New',
-            fontSize: MobileDetection.scaleFontSize(56),
+            fontSize: '56px',
             color: upgrade.color || '#ffffff',
           }
         ).setOrigin(0.5).setDepth(102)
@@ -3033,7 +3040,7 @@ export default class GameScene extends Phaser.Scene {
           'EVO',
           {
             fontFamily: 'Courier New',
-            fontSize: MobileDetection.scaleFontSize(16),
+            fontSize: '16px',
             color: '#000000',
             backgroundColor: '#ffff00',
             padding: { x: 4, y: 2 }
@@ -3048,7 +3055,7 @@ export default class GameScene extends Phaser.Scene {
         upgrade.name,
         {
           fontFamily: 'Courier New',
-          fontSize: MobileDetection.scaleFontSize(22),
+          fontSize: '22px',
           color: '#00ff00',
           wordWrap: { width: 300, useAdvancedWrap: true }
         }
@@ -3060,7 +3067,7 @@ export default class GameScene extends Phaser.Scene {
         upgrade.description,
         {
           fontFamily: 'Courier New',
-          fontSize: MobileDetection.scaleFontSize(16),
+          fontSize: '16px',
           color: '#aaaaaa',
           wordWrap: { width: 300, useAdvancedWrap: true }
         }
@@ -4622,10 +4629,6 @@ export default class GameScene extends Phaser.Scene {
     this.gameOverUI.forEach(obj => obj.destroy())
     this.gameOverUI = []
 
-    // Get mobile spacing multiplier
-    const spacingMult = MobileDetection.getVerticalSpacingMultiplier()
-    const sceneHeight = this.cameras.main.height
-
     // Create game over overlay
     const overlay = this.add.rectangle(
       0, 0,
@@ -4636,10 +4639,9 @@ export default class GameScene extends Phaser.Scene {
     ).setOrigin(0, 0).setDepth(200)
     this.gameOverUI.push(overlay)
 
-    const gameOverTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY - 260, sceneHeight)
     const gameOverText = this.add.text(
       this.cameras.main.centerX,
-      gameOverTextY,
+      this.cameras.main.centerY - 260,
       'RUN COMPLETE',
       {
         fontFamily: 'Courier New',
@@ -4661,10 +4663,9 @@ export default class GameScene extends Phaser.Scene {
     // Get passive names
     const passiveNames = this.passives.map(p => p.getConfig().name).join(', ')
 
-    const statsTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY - 160, sceneHeight)
     const statsText = this.add.text(
       this.cameras.main.centerX,
-      statsTextY,
+      this.cameras.main.centerY - 160,
       `Score: ${this.score}\nLevel: ${this.level}\nTime: ${minutes}:${seconds.toString().padStart(2, '0')}\nDPS: ${dps}\n\n${this.score === this.highScore && this.score > 0 ? 'NEW HIGH SCORE!' : `High Score: ${this.highScore}`}`,
       {
         fontFamily: 'Courier New',
@@ -4676,12 +4677,11 @@ export default class GameScene extends Phaser.Scene {
     this.gameOverUI.push(statsText)
 
     // Interactive Weapons and Passives display with icons and pips
-    const weaponsPassivesY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 50, sceneHeight)
-    const weaponPassiveElements = this.createWeaponPassiveDisplay(weaponsPassivesY)
+    const weaponPassiveElements = this.createWeaponPassiveDisplay(this.cameras.main.centerY - 50)
     this.gameOverUI.push(...weaponPassiveElements)
 
     // Revive button - positioned after weapons/passives display
-    const reviveButtonY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 240, sceneHeight)
+    const reviveButtonY = this.cameras.main.centerY + 240
     const reviveButton = this.add.rectangle(
       this.cameras.main.centerX,
       reviveButtonY,
@@ -4715,10 +4715,9 @@ export default class GameScene extends Phaser.Scene {
     // Revive handler - Coming Soon
     reviveButton.on('pointerdown', () => {
       // Show floating "Coming Soon" text
-      const comingSoonTextY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 240, sceneHeight)
       const comingSoonText = this.add.text(
         this.cameras.main.centerX,
-        comingSoonTextY,
+        this.cameras.main.centerY + 240,
         'Revive Feature Coming Soon!',
         {
           fontFamily: 'Courier New',
@@ -4729,10 +4728,9 @@ export default class GameScene extends Phaser.Scene {
       ).setOrigin(0.5).setDepth(1000)
 
       // Animate it floating up and fading out
-      const animEndY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 140, sceneHeight)
       this.tweens.add({
         targets: comingSoonText,
-        y: animEndY,
+        y: this.cameras.main.centerY + 140,
         alpha: 0,
         duration: 2000,
         ease: 'Cubic.easeOut',
@@ -4743,7 +4741,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Main menu button (positioned lower)
-    const mainMenuButtonY = MobileDetection.getCompactYPosition(this.cameras.main.centerY + 340, sceneHeight)
+    const mainMenuButtonY = this.cameras.main.centerY + 340
     const mainMenuButton = this.add.rectangle(
       this.cameras.main.centerX,
       mainMenuButtonY,
@@ -4896,10 +4894,6 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private showVictoryOverlay(creditsEarned: number, newlyUnlockedShips: CharacterType[] = []) {
-    // Get mobile spacing multiplier
-    const spacingMult = MobileDetection.getVerticalSpacingMultiplier()
-    const sceneHeight = this.cameras.main.height
-
     // Create victory overlay
     const overlay = this.add.rectangle(
       0, 0,
@@ -4912,10 +4906,9 @@ export default class GameScene extends Phaser.Scene {
     // Create victory confetti burst
     this.createVictoryConfetti()
 
-    const victoryTextY = MobileDetection.getCompactYPosition(80, sceneHeight)
     const victoryText = this.add.text(
       this.cameras.main.centerX,
-      victoryTextY,
+      80,
       'VICTORY!',
       {
         fontFamily: 'Courier New',
@@ -4936,10 +4929,9 @@ export default class GameScene extends Phaser.Scene {
     // Get passive names
     const passiveNames = this.passives.map(p => p.getConfig().name).join(', ')
 
-    const statsTextY = MobileDetection.getCompactYPosition(150, sceneHeight)
     const statsText = this.add.text(
       this.cameras.main.centerX,
-      statsTextY,
+      150,
       `Time: ${minutes}:${seconds.toString().padStart(2, '0')} | Kills: ${this.killCount} | Score: ${this.score} | DPS: ${dps}`,
       {
         fontFamily: 'Courier New',
@@ -4950,14 +4942,12 @@ export default class GameScene extends Phaser.Scene {
     ).setOrigin(0.5).setDepth(201)
 
     // Interactive Weapons and Passives display with icons and pips - closer to stats
-    const weaponsPassivesY = MobileDetection.getCompactYPosition(190, sceneHeight)
-    this.createWeaponPassiveDisplay(weaponsPassivesY)
+    this.createWeaponPassiveDisplay(165)
 
     // Credits earned display - moved up
-    const creditsTextY = MobileDetection.getCompactYPosition(400, sceneHeight)
     const creditsText = this.add.text(
       this.cameras.main.centerX,
-      creditsTextY,
+      400,
       `REWARDS`,
       {
         fontFamily: 'Courier New',
@@ -4967,10 +4957,9 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5).setDepth(201)
 
-    const creditsValueY = MobileDetection.getCompactYPosition(425, sceneHeight)
     const creditsValue = this.add.text(
       this.cameras.main.centerX,
-      creditsValueY,
+      425,
       `${creditsEarned} ¤`,
       {
         fontFamily: 'Courier New',
@@ -4980,8 +4969,7 @@ export default class GameScene extends Phaser.Scene {
     ).setOrigin(0.5).setDepth(201)
 
     // Display newly unlocked ships - moved up
-    const unlocksY = MobileDetection.getCompactYPosition(470, sceneHeight)
-    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, unlocksY)
+    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, 470)
 
     // Position continue button at bottom of screen
     const continueButtonY = this.cameras.main.height - 60

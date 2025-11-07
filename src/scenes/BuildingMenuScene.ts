@@ -139,7 +139,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
     this.add.text(
       this.cameras.main.centerX,
       25,
-      'SKILL TREES',
+      'UPGRADES',
       {
         fontFamily: 'Courier New',
         fontSize: '36px',
@@ -223,7 +223,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
 
     // Create containers
     this.treeContainer = this.add.container(0, 0)
-    this.detailContainer = this.add.container(0, 0)
+    this.detailContainer = this.add.container(0, 0).setDepth(10)
 
     // Display current tree
     this.displayTree()

@@ -10,7 +10,6 @@ export default class MainMenuScene extends Phaser.Scene {
   private levelSelectionOverlay?: Phaser.GameObjects.Container
   private isLevelSelectionOpen: boolean = false
   private titleLetters: Phaser.GameObjects.Text[] = []
-  private currentPattern: number = 0
 
   constructor() {
     super('MainMenuScene')
@@ -45,6 +44,16 @@ export default class MainMenuScene extends Phaser.Scene {
     const startX = this.cameras.main.centerX - totalWidth / 2
     const titleY = 100 * scaleFactor
 
+    console.log('[MainMenu] Title config:', {
+      screenWidth,
+      scaleFactor,
+      titleFontSize,
+      letterSpacing,
+      startX,
+      titleY,
+      centerX: this.cameras.main.centerX
+    })
+
     for (let i = 0; i < titleText.length; i++) {
       const letter = this.add.text(
         startX + i * letterSpacing,
@@ -56,13 +65,25 @@ export default class MainMenuScene extends Phaser.Scene {
           color: '#00ffff',
           fontStyle: 'bold',
         }
-      ).setOrigin(0.5)
+      ).setOrigin(0.5).setDepth(100) // Ensure it appears on top
 
       this.titleLetters.push(letter)
-    }
 
-    // Start the animated color patterns
-    this.startTitleAnimation()
+      // Add color cycling animation with staggered delay
+      this.tweens.add({
+        targets: letter,
+        duration: 3000,
+        delay: i * 100, // Stagger each letter by 100ms
+        repeat: -1,
+        yoyo: false,
+        onUpdate: (tween) => {
+          const progress = tween.progress
+          const hue = (progress * 360 + i * 36) % 360 // Each letter offset by 36 degrees
+          const color = Phaser.Display.Color.HSVToRGB(hue / 360, 1, 1) as Phaser.Types.Display.ColorObject
+          letter.setColor(Phaser.Display.Color.RGBToString(color.r, color.g, color.b))
+        }
+      })
+    }
 
     // Display credits - moved left to make room for $ button
     const creditsText = this.add.text(
@@ -171,9 +192,9 @@ export default class MainMenuScene extends Phaser.Scene {
     // Menu buttons - scale to fit screen
     const baseButtonWidth = 400
     const buttonWidth = Math.min(baseButtonWidth * scaleFactor, screenWidth - 40)
-    const buttonHeight = 80 * scaleFactor
-    const buttonSpacing = 20 * scaleFactor
-    const startY = 425 * scaleFactor
+    const buttonHeight = 65 * scaleFactor  // Reduced from 80 to make buttons less tall
+    const buttonSpacing = 18 * scaleFactor  // Slightly reduced spacing
+    const startY = 380 * scaleFactor  // Moved up from 425
 
     // Campaign Button (1st position)
     const campaignButton = this.add.rectangle(
@@ -733,236 +754,6 @@ export default class MainMenuScene extends Phaser.Scene {
       this.levelSelectionOverlay = undefined
       this.isLevelSelectionOpen = false
     }
-  }
-
-  private startTitleAnimation() {
-    // Color palettes for different patterns
-    const rainbowColors = ['#ff0000', '#ff8800', '#ffff00', '#00ff00', '#00ffff', '#0088ff', '#8800ff', '#ff00ff']
-    const cyberpunkColors = ['#00ffff', '#ff00ff', '#ffff00', '#00ff00']
-    const fireColors = ['#ff0000', '#ff4400', '#ff8800', '#ffcc00', '#ffff00']
-    const iceColors = ['#00ffff', '#aaffff', '#ffffff', '#88ddff']
-
-    // Pattern 1: Rainbow wave that sweeps through letters
-    const rainbowWave = () => {
-      if (!this.titleLetters || !this.scene.isActive()) return
-      this.titleLetters.forEach((letter, i) => {
-        if (!letter || !letter.active) return
-        this.tweens.add({
-          targets: letter,
-          delay: i * 80,
-          duration: 300,
-          onStart: () => {
-            const colorIndex = (i + this.time.now / 200) % rainbowColors.length
-            letter.setColor(rainbowColors[Math.floor(colorIndex)])
-          },
-        })
-      })
-    }
-
-    // Pattern 2: Beat pulse - all letters flash together
-    const beatPulse = () => {
-      if (!this.titleLetters || !this.scene.isActive()) return
-      const color = Phaser.Utils.Array.GetRandom(cyberpunkColors)
-      this.titleLetters.forEach((letter) => {
-        if (!letter || !letter.active) return
-        this.tweens.add({
-          targets: letter,
-          scale: 1.2,
-          duration: 150,
-          yoyo: true,
-          ease: 'Sine.easeInOut',
-          onStart: () => {
-            letter.setColor(color)
-          },
-          onComplete: () => {
-            letter.setColor('#00ffff')
-          }
-        })
-      })
-    }
-
-    // Pattern 3: Random sparkle - individual letters flash
-    const randomSparkle = () => {
-      if (!this.titleLetters || !this.scene.isActive()) return
-      const randomIndex = Phaser.Math.Between(0, this.titleLetters.length - 1)
-      const letter = this.titleLetters[randomIndex]
-      if (!letter || !letter.active) return
-      const sparkleColor = Phaser.Utils.Array.GetRandom(['#ffffff', '#ffff00', '#00ffff', '#ff00ff'])
-
-      this.tweens.add({
-        targets: letter,
-        scale: 1.4,
-        duration: 200,
-        yoyo: true,
-        ease: 'Back.easeOut',
-        onStart: () => {
-          letter.setColor(sparkleColor)
-        },
-        onComplete: () => {
-          letter.setColor('#00ffff')
-        }
-      })
-    }
-
-    // Pattern 4: Fire wave - warm colors sweep through
-    const fireWave = () => {
-      if (!this.titleLetters || !this.scene.isActive()) return
-      this.titleLetters.forEach((letter, i) => {
-        if (!letter || !letter.active) return
-        this.tweens.add({
-          targets: letter,
-          delay: i * 60,
-          duration: 250,
-          y: letter.y - 8,
-          yoyo: true,
-          ease: 'Sine.easeInOut',
-          onStart: () => {
-            letter.setColor(fireColors[i % fireColors.length])
-          },
-          onComplete: () => {
-            letter.setColor('#00ffff')
-          }
-        })
-      })
-    }
-
-    // Pattern 5: Ice wave - cool colors sweep through
-    const iceWave = () => {
-      if (!this.titleLetters || !this.scene.isActive()) return
-      this.titleLetters.forEach((letter, i) => {
-        if (!letter || !letter.active) return
-        this.tweens.add({
-          targets: letter,
-          delay: i * 60,
-          duration: 250,
-          onStart: () => {
-            letter.setColor(iceColors[i % iceColors.length])
-          },
-          onComplete: () => {
-            letter.setColor('#00ffff')
-          }
-        })
-      })
-    }
-
-    // Pattern 6: Alternating flash - even/odd letters
-    const alternatingFlash = () => {
-      if (!this.titleLetters || !this.scene.isActive()) return
-      const color1 = Phaser.Utils.Array.GetRandom(cyberpunkColors)
-      const color2 = Phaser.Utils.Array.GetRandom(cyberpunkColors)
-
-      this.titleLetters.forEach((letter, i) => {
-        if (!letter || !letter.active) return
-        this.tweens.add({
-          targets: letter,
-          scale: 1.15,
-          duration: 180,
-          yoyo: true,
-          ease: 'Sine.easeInOut',
-          onStart: () => {
-            letter.setColor(i % 2 === 0 ? color1 : color2)
-          },
-          onComplete: () => {
-            letter.setColor('#00ffff')
-          }
-        })
-      })
-    }
-
-    // Pattern 7: Glitch effect - rapid color changes
-    const glitchEffect = () => {
-      if (!this.titleLetters || !this.scene.isActive()) return
-      const randomCount = Phaser.Math.Between(2, 4)
-      for (let g = 0; g < randomCount; g++) {
-        const randomIndex = Phaser.Math.Between(0, this.titleLetters.length - 1)
-        const letter = this.titleLetters[randomIndex]
-        if (!letter || !letter.active) continue
-
-        this.tweens.add({
-          targets: letter,
-          x: letter.x + Phaser.Math.Between(-3, 3),
-          duration: 50,
-          yoyo: true,
-          repeat: 2,
-          onStart: () => {
-            letter.setColor(Phaser.Utils.Array.GetRandom(['#ff00ff', '#00ff00', '#ffff00']))
-          },
-          onComplete: () => {
-            letter.setColor('#00ffff')
-          }
-        })
-      }
-    }
-
-    const patterns = [
-      rainbowWave,
-      beatPulse,
-      randomSparkle,
-      fireWave,
-      iceWave,
-      alternatingFlash,
-      glitchEffect
-    ]
-
-    // Timer-based pattern changes (feels like music beats)
-    // Vary the timing to feel more natural
-    const scheduleNextPattern = () => {
-      // Safety check: stop scheduling if scene is no longer active
-      if (!this.scene.isActive() || !this.titleLetters) return
-
-      const delays = [800, 1000, 1200, 1600, 2000] // Different beat timings
-      const nextDelay = Phaser.Utils.Array.GetRandom(delays)
-
-      this.time.delayedCall(nextDelay, () => {
-        // Safety check before executing pattern
-        if (!this.scene.isActive() || !this.titleLetters) return
-
-        // Pick a random pattern
-        const patternIndex = Phaser.Math.Between(0, patterns.length - 1)
-        patterns[patternIndex]()
-
-        // Occasionally do a double-hit (feels like beat emphasis)
-        if (Math.random() < 0.25) {
-          this.time.delayedCall(150, () => {
-            if (!this.scene.isActive() || !this.titleLetters) return
-            const quickPattern = Phaser.Utils.Array.GetRandom([beatPulse, randomSparkle, glitchEffect])
-            quickPattern()
-          })
-        }
-
-        scheduleNextPattern()
-      })
-    }
-
-    // Start the pattern cycle
-    scheduleNextPattern()
-
-    // Also add continuous subtle rainbow cycling in the background
-    this.time.addEvent({
-      delay: 100,
-      callback: () => {
-        // Safety check: only update if scene is active and letters exist
-        if (!this.scene.isActive() || !this.titleLetters) return
-
-        this.titleLetters.forEach((letter, i) => {
-          // Safety check: ensure letter still exists and is active
-          if (!letter || !letter.active) return
-
-          const hue = (this.time.now / 20 + i * 30) % 360
-          const colorObj = Phaser.Display.Color.HSVToRGB(hue / 360, 0.3, 1) as { r: number; g: number; b: number }
-          const hexColor = Phaser.Display.Color.RGBToString(
-            Math.floor(colorObj.r),
-            Math.floor(colorObj.g),
-            Math.floor(colorObj.b)
-          )
-          // Only apply if letter isn't currently being animated
-          if (letter.scale === 1) {
-            letter.setColor(hexColor)
-          }
-        })
-      },
-      loop: true
-    })
   }
 
   private hasAffordableUpgrades(): boolean {

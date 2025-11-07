@@ -10,7 +10,7 @@ import StatsScene from '../scenes/StatsScene'
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   width: 540,
-  height: 960,
+  height: 880,
   backgroundColor: '#1a1a2e',
   physics: {
     default: 'arcade',
@@ -23,6 +23,9 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
+    // Fixed virtual resolution - Phaser will scale to fit any screen
+    width: 540,
+    height: 880,
   },
   render: {
     pixelArt: true,

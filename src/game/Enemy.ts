@@ -81,7 +81,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     scoreValue: 50,
     behavior: {
       shootsBack: true,
-      shootInterval: 1500,
+      shootInterval: 2500, // Reduced attack speed by 40% (was 1500)
       movementPattern: 'straight',
       specialAbility: 'spread_fire',
     },
@@ -96,7 +96,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     scoreValue: 30,
     behavior: {
       shootsBack: true,
-      shootInterval: 3000,
+      shootInterval: 5000, // Reduced attack speed by 40% (was 3000)
       movementPattern: 'straight',
       specialAbility: 'charged_shot',
     },
@@ -139,7 +139,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     scoreValue: 25,
     behavior: {
       shootsBack: true,
-      shootInterval: 2500,
+      shootInterval: 4200, // Reduced attack speed by 40% (was 2500)
       movementPattern: 'circle',
     },
   },
@@ -181,7 +181,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     scoreValue: 28,
     behavior: {
       shootsBack: true,
-      shootInterval: 1800,
+      shootInterval: 3000, // Reduced attack speed by 40% (was 1800)
       movementPattern: 'charge',
     },
   },
@@ -195,7 +195,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     scoreValue: 22,
     behavior: {
       shootsBack: true,
-      shootInterval: 1000,
+      shootInterval: 1700, // Reduced attack speed by 40% (was 1000)
       movementPattern: 'stationary',
     },
   },
@@ -222,7 +222,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     scoreValue: 40,
     behavior: {
       shootsBack: true,
-      shootInterval: 800, // Frequent shots for spiral
+      shootInterval: 1350, // Reduced attack speed by 40% (was 800)
       movementPattern: 'straight',
       specialAbility: 'spiral_fire',
     },
@@ -251,7 +251,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     scoreValue: 25,
     behavior: {
       shootsBack: true,
-      shootInterval: 2000,
+      shootInterval: 3350, // Reduced attack speed by 40% (was 2000)
       movementPattern: 'patrol',
     },
   },
@@ -265,7 +265,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     scoreValue: 45,
     behavior: {
       shootsBack: true,
-      shootInterval: 1600,
+      shootInterval: 2700, // Reduced attack speed by 40% (was 1600)
       movementPattern: 'straight',
       specialAbility: 'shield',
     },
@@ -294,7 +294,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     scoreValue: 200,
     behavior: {
       shootsBack: true,
-      shootInterval: 800,
+      shootInterval: 1350, // Reduced attack speed by 40% (was 800)
       movementPattern: 'sinwave',
       specialAbility: 'mini_boss',
     },
@@ -310,7 +310,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     name: 'ANNIHILATOR',
     behavior: {
       shootsBack: true,
-      shootInterval: 500,
+      shootInterval: 850, // Reduced attack speed by 40% (was 500)
       movementPattern: 'sinwave',
       specialAbility: 'boss_barrage',
     },
@@ -340,7 +340,7 @@ export class Enemy extends Phaser.GameObjects.Text {
   private patrolDirection: number = 1 // 1 = right, -1 = left
   private patrolStartX: number = 0
   private patrolRange: number = 150
-  private shield: Phaser.GameObjects.Arc | null = null
+  public shield: Phaser.GameObjects.Arc | null = null
   private config: EnemyTypeConfig
   declare body: Phaser.Physics.Arcade.Body
 
@@ -409,12 +409,12 @@ export class Enemy extends Phaser.GameObjects.Text {
         this.setText(config.symbol)
         this.setStroke('#000000', 2)
       } catch (error) {
-        console.error('Error setting enemy text/style:', error)
         // Fallback: just set basic text without style updates
         try {
           this.setText(config.symbol)
         } catch (e) {
           // If even basic text fails, disable this enemy
+          console.error(`[Enemy] setText failed for ${type}, enemy corrupted:`, e)
           this.setActive(false)
           this.setVisible(false)
           return
@@ -454,11 +454,9 @@ export class Enemy extends Phaser.GameObjects.Text {
     }
 
     // Ensure physics body exists (safety check)
-    if (!this.body && this.scene) {
-      console.error('Enemy body is null, recreating physics body')
-      this.scene.physics.add.existing(this)
-    } else if (!this.body && !this.scene) {
-      console.error('Enemy has no body and no scene reference - cannot spawn')
+    if (!this.body) {
+      // Enemy has no body - cannot spawn safely
+      console.error(`[Enemy] No physics body found for enemy type ${this.enemyType}`)
       this.setActive(false)
       this.setVisible(false)
       return
@@ -470,13 +468,17 @@ export class Enemy extends Phaser.GameObjects.Text {
     const textWidth = this.width
     const textHeight = this.height
 
-    if (this.body) {
-      this.body.setSize(textWidth, textHeight)
-      this.body.reset(x, y)
-      this.body.enable = true // Explicitly enable body
-      // Force Phaser to update collision bounds
-      this.body.updateFromGameObject()
+    // Reset body first (this should re-enable it)
+    this.body.reset(x, y)
+    this.body.setSize(textWidth, textHeight)
+
+    // Ensure body is enabled (some versions of Phaser don't auto-enable on reset)
+    if (!this.body.enable) {
+      this.body.enable = true
     }
+
+    // Force Phaser to update collision bounds
+    this.body.updateFromGameObject()
 
     // Set position
     this.setPosition(x, y)
@@ -1236,13 +1238,23 @@ export class EnemyGroup extends Phaser.Physics.Arcade.Group {
 
     for (let i = 0; i < poolSize; i++) {
       const enemy = new Enemy(scene, 0, 0, EnemyType.DRONE)
-      this.add(enemy, true)  // Let the group properly add to scene and physics
+
+      // Add to scene first
+      scene.add.existing(enemy)
+
+      // Explicitly enable physics on this text object
+      scene.physics.add.existing(enemy)
+
+      // Now add to group
+      this.add(enemy, false)  // false because already added to scene
       this.pool.push(enemy)
 
-      // Ensure body is set up after being added by the group
+      // Ensure body is set up after physics is enabled
       if (enemy.body) {
         enemy.body.setSize(1, 1)
         enemy.body.enable = false
+      } else {
+        console.error('[EnemyGroup] Failed to create physics body for enemy in pool')
       }
     }
   }
@@ -1259,6 +1271,7 @@ export class EnemyGroup extends Phaser.Physics.Arcade.Group {
   spawnEnemy(x: number, y: number, type: EnemyType = EnemyType.DRONE) {
     const activeCount = this.pool.filter(e => e.active).length
     if (activeCount >= this.maxEnemies) {
+      console.warn(`[EnemyGroup] Cannot spawn - pool at max capacity: ${activeCount}/${this.maxEnemies}`)
       return null
     }
 
@@ -1266,9 +1279,15 @@ export class EnemyGroup extends Phaser.Physics.Arcade.Group {
 
     if (enemy) {
       enemy.spawn(x, y, type)
+      // Check if enemy is actually active after spawn (spawn might fail silently)
+      if (!enemy.active) {
+        console.error(`[EnemyGroup] Enemy spawn failed - enemy not active after spawn() call`)
+        return null
+      }
       return enemy
     }
 
+    console.error(`[EnemyGroup] No inactive enemy found in pool. Active: ${activeCount}, Pool size: ${this.pool.length}`)
     return null
   }
 
@@ -1289,6 +1308,55 @@ export class EnemyGroup extends Phaser.Physics.Arcade.Group {
       if (!enemy.active) return false
       const distance = Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y)
       return distance <= radius
+    })
+  }
+
+  // Debug method to check pool health
+  getPoolStatus(): { total: number, active: number, inactive: number, bodyDisabled: number } {
+    let active = 0
+    let inactive = 0
+    let bodyDisabled = 0
+
+    this.pool.forEach(e => {
+      if (e.active) {
+        active++
+      } else {
+        inactive++
+      }
+      if (e.body && !e.body.enable) {
+        bodyDisabled++
+      }
+    })
+
+    return { total: this.pool.length, active, inactive, bodyDisabled }
+  }
+
+  // Reset all enemies in pool to inactive state (for wave transitions or cleanup)
+  resetPool() {
+    console.log('[EnemyGroup] Resetting enemy pool')
+    this.pool.forEach(enemy => {
+      if (enemy.active) {
+        // Stop any tweens
+        enemy.scene.tweens.killTweensOf(enemy)
+        enemy.setScale(1)
+
+        // Destroy shield if present
+        if (enemy.shield) {
+          enemy.shield.destroy()
+          enemy.shield = null
+        }
+
+        // Deactivate
+        enemy.setActive(false)
+        enemy.setVisible(false)
+        enemy.setPosition(-1000, -1000)
+
+        if (enemy.body) {
+          enemy.body.setVelocity(0, 0)
+          enemy.body.setSize(1, 1)
+          enemy.body.enable = false
+        }
+      }
     })
   }
 }

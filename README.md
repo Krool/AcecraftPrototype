@@ -4,15 +4,34 @@ A roguelike space shooter prototype built with Phaser 3, React, and Vite. Design
 
 ## 🎮 Current Implementation Status
 
-### ✅ Completed Features (v0.1)
+### ✅ Completed Features (v0.2+)
 
 **Core Gameplay**
 - ✅ Portrait mode (540x960 - phone aspect ratio)
 - ✅ Touch/drag controls with invisible joystick
 - ✅ Auto-fire projectile system with pooling
-- ✅ 4 enemy types (Basic, Fast, Tank, Elite)
+- ✅ 20+ enemy types with unique behaviors
 - ✅ Progressive difficulty scaling (time + level based)
 - ✅ XP collection and level-up system
+- ✅ Campaign system with 10 levels
+
+**Weapon System**
+- ✅ 20 unique weapon types (Physical, Fire, Cold, Nature, Control)
+- ✅ 3 upgrade levels per weapon
+- ✅ Weapon slot system (4 default, expandable)
+- ✅ Weapon evolution system (20 evolutions)
+- ✅ Super evolution system (6 super evolutions)
+
+**Character System**
+- ✅ 19 unique character types
+- ✅ Character innate abilities
+- ✅ Character selection and purchase system
+- ✅ Character progression tracking
+
+**Passive System**
+- ✅ 19 unique passive abilities
+- ✅ Passive slot system (4 default, expandable)
+- ✅ 3 upgrade levels per passive
 
 **Combat Systems**
 - ✅ Damage numbers with floating animation
@@ -20,13 +39,16 @@ A roguelike space shooter prototype built with Phaser 3, React, and Vite. Design
 - ✅ Screen shake on player damage
 - ✅ Pierce mechanic for projectiles
 - ✅ Multi-shot and spread-shot patterns
+- ✅ Combo system with 4x multiplier (5/10/25/50 kill streaks)
 
 **Progression & Rewards**
-- ✅ 11 unique upgrades (damage, fire rate, multi-shot, pierce, spread, health, speed)
-- ✅ Combo system with 4x multiplier (5/10/25/50 kill streaks)
-- ✅ 4 power-up types (Shield, Rapid Fire, Nuke, Magnet)
+- ✅ Building system with 50+ upgrade types
+- ✅ 3 building trees (Combat, Survival, Growth)
+- ✅ Meta currency (Credits) system
+- ✅ 5 power-up types (Shield, Rapid Fire, Nuke, Magnet, Chest)
 - ✅ Score tracking with localStorage high scores
 - ✅ Survival timer display
+- ✅ Wave system with progressive enemy compositions
 
 **Visual & Audio**
 - ✅ Scrolling 3-layer parallax star field
@@ -34,37 +56,47 @@ A roguelike space shooter prototype built with Phaser 3, React, and Vite. Design
 - ✅ XP progress bar
 - ✅ Power-up status display with timers
 - ✅ Combo display with dynamic colors/sizes
+- ✅ Procedural sound effects (ZzFX)
+- ✅ Multi-channel audio system
+- ✅ Volume controls (Master, SFX, Music)
 
-### 🚧 In Progress (v0.2)
+**UI & Menus**
+- ✅ Main menu with navigation
+- ✅ Building menu with upgrade trees
+- ✅ Hangar (character selection/purchase)
+- ✅ Stats screen
+- ✅ Game scene with full HUD
 
-**Weapon System**
-- 🔨 12 weapon types with unique behaviors
-- 🔨 Weapon evolution system (weapon + passive)
-- 🔨 Passive ability system
+### 🔨 Partially Implemented (Needs Polish)
 
-**Character System**
-- 🔨 Card-themed characters (Ace, King, Queen, Jack, etc.)
-- 🔨 Character innate abilities
-- 🔨 Character selection screen
+**Status Effects**
+- 🔨 Burn, Freeze, Poison, Bleed status effects (structure exists, needs implementation)
+- 🔨 Status visual indicators
+- 🔨 Status-based passive interactions
 
-**Boss & Encounters**
-- 🔨 Mini-boss spawn system
-- 🔨 Boss fights with unique patterns
-- 🔨 Reward burst mechanics
+**Special Weapon Behaviors**
+- 🔨 Lightning chain logic
+- 🔨 Fire explosion AOE
+- 🔨 Ice freeze/slow effects
+- 🔨 Water wave movement
+- 🔨 Earth persistent zones
+- 🔨 Dark enemy conversion
 
-### 📋 Planned Features (v0.3+)
+**Boss Fights**
+- 🔨 Mini-boss and Boss enemy types exist
+- 🔨 Boss fight mechanics need polish
+- 🔨 Boss health bars need integration
 
-**Meta Progression**
-- Buildings system (Hangar, Research Lab, Forge, etc.)
-- Ship upgrade paths
-- Meta currency (Credits)
-- Permanent unlocks and progression
+**Audio**
+- 🔨 Background music system ready (needs music files)
+
+### 📋 Future Enhancements
 
 **Extended Content**
 - Training Simulator (weapon testing)
 - Archive (achievements)
 - Co-op multiplayer
-- Additional weapons and evolutions
+- Additional visual polish
 
 ---
 
@@ -161,12 +193,17 @@ roguecraft/
 
 ## 📊 Current Metrics
 
-- **Enemies**: 4 types with difficulty scaling
-- **Upgrades**: 11 unique options
-- **Power-ups**: 4 types with timed effects
-- **Projectile Types**: 3 (standard, pierce, spread)
+- **Weapons**: 20 unique types
+- **Characters**: 19 unique ships
+- **Passives**: 19 unique abilities
+- **Evolutions**: 20 regular + 6 super = 26 total
+- **Enemies**: 20+ types with progressive difficulty
+- **Buildings**: 50+ upgrade types across 3 trees
+- **Campaign Levels**: 10 levels with increasing difficulty
+- **Power-ups**: 5 types (Shield, Rapid Fire, Nuke, Magnet, Chest)
+- **Projectile Types**: Multiple (standard, pierce, spread, chain, etc.)
 - **Max Combo**: 4x multiplier
-- **Session Target**: <5 minutes
+- **Session Target**: 3 minutes per level
 - **Average Level-ups**: ~15 per run
 
 ---

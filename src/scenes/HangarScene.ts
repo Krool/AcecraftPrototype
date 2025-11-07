@@ -359,22 +359,22 @@ export default class HangarScene extends Phaser.Scene {
 
     container.add(nameText)
 
-    // Ship class description
-    const descText = this.add.text(
-      panelWidth / 2, 165,
-      config.description,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '14px',
-        color: '#aaaaaa',
-        align: 'center',
-        wordWrap: { width: panelWidth - 40 }
-      }
-    ).setOrigin(0.5, 0)
+    // Ship class description - Hidden to save vertical space
+    // const descText = this.add.text(
+    //   panelWidth / 2, 165,
+    //   config.description,
+    //   {
+    //     fontFamily: 'Courier New',
+    //     fontSize: '14px',
+    //     color: '#aaaaaa',
+    //     align: 'center',
+    //     wordWrap: { width: panelWidth - 40 }
+    //   }
+    // ).setOrigin(0.5, 0)
+    //
+    // container.add(descText)
 
-    container.add(descText)
-
-    let currentY = 220
+    let currentY = 170
 
     // Divider
     const divider1 = this.add.rectangle(
@@ -698,11 +698,13 @@ export default class HangarScene extends Phaser.Scene {
     ).setOrigin(0, 0).setDepth(-1).setInteractive()
 
     const DRAG_THRESHOLD = 5
+    let totalDragDistance = 0
 
     dragZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       this.isDragging = true
       this.hasDragged = false
       this.dragStartY = pointer.y
+      totalDragDistance = 0
     })
 
     // Use global input for move to capture drags that go outside the zone
@@ -710,15 +712,19 @@ export default class HangarScene extends Phaser.Scene {
       if (this.isDragging) {
         const dragDelta = pointer.y - this.dragStartY
 
-        if (Math.abs(dragDelta) > DRAG_THRESHOLD || this.hasDragged) {
+        // Always update scroll position for smooth dragging
+        this.scrollY = Phaser.Math.Clamp(
+          this.scrollY - dragDelta,
+          0,
+          this.maxScroll
+        )
+        this.listContainer.y = 140 - this.scrollY
+        this.dragStartY = pointer.y
+
+        // Track total drag distance to determine if this was a drag vs a tap
+        totalDragDistance += Math.abs(dragDelta)
+        if (totalDragDistance > DRAG_THRESHOLD) {
           this.hasDragged = true
-          this.scrollY = Phaser.Math.Clamp(
-            this.scrollY - dragDelta,
-            0,
-            this.maxScroll
-          )
-          this.listContainer.y = 140 - this.scrollY
-          this.dragStartY = pointer.y
         }
       }
     })

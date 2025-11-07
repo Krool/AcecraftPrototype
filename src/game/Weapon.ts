@@ -817,31 +817,16 @@ export class BloodLanceWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 5 + (this.level * 2) // More ricochets than Ricochet Disk
 
-    const lanceCount = this.level
+    const lanceCount = 1  // Always fire 1 lance (dramatically reduced)
     const speed = -500
     const bounceCount = 5 + (this.level * 2) // Many more bounces
 
-    if (lanceCount === 1) {
-      this.projectileGroup.fireProjectile(
-        x, y, damage, pierce, 0, speed,
-        this.config.icon, this.config.color,
-        ProjectileType.BOUNCING,
-        { bounceCount }
-      )
-    } else {
-      const spacing = 15
-      const totalWidth = (lanceCount - 1) * spacing
-      const startX = x - totalWidth / 2
-
-      for (let i = 0; i < lanceCount; i++) {
-        this.projectileGroup.fireProjectile(
-          startX + i * spacing, y, damage, pierce, 0, speed,
-          this.config.icon, this.config.color,
-          ProjectileType.BOUNCING,
-          { bounceCount }
-        )
-      }
-    }
+    this.projectileGroup.fireProjectile(
+      x, y, damage, pierce, 0, speed,
+      this.config.icon, this.config.color,
+      ProjectileType.BOUNCING,
+      { bounceCount }
+    )
   }
 }
 
