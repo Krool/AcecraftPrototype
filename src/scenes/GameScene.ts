@@ -2302,7 +2302,7 @@ export default class GameScene extends Phaser.Scene {
         const powerUp = this.powerUps.spawnRandomPowerUp(data.x, data.y)
 
         // Track if a chest was randomly spawned to enforce max cap
-        if (powerUp && powerUp.powerUpType === PowerUpType.CHEST) {
+        if (powerUp && powerUp.getPowerUpType() === PowerUpType.CHEST) {
           this.chestsSpawnedThisRun++
 
           // If we exceeded max chests, destroy this one and spawn a different power-up
