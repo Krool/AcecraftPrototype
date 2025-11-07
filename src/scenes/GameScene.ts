@@ -17,32 +17,33 @@ import { gameProgression } from '../game/GameProgression'
 import { MobileDetection } from '../utils/MobileDetection'
 
 // XP requirements for each level (index 0 = level 1→2, index 1 = level 2→3, etc.)
+// Curve accelerates significantly starting at level 6
 const XP_REQUIREMENTS = [
-  75,   // Level 1→2 (was 25)
-  120,  // Level 2→3 (was 40)
-  150,  // Level 3→4 (was 50)
-  180,  // Level 4→5 (was 60)
-  210,  // Level 5→6 (was 70)
-  240,  // Level 6→7 (was 80)
-  300,  // Level 7→8 (was 100)
-  360,  // Level 8→9 (was 120)
-  420,  // Level 9→10 (was 140)
-  480,  // Level 10→11 (was 160)
-  540,  // Level 11→12 (was 180)
-  600,  // Level 12→13 (was 200)
-  750,  // Level 13→14 (was 250)
-  900,  // Level 14→15 (was 300)
-  1200, // Level 15→16 (was 400)
-  1500, // Level 16→17 (was 500)
-  2250, // Level 17→18 (was 750)
-  3000, // Level 18→19 (was 1000)
-  4500, // Level 19→20 (was 1500)
-  6000, // Level 20→21 (was 2000)
-  9000, // Level 21→22 (was 3000)
-  12000, // Level 22→23 (was 4000)
-  15000, // Level 23→24 (was 5000)
-  22500, // Level 24→25 (was 7500)
-  30000, // Level 25+ (was 10000)
+  75,    // Level 1→2
+  120,   // Level 2→3
+  150,   // Level 3→4
+  180,   // Level 4→5
+  210,   // Level 5→6
+  400,   // Level 6→7 (steeper acceleration begins)
+  550,   // Level 7→8
+  750,   // Level 8→9
+  1000,  // Level 9→10
+  1300,  // Level 10→11
+  1650,  // Level 11→12
+  2000,  // Level 12→13
+  2500,  // Level 13→14
+  3000,  // Level 14→15
+  3750,  // Level 15→16
+  4500,  // Level 16→17
+  6000,  // Level 17→18
+  7500,  // Level 18→19
+  10000, // Level 19→20
+  12500, // Level 20→21
+  15000, // Level 21→22
+  20000, // Level 22→23
+  25000, // Level 23→24
+  35000, // Level 24→25
+  50000, // Level 25+
 ]
 
 export default class GameScene extends Phaser.Scene {
