@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import { GameState } from '../game/GameState'
 import { BuildingType, BUILDING_CONFIGS } from '../game/Building'
 import { soundManager, SoundType } from '../game/SoundManager'
+import { gameProgression } from '../game/GameProgression'
 
 interface SkillNode {
   id: BuildingType
@@ -149,7 +150,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
     ).setOrigin(0.5)
 
     // Credits display - moved left to make room for $ button
-    const credits = this.gameState.getCredits()
+    const credits = gameProgression.getCredits()
     const creditsText = this.add.text(
       this.cameras.main.width - 60,
       25,
@@ -188,7 +189,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
     creditButton.on('pointerdown', () => {
       soundManager.play(SoundType.BUTTON_CLICK)
       this.gameState.addCredits(1000)
-      creditsText.setText(`${this.gameState.getCredits()} ¤`)
+      creditsText.setText(`${gameProgression.getCredits()} ¤`)
       // Flash effect
       this.tweens.add({
         targets: creditsText,
@@ -196,7 +197,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
         duration: 100,
         yoyo: true,
         onComplete: () => {
-          creditsText.setText(`${this.gameState.getCredits()} ¤`)
+          creditsText.setText(`${gameProgression.getCredits()} ¤`)
           this.updateAffordabilityIndicators()
         }
       })
@@ -457,7 +458,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
 
     // Red dot indicator if affordable (added last so it renders on top)
     const cost = building.getUpgradeCost()
-    const canAfford = cost > 0 && this.gameState.getCredits() >= cost && isAvailable && !isMaxed
+    const canAfford = cost > 0 && gameProgression.getCredits() >= cost && isAvailable && !isMaxed
 
     // Hover effects for all nodes
     bg.on('pointerover', () => {
@@ -543,7 +544,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
     const level = building.getLevel()
     const maxLevel = config.maxLevel
     const cost = building.getUpgradeCost()
-    const canAfford = this.gameState.getCredits() >= cost
+    const canAfford = gameProgression.getCredits() >= cost
     const isMaxed = level >= maxLevel
     const isAvailable = this.isNodeAvailable(this.selectedNode)
 
@@ -692,7 +693,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
 
     const building = this.gameState.getBuilding(this.selectedNode)
     const cost = building.getUpgradeCost()
-    const canAfford = this.gameState.getCredits() >= cost
+    const canAfford = gameProgression.getCredits() >= cost
 
     if (!canAfford) {
       // Can't afford - play feedback animations
@@ -734,7 +735,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
         // Update credits display
         const creditsDisplay = this.children.getByName('creditsDisplay') as Phaser.GameObjects.Text
         if (creditsDisplay) {
-          creditsDisplay.setText(`${this.gameState.getCredits()} ¤`)
+          creditsDisplay.setText(`${gameProgression.getCredits()} ¤`)
         }
 
         // Update tab affordability indicators
@@ -856,7 +857,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
   }
 
   private hasAffordableNodesInTree(treeType: TreeType): boolean {
-    const credits = this.gameState.getCredits()
+    const credits = gameProgression.getCredits()
     const tree = this.skillTrees[treeType]
 
     // Check if any node in this tree can be upgraded and is affordable

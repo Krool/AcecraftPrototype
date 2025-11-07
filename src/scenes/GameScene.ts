@@ -137,6 +137,11 @@ export default class GameScene extends Phaser.Scene {
   private lastHitTime: number = 0
   private gameOverUI: Phaser.GameObjects.GameObject[] = []
 
+  // Guaranteed chest system
+  private chestsSpawnedThisRun: number = 0
+  private readonly maxChestsPerRun: number = 4
+  private readonly guaranteedChestMilestones: number[] = [20, 60, 120, 200] // Kill counts for guaranteed chests
+
   // New weapon/passive/character system
   private weapons: Weapon[] = []
   private passives: Passive[] = []
@@ -213,6 +218,7 @@ export default class GameScene extends Phaser.Scene {
     this.runStartTime = 0
     this.pauseStartTime = 0
     this.totalPausedTime = 0
+    this.chestsSpawnedThisRun = 0
     this.discoveredEvolutions = new Set()
     this.starFieldTweens = []
 
@@ -2277,9 +2283,50 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    // Chance to spawn power-up (3% chance - reduced by 70%)
-    if (Math.random() < 0.03) {
-      this.powerUps.spawnRandomPowerUp(data.x, data.y)
+    // Guaranteed chest system + random power-ups
+    let shouldSpawnChest = false
+
+    // Check if we hit a guaranteed chest milestone
+    if (this.guaranteedChestMilestones.includes(this.killCount) &&
+        this.chestsSpawnedThisRun < this.maxChestsPerRun) {
+      shouldSpawnChest = true
+    }
+
+    if (shouldSpawnChest) {
+      // Spawn guaranteed chest
+      this.powerUps.spawnPowerUp(data.x, data.y, PowerUpType.CHEST)
+      this.chestsSpawnedThisRun++
+    } else {
+      // Regular random power-up spawn (3% chance)
+      if (Math.random() < 0.03) {
+        const powerUp = this.powerUps.spawnRandomPowerUp(data.x, data.y)
+
+        // Track if a chest was randomly spawned to enforce max cap
+        if (powerUp && powerUp.powerUpType === PowerUpType.CHEST) {
+          this.chestsSpawnedThisRun++
+
+          // If we exceeded max chests, destroy this one and spawn a different power-up
+          if (this.chestsSpawnedThisRun > this.maxChestsPerRun) {
+            powerUp.setActive(false)
+            powerUp.setVisible(false)
+            this.chestsSpawnedThisRun--
+
+            // Spawn a different random power-up (non-chest)
+            const rand = Math.random() * 92 // Exclude chest (which starts at 92)
+            let type: PowerUpType
+            if (rand < 32) {
+              type = PowerUpType.RAPID_FIRE
+            } else if (rand < 59) {
+              type = PowerUpType.SHIELD
+            } else if (rand < 81) {
+              type = PowerUpType.MAGNET
+            } else {
+              type = PowerUpType.NUKE
+            }
+            this.powerUps.spawnPowerUp(data.x, data.y, type)
+          }
+        }
+      }
     }
 
     // Create particle explosion effect

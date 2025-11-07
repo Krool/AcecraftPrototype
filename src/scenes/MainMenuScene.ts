@@ -4,6 +4,7 @@ import { BuildingType } from '../game/Building'
 import { CAMPAIGN_LEVELS } from '../game/Campaign'
 import { soundManager, SoundType } from '../game/SoundManager'
 import { CHARACTER_CONFIGS } from '../game/Character'
+import { gameProgression } from '../game/GameProgression'
 
 export default class MainMenuScene extends Phaser.Scene {
   private gameState!: GameState
@@ -79,7 +80,7 @@ export default class MainMenuScene extends Phaser.Scene {
     const creditsText = this.add.text(
       this.cameras.main.width - 60,
       25,
-      `${this.gameState.getCredits()} ¤`,
+      `${gameProgression.getCredits()} ¤`,
       {
         fontFamily: 'Courier New',
         fontSize: '24px',
@@ -113,8 +114,8 @@ export default class MainMenuScene extends Phaser.Scene {
 
     creditButton.on('pointerdown', () => {
       soundManager.play(SoundType.BUTTON_CLICK)
-      this.gameState.addCredits(1000)
-      creditsText.setText(`${this.gameState.getCredits()} ¤`)
+      gameProgression.addCredits(1000)
+      creditsText.setText(`${gameProgression.getCredits()} ¤`)
       // Flash effect
       this.tweens.add({
         targets: creditsText,
@@ -123,7 +124,7 @@ export default class MainMenuScene extends Phaser.Scene {
         yoyo: true,
         onComplete: () => {
           // Ensure text is correct after animation
-          creditsText.setText(`${this.gameState.getCredits()} ¤`)
+          creditsText.setText(`${gameProgression.getCredits()} ¤`)
 
           // Update affordability indicators
           const upgradeDot = this.children.getByName('upgradeDot') as Phaser.GameObjects.Arc
@@ -747,7 +748,7 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   private hasAffordableUpgrades(): boolean {
-    const credits = this.gameState.getCredits()
+    const credits = gameProgression.getCredits()
     const buildings = this.gameState.getAllBuildings()
 
     // Check if any building can be upgraded and is affordable
@@ -759,7 +760,7 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   private hasAffordableShips(): boolean {
-    const credits = this.gameState.getCredits()
+    const credits = gameProgression.getCredits()
     const SHIP_COST = 250
     const unlockedCharacters = this.gameState.getUnlockedCharacters()
 
