@@ -190,13 +190,13 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     color: '#ff3333',
     fontSize: '54px',
     health: 168, // Reduced by 30% from 240
-    speed: 0,
+    speed: 35, // Slow moving turret (slowest enemy)
     xpValue: 18,
     scoreValue: 22,
     behavior: {
       shootsBack: true,
       shootInterval: 1700, // Reduced attack speed by 40% (was 1000)
-      movementPattern: 'stationary',
+      movementPattern: 'straight', // Changed from stationary - must move down screen
     },
   },
   [EnemyType.CHARGER]: {
