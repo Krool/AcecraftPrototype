@@ -22,7 +22,7 @@ import { PLAYER, WAVE_SPAWNING, COMBAT, ALLIES, FROST_HASTE, CHESTS, LAYOUT } fr
 // XP requirements for each level (index 0 = level 1→2, index 1 = level 2→3, etc.)
 // Curve accelerates significantly starting at level 6, much steeper in late game
 const XP_REQUIREMENTS = [
-  23,    // Level 1→2 (reduced by 25%)
+  20,    // Level 1→2 (reduced for faster first level-up)
   60,    // Level 2→3
   83,    // Level 3→4
   105,   // Level 4→5
