@@ -72,8 +72,8 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     name: 'Lightning',
     type: WeaponType.LIGHTNING,
     damageType: DamageType.NATURE,
-    baseDamage: 7,
-    baseFireRate: 450, // Balanced for ~57 DPS at level 3 (with 3 chains)
+    baseDamage: 5,
+    baseFireRate: 450, // Balanced for ~71 DPS at level 3 (with 6 chains)
     description: 'Chain lightning between enemies',
     maxLevel: 3,
     icon: '‡',
@@ -373,18 +373,21 @@ export class CannonWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount
 
-    // Add 1 extra projectile only at max level
-    const projectileCount = this.level === 3 ? 2 : 1
+    // Add 1 extra projectile only at max level, plus building/character bonuses
+    const projectileCount = (this.level === 3 ? 2 : 1) + (modifiers.projectileCount || 0)
     const spacing = 15
 
+    // Apply projectile speed multiplier
+    const speed = -500 * modifiers.projectileSpeedMultiplier
+
     if (projectileCount === 1) {
-      this.projectileGroup.fireProjectile(x, y, damage, pierce, 0, -500, this.config.icon, this.config.color, undefined, { damageType: this.config.damageType })
+      this.projectileGroup.fireProjectile(x, y, damage, pierce, 0, speed, this.config.icon, this.config.color, undefined, { damageType: this.config.damageType })
     } else {
       const totalWidth = (projectileCount - 1) * spacing
       const startX = x - totalWidth / 2
 
       for (let i = 0; i < projectileCount; i++) {
-        this.projectileGroup.fireProjectile(startX + i * spacing, y, damage, pierce, 0, -500, this.config.icon, this.config.color, undefined, { damageType: this.config.damageType })
+        this.projectileGroup.fireProjectile(startX + i * spacing, y, damage, pierce, 0, speed, this.config.icon, this.config.color, undefined, { damageType: this.config.damageType })
       }
     }
   }
@@ -397,11 +400,14 @@ export class ShotgunWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount
 
-    // Modest pellet increase and tighter spread at higher levels
-    const pelletCount = 3 + Math.floor((this.level - 1) * 0.5)
+    // Modest pellet increase and tighter spread at higher levels, plus building/character bonuses
+    const pelletCount = 3 + Math.floor((this.level - 1) * 0.5) + (modifiers.projectileCount || 0)
     const spreadAngle = 60 - (this.level - 1) * 10 // Tighter spread at higher levels
 
-    this.projectileGroup.fireSpread(x, y, damage, pierce, pelletCount, spreadAngle, this.config.icon, this.config.color, '14px')
+    // Apply projectile speed multiplier
+    const speed = 500 * modifiers.projectileSpeedMultiplier
+
+    this.projectileGroup.fireSpread(x, y, damage, pierce, pelletCount, spreadAngle, this.config.icon, this.config.color, '14px', speed)
   }
 }
 
@@ -412,15 +418,36 @@ export class LightningWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 0 // Lightning doesn't pierce, it chains
 
-    // Lightning chains increase with level (1 chain at level 1, 2 at level 2, 3 at level 3)
-    const chainCount = this.level
+    // Lightning chains increase with level (2 chains at level 1, 4 at level 2, 6 at level 3)
+    const chainCount = this.level * 2
 
-    this.projectileGroup.fireProjectile(
-      x, y, damage, pierce, 0, -500,
-      this.config.icon, this.config.color,
-      ProjectileType.CHAINING,
-      { chainCount }
-    )
+    // Add building/character bonuses for additional projectiles
+    const projectileCount = 1 + (modifiers.projectileCount || 0)
+    const spacing = 15
+
+    // Apply projectile speed multiplier
+    const speed = -500 * modifiers.projectileSpeedMultiplier
+
+    if (projectileCount === 1) {
+      this.projectileGroup.fireProjectile(
+        x, y, damage, pierce, 0, speed,
+        this.config.icon, this.config.color,
+        ProjectileType.CHAINING,
+        { chainCount }
+      )
+    } else {
+      const totalWidth = (projectileCount - 1) * spacing
+      const startX = x - totalWidth / 2
+
+      for (let i = 0; i < projectileCount; i++) {
+        this.projectileGroup.fireProjectile(
+          startX + i * spacing, y, damage, pierce, 0, speed,
+          this.config.icon, this.config.color,
+          ProjectileType.CHAINING,
+          { chainCount }
+        )
+      }
+    }
   }
 }
 
@@ -432,13 +459,15 @@ export class FireWeapon extends Weapon {
 
     // Fire creates explosions - represented by larger, slower projectiles
     const pierce = 0 // Fire explodes on first hit
-    const speed = -400 // Slower than normal
+
+    // Apply projectile speed multiplier
+    const speed = -400 * modifiers.projectileSpeedMultiplier
 
     // Explosion radius increases modestly with level
-    const explosionRadius = 60 + (this.level - 1) * 10
+    const explosionRadius = (60 + (this.level - 1) * 10) * modifiers.explosionRadiusMultiplier
 
-    // Add 1 extra projectile only at max level
-    const count = this.level === 3 ? 2 : 1
+    // Add 1 extra projectile only at max level, plus building/character bonuses
+    const count = (this.level === 3 ? 2 : 1) + (modifiers.projectileCount || 0)
     if (count === 1) {
       this.projectileGroup.fireProjectile(
         x, y, damage, pierce, 0, speed,
@@ -483,11 +512,14 @@ export class IceWeapon extends Weapon {
     const freezeChance = 30 + (this.level - 1) * 10
     const freezeDuration = 2000 // 2 seconds
 
-    // Add 1 extra lance only at max level
-    const count = this.level === 3 ? 2 : 1
+    // Apply projectile speed multiplier
+    const speed = -500 * modifiers.projectileSpeedMultiplier
+
+    // Add 1 extra lance only at max level, plus building/character bonuses
+    const count = (this.level === 3 ? 2 : 1) + (modifiers.projectileCount || 0)
     if (count === 1) {
       this.projectileGroup.fireProjectile(
-        x, y, damage, pierce, 0, -500,
+        x, y, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         ProjectileType.FREEZING,
         { freezeChance, freezeDuration, fontSize: '31px' }
@@ -499,7 +531,7 @@ export class IceWeapon extends Weapon {
 
       for (let i = 0; i < count; i++) {
         this.projectileGroup.fireProjectile(
-          startX + i * spacing, y, damage, pierce, 0, -500,
+          startX + i * spacing, y, damage, pierce, 0, speed,
           this.config.icon, this.config.color,
           ProjectileType.FREEZING,
           { freezeChance, freezeDuration, fontSize: '31px' }
@@ -516,20 +548,37 @@ export class WaterWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount
 
-    // Keep single wave projectile, improve wave properties with level
-    const waveCount = 1
-    const waveSpread = 25
-
     // Wave parameters - more amplitude and frequency at higher levels
     const waveAmplitude = 40 + (this.level - 1) * 5
     const waveFrequency = 0.015 + (this.level - 1) * 0.0025
 
-    this.projectileGroup.fireProjectile(
-      x, y, damage, pierce, 0, -500,
-      this.config.icon, this.config.color,
-      ProjectileType.WAVE,
-      { waveAmplitude, waveFrequency }
-    )
+    // Apply projectile speed multiplier
+    const speed = -500 * modifiers.projectileSpeedMultiplier
+
+    // Add building/character bonuses for additional projectiles
+    const projectileCount = 1 + (modifiers.projectileCount || 0)
+    const spacing = 20
+
+    if (projectileCount === 1) {
+      this.projectileGroup.fireProjectile(
+        x, y, damage, pierce, 0, speed,
+        this.config.icon, this.config.color,
+        ProjectileType.WAVE,
+        { waveAmplitude, waveFrequency }
+      )
+    } else {
+      const totalWidth = (projectileCount - 1) * spacing
+      const startX = x - totalWidth / 2
+
+      for (let i = 0; i < projectileCount; i++) {
+        this.projectileGroup.fireProjectile(
+          startX + i * spacing, y, damage, pierce, 0, speed,
+          this.config.icon, this.config.color,
+          ProjectileType.WAVE,
+          { waveAmplitude, waveFrequency }
+        )
+      }
+    }
   }
 }
 
@@ -540,20 +589,37 @@ export class EarthWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 0 // Earth creates zones, doesn't pierce
 
-    // Fire single zone projectile, improve zone properties with level
-    const count = 1
-    const speed = -300 // Slower than normal
+    // Apply projectile speed multiplier
+    const speed = -300 * modifiers.projectileSpeedMultiplier
 
     // Zone parameters scale modestly with level
     const zoneDuration = 3000 + (this.level - 1) * 500 // 3-4 seconds
-    const zoneRadius = 50 + (this.level - 1) * 5 // 50-60 pixel radius
+    const zoneRadius = (50 + (this.level - 1) * 5) * modifiers.explosionRadiusMultiplier // 50-60 pixel radius
 
-    this.projectileGroup.fireProjectile(
-      x, y, damage, pierce, 0, speed,
-      this.config.icon, this.config.color,
-      ProjectileType.EARTH_ZONE,
-      { zoneDuration, zoneRadius }
-    )
+    // Add building/character bonuses for additional projectiles
+    const projectileCount = 1 + (modifiers.projectileCount || 0)
+    const spacing = 25
+
+    if (projectileCount === 1) {
+      this.projectileGroup.fireProjectile(
+        x, y, damage, pierce, 0, speed,
+        this.config.icon, this.config.color,
+        ProjectileType.EARTH_ZONE,
+        { zoneDuration, zoneRadius }
+      )
+    } else {
+      const totalWidth = (projectileCount - 1) * spacing
+      const startX = x - totalWidth / 2
+
+      for (let i = 0; i < projectileCount; i++) {
+        this.projectileGroup.fireProjectile(
+          startX + i * spacing, y, damage, pierce, 0, speed,
+          this.config.icon, this.config.color,
+          ProjectileType.EARTH_ZONE,
+          { zoneDuration, zoneRadius }
+        )
+      }
+    }
   }
 }
 
@@ -564,16 +630,33 @@ export class DarkWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount
 
-    // Keep single powerful projectile
-    const count = 1
-    const speed = -350
+    // Apply projectile speed multiplier
+    const speed = -350 * modifiers.projectileSpeedMultiplier
 
-    this.projectileGroup.fireProjectile(
-      x, y, damage, pierce, 0, speed,
-      this.config.icon, this.config.color,
-      undefined,
-      { fontSize: '27px' }
-    )
+    // Add building/character bonuses for additional projectiles
+    const projectileCount = 1 + (modifiers.projectileCount || 0)
+    const spacing = 20
+
+    if (projectileCount === 1) {
+      this.projectileGroup.fireProjectile(
+        x, y, damage, pierce, 0, speed,
+        this.config.icon, this.config.color,
+        undefined,
+        { fontSize: '27px' }
+      )
+    } else {
+      const totalWidth = (projectileCount - 1) * spacing
+      const startX = x - totalWidth / 2
+
+      for (let i = 0; i < projectileCount; i++) {
+        this.projectileGroup.fireProjectile(
+          startX + i * spacing, y, damage, pierce, 0, speed,
+          this.config.icon, this.config.color,
+          undefined,
+          { fontSize: '27px' }
+        )
+      }
+    }
   }
 }
 
@@ -614,8 +697,8 @@ export class LaserBeamWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
 
     // RAYCAST implementation - instant hit, no projectiles!
-    // Add 1 extra beam only at max level
-    const beamCount = this.level === 3 ? 2 : 1
+    // Add 1 extra beam only at max level, plus building/character bonuses
+    const beamCount = (this.level === 3 ? 2 : 1) + (modifiers.projectileCount || 0)
     const maxRange = 600 // Max laser range
 
     // Emit laser fire event for GameScene to handle damage + visual effects
@@ -657,17 +740,34 @@ export class RicochetDiskWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 3 + this.level // Disks hit multiple times
 
-    // Keep single disk, improve bounce count with level
-    const diskCount = 1
-    const speed = -450
+    // Apply projectile speed multiplier
+    const speed = -450 * modifiers.projectileSpeedMultiplier
     const bounceCount = 3 + this.level // More bounces at higher levels
 
-    this.projectileGroup.fireProjectile(
-      x, y, damage, pierce, 0, speed,
-      this.config.icon, this.config.color,
-      ProjectileType.BOUNCING,
-      { bounceCount }
-    )
+    // Add building/character bonuses for additional projectiles
+    const projectileCount = 1 + (modifiers.projectileCount || 0)
+    const spacing = 20
+
+    if (projectileCount === 1) {
+      this.projectileGroup.fireProjectile(
+        x, y, damage, pierce, 0, speed,
+        this.config.icon, this.config.color,
+        ProjectileType.BOUNCING,
+        { bounceCount }
+      )
+    } else {
+      const totalWidth = (projectileCount - 1) * spacing
+      const startX = x - totalWidth / 2
+
+      for (let i = 0; i < projectileCount; i++) {
+        this.projectileGroup.fireProjectile(
+          startX + i * spacing, y, damage, pierce, 0, speed,
+          this.config.icon, this.config.color,
+          ProjectileType.BOUNCING,
+          { bounceCount }
+        )
+      }
+    }
   }
 
   getInfo(): string {
@@ -683,18 +783,20 @@ export class MissilePodWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 0 // Missiles explode on impact
 
-    // Modest missile count increase with level
-    const missileCount = 2 + Math.floor((this.level - 1) * 0.5)
-    const speed = 350 // Starting speed
+    // Modest missile count increase with level, plus building/character bonuses
+    const missileCount = 2 + Math.floor((this.level - 1) * 0.5) + (modifiers.projectileCount || 0)
+
+    // Apply projectile speed multiplier
+    const speed = 350 * modifiers.projectileSpeedMultiplier
     const spacing = 25
 
     const totalWidth = (missileCount - 1) * spacing
     const startX = x - totalWidth / 2
 
     // Missiles should explode on impact and home in on enemies
-    const explosionRadius = 50 + (this.level - 1) * 8
+    const explosionRadius = (50 + (this.level - 1) * 8) * modifiers.explosionRadiusMultiplier
     const homingTurnRate = 0.05 // Slow turning rate (radians per frame)
-    const homingSpeed = 350
+    const homingSpeed = 350 * modifiers.projectileSpeedMultiplier
 
     for (let i = 0; i < missileCount; i++) {
       this.projectileGroup.fireProjectile(
@@ -716,8 +818,8 @@ export class FireballRingWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 0
 
-    // Add 1 extra fireball only at max level
-    const fireballCount = this.level === 3 ? 2 : 1
+    // Add 1 extra fireball only at max level, plus building/character bonuses
+    const fireballCount = (this.level === 3 ? 2 : 1) + (modifiers.projectileCount || 0)
     const radius = 60
     const angleStep = (Math.PI * 2) / fireballCount
 
@@ -730,7 +832,7 @@ export class FireballRingWeapon extends Weapon {
         x + offsetX, y + offsetY, damage, pierce, 0, -400,
         this.config.icon, this.config.color,
         ProjectileType.EXPLOSIVE,
-        { explosionRadius: 40 + (this.level - 1) * 5 }
+        { explosionRadius: (40 + (this.level - 1) * 5) * modifiers.explosionRadiusMultiplier }
       )
     }
 
@@ -746,16 +848,34 @@ export class BloodLanceWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 5 + (this.level * 2) // More ricochets than Ricochet Disk
 
-    const lanceCount = 1  // Always fire 1 lance (dramatically reduced)
-    const speed = -500
+    // Apply projectile speed multiplier
+    const speed = -500 * modifiers.projectileSpeedMultiplier
     const bounceCount = 5 + (this.level * 2) // Many more bounces
 
-    this.projectileGroup.fireProjectile(
-      x, y, damage, pierce, 0, speed,
-      this.config.icon, this.config.color,
-      ProjectileType.BOUNCING,
-      { bounceCount }
-    )
+    // Add building/character bonuses for additional projectiles
+    const projectileCount = 1 + (modifiers.projectileCount || 0)
+    const spacing = 20
+
+    if (projectileCount === 1) {
+      this.projectileGroup.fireProjectile(
+        x, y, damage, pierce, 0, speed,
+        this.config.icon, this.config.color,
+        ProjectileType.BOUNCING,
+        { bounceCount }
+      )
+    } else {
+      const totalWidth = (projectileCount - 1) * spacing
+      const startX = x - totalWidth / 2
+
+      for (let i = 0; i < projectileCount; i++) {
+        this.projectileGroup.fireProjectile(
+          startX + i * spacing, y, damage, pierce, 0, speed,
+          this.config.icon, this.config.color,
+          ProjectileType.BOUNCING,
+          { bounceCount }
+        )
+      }
+    }
   }
 }
 
@@ -766,15 +886,18 @@ export class PlasmaAuraWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 0
 
-    // Modest increase in projectile count with level
-    const projectileCount = 8 + (this.level - 1) * 2
+    // Modest increase in projectile count with level, plus building/character bonuses
+    const projectileCount = 8 + (this.level - 1) * 2 + (modifiers.projectileCount || 0)
     const radius = 60 + (this.level - 1) * 10
     const angleStep = (Math.PI * 2) / projectileCount
 
+    // Apply projectile speed multiplier
+    const speed = 200 * modifiers.projectileSpeedMultiplier
+
     for (let i = 0; i < projectileCount; i++) {
       const angle = angleStep * i
-      const velocityX = Math.cos(angle) * 200
-      const velocityY = Math.sin(angle) * 200
+      const velocityX = Math.cos(angle) * speed
+      const velocityY = Math.sin(angle) * speed
 
       this.projectileGroup.fireProjectile(
         x, y, damage, pierce, velocityX, velocityY,
@@ -793,14 +916,17 @@ export class VortexBladeWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount
 
-    // Modest blade count increase with level
-    const bladeCount = 2 + Math.floor((this.level - 1) * 0.5)
+    // Modest blade count increase with level, plus building/character bonuses
+    const bladeCount = 2 + Math.floor((this.level - 1) * 0.5) + (modifiers.projectileCount || 0)
     const angleStep = (Math.PI * 2) / bladeCount
+
+    // Apply projectile speed multiplier
+    const speed = 400 * modifiers.projectileSpeedMultiplier
 
     for (let i = 0; i < bladeCount; i++) {
       const angle = this.spiralAngle + (angleStep * i)
-      const velocityX = Math.cos(angle) * 400
-      const velocityY = Math.sin(angle) * 400 - 200 // Bias upward
+      const velocityX = Math.cos(angle) * speed
+      const velocityY = Math.sin(angle) * speed - 200 // Bias upward
 
       this.projectileGroup.fireProjectile(
         x, y, damage, pierce, velocityX, velocityY,
@@ -820,18 +946,21 @@ export class OrbitalStrikeWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 0
 
-    // Modest increase in explosion count with level
-    const explosionCount = 3 + (this.level - 1)
+    // Modest increase in explosion count with level, plus building/character bonuses
+    const explosionCount = 3 + (this.level - 1) + (modifiers.projectileCount || 0)
     const screenWidth = this.scene.cameras.main.width
     const spacing = screenWidth / (explosionCount + 1)
     const explosionRadius = 50 + (this.level - 1) * 5
+
+    // Apply projectile speed multiplier
+    const speed = 300 * modifiers.projectileSpeedMultiplier
 
     for (let i = 1; i <= explosionCount; i++) {
       const strikeX = spacing * i
       const strikeY = 50
 
       this.projectileGroup.fireProjectile(
-        strikeX, strikeY, damage, pierce, 0, 300,
+        strikeX, strikeY, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         ProjectileType.EXPLOSIVE,
         { explosionRadius }
@@ -847,21 +976,28 @@ export class MinigunWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount
 
-    // Keep single bullet per shot for performance
-    const bulletCount = 1
     const spread = 30 // Slight inaccuracy
 
-    const spreadAngle = (Math.random() - 0.5) * spread * (Math.PI / 180)
-    // Fast bullets for quick screen clearing (3x faster for performance)
-    const velocityX = Math.sin(spreadAngle) * 1500
-    const velocityY = Math.cos(spreadAngle) * -2100
+    // Add building/character bonuses for additional projectiles
+    const projectileCount = 1 + (modifiers.projectileCount || 0)
 
-    this.projectileGroup.fireProjectile(
-      x, y, damage, pierce, velocityX, velocityY,
-      this.config.icon, this.config.color,
-      undefined,
-      { fontSize: '8px' }
-    )
+    // Apply projectile speed multiplier
+    const baseSpeedX = 1500 * modifiers.projectileSpeedMultiplier
+    const baseSpeedY = 2100 * modifiers.projectileSpeedMultiplier
+
+    for (let i = 0; i < projectileCount; i++) {
+      const spreadAngle = (Math.random() - 0.5) * spread * (Math.PI / 180)
+      // Fast bullets for quick screen clearing (3x faster for performance)
+      const velocityX = Math.sin(spreadAngle) * baseSpeedX
+      const velocityY = Math.cos(spreadAngle) * -baseSpeedY
+
+      this.projectileGroup.fireProjectile(
+        x, y, damage, pierce, velocityX, velocityY,
+        this.config.icon, this.config.color,
+        undefined,
+        { fontSize: '8px' }
+      )
+    }
   }
 }
 
@@ -872,17 +1008,34 @@ export class TrapLayerWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 0
 
-    // Keep single trap zone, improve properties with level
-    const zoneCount = 1
+    // Improve properties with level
     const zoneDuration = 5000 + (this.level - 1) * 1000
-    const zoneRadius = 60 + (this.level - 1) * 10
+    const zoneRadius = (60 + (this.level - 1) * 10) * modifiers.explosionRadiusMultiplier
 
-    this.projectileGroup.fireProjectile(
-      x, y, damage, pierce, 0, 0,
-      this.config.icon, this.config.color,
-      ProjectileType.EARTH_ZONE,
-      { zoneDuration, zoneRadius }
-    )
+    // Add building/character bonuses for additional projectiles
+    const projectileCount = 1 + (modifiers.projectileCount || 0)
+    const spacing = 40 // Wider spacing for trap zones
+
+    if (projectileCount === 1) {
+      this.projectileGroup.fireProjectile(
+        x, y, damage, pierce, 0, 0,
+        this.config.icon, this.config.color,
+        ProjectileType.EARTH_ZONE,
+        { zoneDuration, zoneRadius }
+      )
+    } else {
+      const totalWidth = (projectileCount - 1) * spacing
+      const startX = x - totalWidth / 2
+
+      for (let i = 0; i < projectileCount; i++) {
+        this.projectileGroup.fireProjectile(
+          startX + i * spacing, y, damage, pierce, 0, 0,
+          this.config.icon, this.config.color,
+          ProjectileType.EARTH_ZONE,
+          { zoneDuration, zoneRadius }
+        )
+      }
+    }
   }
 }
 
@@ -893,16 +1046,33 @@ export class SniperRifleWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 5 + this.level // High pierce
 
-    // Keep single powerful shot
-    const shotCount = 1
-    const speed = -1500 // EXTREMELY fast for sniper feel
+    // Apply projectile speed multiplier
+    const speed = -1500 * modifiers.projectileSpeedMultiplier
 
-    this.projectileGroup.fireProjectile(
-      x, y, damage, pierce, 0, speed,
-      this.config.icon, this.config.color,
-      undefined,
-      { fontSize: '20px' }
-    )
+    // Add building/character bonuses for additional projectiles
+    const projectileCount = 1 + (modifiers.projectileCount || 0)
+    const spacing = 25
+
+    if (projectileCount === 1) {
+      this.projectileGroup.fireProjectile(
+        x, y, damage, pierce, 0, speed,
+        this.config.icon, this.config.color,
+        undefined,
+        { fontSize: '20px' }
+      )
+    } else {
+      const totalWidth = (projectileCount - 1) * spacing
+      const startX = x - totalWidth / 2
+
+      for (let i = 0; i < projectileCount; i++) {
+        this.projectileGroup.fireProjectile(
+          startX + i * spacing, y, damage, pierce, 0, speed,
+          this.config.icon, this.config.color,
+          undefined,
+          { fontSize: '20px' }
+        )
+      }
+    }
   }
 }
 

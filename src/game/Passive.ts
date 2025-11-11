@@ -39,7 +39,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Increased Physical Damage',
     maxLevel: 3,
     icon: '◆',
-    color: '#ffaa00',
+    color: '#ffff00',
   },
   [PassiveType.WEAPON_SPEED_UP]: {
     name: 'Weapon Speed Up',
@@ -47,7 +47,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Increases fire rate across all weapons',
     maxLevel: 3,
     icon: '»',
-    color: '#ff4444',
+    color: '#ffffff',
   },
   [PassiveType.SHIP_ARMOR]: {
     name: 'Ship Armor',
@@ -63,7 +63,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Increases projectile size and range',
     maxLevel: 3,
     icon: '◎',
-    color: '#00ffaa',
+    color: '#ffffff',
   },
   [PassiveType.PICKUP_RADIUS]: {
     name: 'Pickup Radius',
@@ -71,7 +71,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Larger magnet for XP/currency',
     maxLevel: 3,
     icon: '⊙',
-    color: '#ffff00',
+    color: '#ffffff',
   },
   [PassiveType.EVASION_DRIVE]: {
     name: 'Evasion Drive',
@@ -79,7 +79,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Small dodge chance',
     maxLevel: 3,
     icon: '◊',
-    color: '#00aaff',
+    color: '#ffffff',
   },
   [PassiveType.CRITICAL_SYSTEMS]: {
     name: 'Critical Systems',
@@ -87,7 +87,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Adds crit chance across weapons',
     maxLevel: 3,
     icon: '✦',
-    color: '#ffff00',
+    color: '#ffffff',
   },
   [PassiveType.THRUSTER_MOD]: {
     name: 'Thruster Mod',
@@ -95,7 +95,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Faster projectiles and acceleration',
     maxLevel: 3,
     icon: '►',
-    color: '#ff8800',
+    color: '#ffffff',
   },
   [PassiveType.OVERDRIVE_REACTOR]: {
     name: 'Overdrive Reactor',
@@ -103,7 +103,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Attack speed burst after collecting XP',
     maxLevel: 3,
     icon: '◈',
-    color: '#ff00ff',
+    color: '#ffffff',
   },
   [PassiveType.SALVAGE_UNIT]: {
     name: 'Salvage Unit',
@@ -119,7 +119,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Increases ally damage and attack speed',
     maxLevel: 3,
     icon: '⊚',
-    color: '#88ff00',
+    color: '#ffffff',
   },
   [PassiveType.VAMPIRIC_FIRE]: {
     name: 'Vampiric Fire',
@@ -127,7 +127,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Fire damage heals you',
     maxLevel: 3,
     icon: '♥',
-    color: '#ff4400',
+    color: '#ff8800',
   },
   [PassiveType.FROST_HASTE]: {
     name: 'Frost Haste',
@@ -135,15 +135,15 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Cold damage increases attack speed (stacking)',
     maxLevel: 3,
     icon: '❄',
-    color: '#aaffff',
+    color: '#00aaff',
   },
   [PassiveType.STATIC_FORTUNE]: {
     name: 'Static Fortune',
     type: PassiveType.STATIC_FORTUNE,
     description: 'Nature damage has chance to drop credits',
     maxLevel: 3,
-    icon: '⚡',
-    color: '#44ff44',
+    icon: '‡',
+    color: '#00ff00',
   },
   [PassiveType.WINGMAN_PROTOCOL]: {
     name: 'Wingman Protocol',
@@ -151,7 +151,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Summons stationary wingmen that shoot',
     maxLevel: 3,
     icon: '◈',
-    color: '#00ffaa',
+    color: '#ffffff',
   },
   [PassiveType.TOXIC_ROUNDS]: {
     name: 'Toxic Rounds',
@@ -159,7 +159,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Chance to poison on hit',
     maxLevel: 3,
     icon: '☠',
-    color: '#88ff00',
+    color: '#00ff00',
   },
   [PassiveType.PYROMANIAC]: {
     name: 'Pyromaniac',
@@ -167,7 +167,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Bonus damage to burning enemies',
     maxLevel: 3,
     icon: '※',
-    color: '#ff6600',
+    color: '#ff8800',
   },
   [PassiveType.SHATTER_STRIKE]: {
     name: 'Shatter Strike',
@@ -183,7 +183,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     description: 'Apply bleed on hit (damage amplification)',
     maxLevel: 3,
     icon: '♠',
-    color: '#ff0000',
+    color: '#ffff00',
   },
 }
 
@@ -438,8 +438,8 @@ export class ToxicRoundsPassive extends Passive {
 // Pyromaniac Implementation
 export class PyromaniacPassive extends Passive {
   applyModifiers(modifiers: WeaponModifiers): void {
-    // +25% damage per level against burning enemies (checked in game logic)
-    modifiers.damageMultiplier += 0.25 * this.level
+    // +25% damage per level against burning enemies (conditionally checked in game logic)
+    // No unconditional modifiers - bonus only applies when enemy is burning
   }
 
   applyPlayerEffects(playerStats: PlayerStats): void {
@@ -450,8 +450,8 @@ export class PyromaniacPassive extends Passive {
 // Shatter Strike Implementation
 export class ShatterStrikePassive extends Passive {
   applyModifiers(modifiers: WeaponModifiers): void {
-    // +30% damage per level against frozen enemies (checked in game logic)
-    modifiers.damageMultiplier += 0.30 * this.level
+    // +30% damage per level against frozen enemies (conditionally checked in game logic)
+    // No unconditional modifiers - bonus only applies when enemy is frozen
   }
 
   applyPlayerEffects(playerStats: PlayerStats): void {

@@ -23,6 +23,7 @@ export enum EnemyType {
   PATROLLER = 'PATROLLER',  // Patrols left and right
   SHIELDED = 'SHIELDED',    // Has shield that blocks projectiles from below
   EXPLODER = 'EXPLODER',    // Explodes on death damaging everything
+  GOLDEN = 'GOLDEN',        // Golden pinata - drops extra credits
 }
 
 export interface EnemyBehavior {
@@ -41,6 +42,7 @@ export interface EnemyTypeConfig {
   xpValue: number
   behavior: EnemyBehavior
   scoreValue: number
+  creditValue?: number // Optional credit value for special enemies like golden
   name?: string
 }
 
@@ -49,7 +51,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '<o>',
     color: '#ff3333',
     fontSize: '36px',
-    health: 27, // Reduced by 25% from 36 (originally 60, reduced by 40%, then by 25%)
+    health: 20, // Reduced by 25% from 27 (originally 60, reduced by 40%, then by 25%, then by 25% again)
     speed: 84, // Reduced by 30% (was 120)
     xpValue: 2,
     scoreValue: 8,
@@ -62,7 +64,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: 'vv',
     color: '#ff3333',
     fontSize: '42px',
-    health: 42, // Reduced by 30% from 60
+    health: 32, // Reduced by 25% from 42
     speed: 126, // Reduced by 30% (was 180)
     xpValue: 4,
     scoreValue: 15,
@@ -75,7 +77,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '[■]',
     color: '#ff3333',
     fontSize: '60px',
-    health: 280, // Reduced by 30% from 400
+    health: 210, // Reduced by 25% from 280
     speed: 42, // Reduced by 30% (was 60)
     xpValue: 10,
     scoreValue: 50,
@@ -90,7 +92,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '<+>',
     color: '#ff3333',
     fontSize: '48px',
-    health: 84, // Reduced by 30% from 120
+    health: 63, // Reduced by 25% from 84
     speed: 56, // Reduced by 30% (was 80)
     xpValue: 6,
     scoreValue: 30,
@@ -105,7 +107,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '>x<',
     color: '#ff3333',
     fontSize: '30px',
-    health: 28, // Reduced by 30% from 40
+    health: 21, // Reduced by 25% from 28
     speed: 98, // Reduced by 30% (was 140)
     xpValue: 3,
     scoreValue: 8,
@@ -119,7 +121,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '{H}',
     color: '#ff3333',
     fontSize: '48px',
-    health: 112, // Reduced by 30% from 160
+    health: 84, // Reduced by 25% from 112
     speed: 63, // Reduced by 30% (was 90)
     xpValue: 8,
     scoreValue: 40,
@@ -133,7 +135,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '(o)',
     color: '#ff3333',
     fontSize: '42px',
-    health: 98, // Reduced by 30% from 140
+    health: 74, // Reduced by 25% from 98
     speed: 70, // Reduced by 30% (was 100)
     xpValue: 5,
     scoreValue: 25,
@@ -147,7 +149,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: ')B(',
     color: '#ff3333',
     fontSize: '54px',
-    health: 70, // Reduced by 30% from 100
+    health: 53, // Reduced by 25% from 70
     speed: 84, // Reduced by 30% (was 120)
     xpValue: 7,
     scoreValue: 35,
@@ -161,7 +163,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '<◆>',
     color: '#ff3333',
     fontSize: '48px',
-    health: 126, // Reduced by 30% from 180
+    health: 95, // Reduced by 25% from 126
     speed: 49, // Reduced by 30% (was 70)
     xpValue: 7,
     scoreValue: 32,
@@ -175,7 +177,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '>>►',
     color: '#ff3333',
     fontSize: '45px',
-    health: 98, // Reduced by 30% from 140
+    health: 74, // Reduced by 25% from 98
     speed: 105, // Reduced by 30% (was 150)
     xpValue: 5,
     scoreValue: 28,
@@ -189,7 +191,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '/▲\\',
     color: '#ff3333',
     fontSize: '54px',
-    health: 168, // Reduced by 30% from 240
+    health: 126, // Reduced by 25% from 168
     speed: 35, // Slow moving turret (slowest enemy)
     xpValue: 5,
     scoreValue: 22,
@@ -203,7 +205,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '»»»',
     color: '#ff3333',
     fontSize: '48px',
-    health: 78, // Reduced by 30% from 112
+    health: 59, // Reduced by 25% from 78
     speed: 154, // Reduced by 30% (was 220)
     xpValue: 4,
     scoreValue: 20,
@@ -216,7 +218,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '@*@',
     color: '#ff3333',
     fontSize: '52px',
-    health: 140, // Reduced by 30% from 200
+    health: 105, // Reduced by 25% from 140
     speed: 50,
     xpValue: 8,
     scoreValue: 40,
@@ -231,7 +233,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '[*]',
     color: '#ff3333',
     fontSize: '64px',
-    health: 210, // Reduced by 30% from 300
+    health: 158, // Reduced by 25% from 210
     speed: 35,
     xpValue: 10,
     scoreValue: 60,
@@ -245,7 +247,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '<=>',
     color: '#ff3333',
     fontSize: '42px',
-    health: 98, // Reduced by 30% from 140
+    health: 74, // Reduced by 25% from 98
     speed: 70,
     xpValue: 5,
     scoreValue: 25,
@@ -259,7 +261,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '[▼]',
     color: '#ff3333',
     fontSize: '54px',
-    health: 168, // Reduced by 30% from 240
+    health: 126, // Reduced by 25% from 168
     speed: 60,
     xpValue: 9,
     scoreValue: 45,
@@ -274,7 +276,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '(!))',
     color: '#ff3333',
     fontSize: '48px',
-    health: 84, // Reduced by 30% from 120
+    health: 63, // Reduced by 25% from 84
     speed: 90,
     xpValue: 6,
     scoreValue: 35,
@@ -288,7 +290,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '▓▓▓',
     color: '#ff0000',
     fontSize: '64px',
-    health: 2800, // Reduced by 50% from 5600
+    health: 1400, // Reduced by 50% from 2800 (originally 5600, reduced by 50%, then by 50% again)
     speed: 40,
     xpValue: 30,
     scoreValue: 200,
@@ -303,7 +305,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '█████',
     color: '#ff00ff',
     fontSize: '96px',
-    health: 7000, // Reduced by 50% from 14000
+    health: 3500, // Reduced by 50% from 7000 (originally 14000, reduced by 50%, then by 50% again)
     speed: 30,
     xpValue: 80,
     scoreValue: 1000,
@@ -313,6 +315,20 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
       shootInterval: 850, // Reduced attack speed by 40% (was 500)
       movementPattern: 'sinwave',
       specialAbility: 'boss_barrage',
+    },
+  },
+  [EnemyType.GOLDEN]: {
+    symbol: '¤',
+    color: '#ffd700',
+    fontSize: '32px',
+    health: 30,
+    speed: 120,
+    xpValue: 0, // No XP, only credits
+    scoreValue: 100,
+    creditValue: 50, // Drops lots of credits
+    behavior: {
+      shootsBack: false,
+      movementPattern: 'zigzag',
     },
   },
 }
@@ -343,6 +359,18 @@ export class Enemy extends Phaser.GameObjects.Text {
   public shield: Phaser.GameObjects.Arc | null = null
   private config: EnemyTypeConfig
   private colorResetTimer: Phaser.Time.TimerEvent | null = null
+  // Status effects
+  private statusEffects = {
+    isBurning: false,
+    burnEndTime: 0,
+    isFrozen: false,
+    freezeEndTime: 0,
+    isPoisoned: false,
+    poisonEndTime: 0,
+    isBleeding: false,
+    bleedEndTime: 0,
+    bleedStacks: 0 // HEMORRHAGE stacks for damage amplification
+  }
   declare body: Phaser.Physics.Arcade.Body
 
   constructor(
@@ -460,6 +488,17 @@ export class Enemy extends Phaser.GameObjects.Text {
     this.lastSpawnTime = this.scene.time.now
     this.patrolStartX = x
     this.patrolDirection = 1
+
+    // Reset status effects
+    this.statusEffects.isBurning = false
+    this.statusEffects.burnEndTime = 0
+    this.statusEffects.isFrozen = false
+    this.statusEffects.freezeEndTime = 0
+    this.statusEffects.isPoisoned = false
+    this.statusEffects.poisonEndTime = 0
+    this.statusEffects.isBleeding = false
+    this.statusEffects.bleedEndTime = 0
+    this.statusEffects.bleedStacks = 0
 
     // Cancel any pending color reset timers from previous life
     if (this.colorResetTimer) {
@@ -884,12 +923,77 @@ export class Enemy extends Phaser.GameObjects.Text {
     return ENEMY_CONFIGS[this.enemyType].name
   }
 
+  // Status effect methods
+  applyBurn(duration: number): void {
+    if (!this.active) return
+    this.statusEffects.isBurning = true
+    this.statusEffects.burnEndTime = this.scene.time.now + duration
+  }
+
+  applyFreeze(duration: number): void {
+    if (!this.active) return
+    this.statusEffects.isFrozen = true
+    this.statusEffects.freezeEndTime = this.scene.time.now + duration
+  }
+
+  applyPoison(duration: number): void {
+    if (!this.active) return
+    this.statusEffects.isPoisoned = true
+    this.statusEffects.poisonEndTime = this.scene.time.now + duration
+  }
+
+  applyBleed(duration: number, maxStacks: number = 3): void {
+    if (!this.active) return
+    this.statusEffects.isBleeding = true
+    this.statusEffects.bleedEndTime = this.scene.time.now + duration
+    // Stack bleed up to max stacks
+    if (this.statusEffects.bleedStacks < maxStacks) {
+      this.statusEffects.bleedStacks++
+    }
+  }
+
+  isBurning(): boolean {
+    return this.statusEffects.isBurning
+  }
+
+  isFrozen(): boolean {
+    return this.statusEffects.isFrozen
+  }
+
+  isPoisoned(): boolean {
+    return this.statusEffects.isPoisoned
+  }
+
+  isBleeding(): boolean {
+    return this.statusEffects.isBleeding
+  }
+
+  getBleedStacks(): number {
+    return this.statusEffects.bleedStacks
+  }
+
   update(time: number, delta: number) {
     if (!this.active) return
 
     // Cap delta to prevent physics explosions after long pauses (e.g., window loses focus)
     // Max 100ms per frame = 10 FPS minimum
     const cappedDelta = Math.min(delta, 100)
+
+    // Clear expired status effects
+    const now = this.scene.time.now
+    if (this.statusEffects.isBurning && now >= this.statusEffects.burnEndTime) {
+      this.statusEffects.isBurning = false
+    }
+    if (this.statusEffects.isFrozen && now >= this.statusEffects.freezeEndTime) {
+      this.statusEffects.isFrozen = false
+    }
+    if (this.statusEffects.isPoisoned && now >= this.statusEffects.poisonEndTime) {
+      this.statusEffects.isPoisoned = false
+    }
+    if (this.statusEffects.isBleeding && now >= this.statusEffects.bleedEndTime) {
+      this.statusEffects.isBleeding = false
+      this.statusEffects.bleedStacks = 0
+    }
 
     // Update movement patterns
     switch (this.behavior.movementPattern) {

@@ -21,31 +21,31 @@ import { RunStatistics } from '../game/RunStatistics'
 // XP requirements for each level (index 0 = level 1→2, index 1 = level 2→3, etc.)
 // Curve accelerates significantly starting at level 6, much steeper in late game
 const XP_REQUIREMENTS = [
-  30,    // Level 1→2
-  80,    // Level 2→3
-  110,   // Level 3→4
-  140,   // Level 4→5
-  180,   // Level 5→6
-  250,   // Level 6→7 (steeper acceleration begins)
-  350,   // Level 7→8
-  500,   // Level 8→9
-  700,   // Level 9→10
-  950,   // Level 10→11
-  1250,  // Level 11→12
-  1600,  // Level 12→13
-  2100,  // Level 13→14
-  2700,  // Level 14→15
-  3500,  // Level 15→16
-  4500,  // Level 16→17
-  6000,  // Level 17→18
-  8000,  // Level 18→19
-  11000, // Level 19→20
-  15000, // Level 20→21
-  20000, // Level 21→22
-  27000, // Level 22→23
-  35000, // Level 23→24
-  45000, // Level 24→25
-  60000, // Level 25+
+  23,    // Level 1→2 (reduced by 25%)
+  60,    // Level 2→3
+  83,    // Level 3→4
+  105,   // Level 4→5
+  135,   // Level 5→6
+  188,   // Level 6→7 (steeper acceleration begins)
+  263,   // Level 7→8
+  375,   // Level 8→9
+  525,   // Level 9→10
+  713,   // Level 10→11
+  938,   // Level 11→12
+  1200,  // Level 12→13
+  1575,  // Level 13→14
+  2025,  // Level 14→15
+  2625,  // Level 15→16
+  3375,  // Level 16→17
+  4500,  // Level 17→18
+  6000,  // Level 18→19
+  8250,  // Level 19→20
+  11250, // Level 20→21
+  15000, // Level 21→22
+  20250, // Level 22→23
+  26250, // Level 23→24
+  33750, // Level 24→25
+  45000, // Level 25+
 ]
 
 export default class GameScene extends Phaser.Scene {
@@ -90,6 +90,12 @@ export default class GameScene extends Phaser.Scene {
   private maxRerolls: number = 0
   private rerollText!: Phaser.GameObjects.Text
 
+  // Frost Haste system
+  private frostHasteStacks: number = 0
+  private frostHasteMaxStacks: number = 15 // Cap at 15 stacks for +225% attack speed at max
+  private frostHasteStackDuration: number = 5000 // 5 seconds per stack
+  private frostHasteExpireTimes: number[] = [] // Track individual stack expiration
+
   // Combo system
   private comboCount: number = 0
   private comboTimer: number = 0
@@ -105,6 +111,8 @@ export default class GameScene extends Phaser.Scene {
   private rapidFireEndTime: number = 0
   private hasMagnet: boolean = false
   private magnetEndTime: number = 0
+  private hasOverdrive: boolean = false
+  private overdriveEndTime: number = 0
   private buffIconsContainer!: Phaser.GameObjects.Container
   private buffDisplays: Map<string, { bg: Phaser.GameObjects.Rectangle, fill: Phaser.GameObjects.Rectangle, icon: Phaser.GameObjects.Text, startTime: number, duration: number }> = new Map()
 
@@ -125,6 +133,7 @@ export default class GameScene extends Phaser.Scene {
   private waveInProgress: boolean = false
   private waveStartPending: boolean = false // Track if a wave start is already scheduled
   private waveStartTime: number = 0 // Failsafe: track when wave started
+  private waveStartPausedTime: number = 0 // Track totalPausedTime when wave started (to calculate wave-specific pause duration)
   private lastPoolLogTime: number = 0 // Track last pool status log
   private consecutiveFailedWaves: number = 0 // Track consecutive waves that failed to spawn enemies
   private highScore: number = 0
@@ -228,6 +237,7 @@ export default class GameScene extends Phaser.Scene {
     this.runStartTime = 0
     this.pauseStartTime = 0
     this.totalPausedTime = 0
+    this.waveStartPausedTime = 0
     this.chestsSpawnedThisRun = 0
     this.discoveredEvolutions = new Set()
     this.starFieldTweens = []
@@ -1079,6 +1089,25 @@ export default class GameScene extends Phaser.Scene {
       this.weaponModifiers.damageMultiplier *= 3.0 // 3x damage boost
     }
 
+    // Apply FROST_HASTE attack speed stacks
+    const frostHastePassive = this.passives.find(p => p.getConfig().type === PassiveType.FROST_HASTE)
+    if (frostHastePassive && this.frostHasteStacks > 0) {
+      const level = frostHastePassive.getLevel()
+      const attackSpeedPerStack = 0.05 * level // 5%, 10%, or 15% per stack
+      const attackSpeedBonus = 1 + (attackSpeedPerStack * this.frostHasteStacks)
+      // Attack speed reduces fire rate cooldown
+      this.weaponModifiers.fireRateMultiplier /= attackSpeedBonus
+    }
+
+    // Apply OVERDRIVE_REACTOR attack speed burst
+    const overdrivePassive = this.passives.find(p => p.getConfig().type === PassiveType.OVERDRIVE_REACTOR)
+    if (overdrivePassive && this.hasOverdrive) {
+      const level = overdrivePassive.getLevel()
+      const attackSpeedBonus = 1 + (0.20 * level) // 20%, 40%, or 60% attack speed
+      // Attack speed reduces fire rate cooldown
+      this.weaponModifiers.fireRateMultiplier /= attackSpeedBonus
+    }
+
     // Apply calculated stats to game state
     this.maxHealth = this.playerStats.maxHealth
     this.playerSpeed = this.playerStats.moveSpeed
@@ -1748,6 +1777,16 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
+    // SALVAGE_UNIT: Chance to spawn golden pinata enemy instead
+    const salvagePassive = this.passives.find(p => p.getConfig().type === PassiveType.SALVAGE_UNIT)
+    if (salvagePassive) {
+      const level = salvagePassive.getLevel()
+      const goldenChance = 10 * level // 10%, 20%, or 30% chance
+      if (Math.random() * 100 < goldenChance) {
+        type = EnemyType.GOLDEN
+      }
+    }
+
     // Get current wave for health scaling
     const currentWave = this.waveSystem.getCurrentWave()
     this.enemies.spawnEnemy(x, y, type, currentWave)
@@ -1860,6 +1899,7 @@ export default class GameScene extends Phaser.Scene {
     this.waveInProgress = true
     this.currentWaveEnemyCount = 0
     this.waveStartTime = this.time.now // Track when wave started for failsafe
+    this.waveStartPausedTime = this.totalPausedTime // Track paused time at wave start
 
     // Show/hide boss health bar
     if (waveData.isBoss || waveData.isMiniBoss) {
@@ -2147,6 +2187,15 @@ export default class GameScene extends Phaser.Scene {
       // Calculate modifiers from passives and character
       this.calculateModifiers()
 
+      // Expire old FROST_HASTE stacks
+      if (this.frostHasteStacks > 0) {
+        const expiredStacks = this.frostHasteExpireTimes.filter(expireTime => time >= expireTime).length
+        if (expiredStacks > 0) {
+          this.frostHasteExpireTimes = this.frostHasteExpireTimes.filter(expireTime => time < expireTime)
+          this.frostHasteStacks = Math.max(0, this.frostHasteStacks - expiredStacks)
+        }
+      }
+
       // Apply health regeneration
       if (this.playerStats.healthRegen > 0) {
         const regenAmount = (this.playerStats.healthRegen * cappedDelta) / 1000 // Convert to per-second
@@ -2188,7 +2237,8 @@ export default class GameScene extends Phaser.Scene {
 
       // Check if all enemies are cleared and wave is in progress
       // Add grace period: don't check for completion until at least 2 seconds after wave starts
-      const timeSinceWaveStart = time - this.waveStartTime
+      const pausedDuringWave = this.totalPausedTime - this.waveStartPausedTime
+      const timeSinceWaveStart = time - this.waveStartTime - pausedDuringWave
       if (this.waveInProgress && activeEnemyCount === 0 && this.currentWaveEnemyCount > 0 && timeSinceWaveStart > 2000) {
         console.log(`Wave ${this.waveSystem.getCurrentWave()} complete! Time: ${timeSinceWaveStart}ms, Enemies spawned: ${this.currentWaveEnemyCount}`)
         // Wave cleared! Apply wave heal bonus
@@ -2235,7 +2285,8 @@ export default class GameScene extends Phaser.Scene {
       // This prevents the game from getting stuck if an enemy doesn't register as dead
       // Use longer timeout for boss waves since they take longer to defeat
       if (this.waveInProgress && this.waveStartTime > 0) {
-        const waveDuration = time - this.waveStartTime
+        const pausedDuringWave = this.totalPausedTime - this.waveStartPausedTime
+        const waveDuration = time - this.waveStartTime - pausedDuringWave
         const waveData = this.waveSystem.getWaveData()
         const isBossWave = waveData && (waveData.isBoss || waveData.isMiniBoss)
         const WAVE_TIMEOUT = isBossWave ? 180000 : 45000 // 180 seconds for boss waves, 45 for normal (increased to allow enemies to despawn naturally)
@@ -2264,7 +2315,8 @@ export default class GameScene extends Phaser.Scene {
       // This handles cases where the wave system got stuck
       // Increased delay to 10 seconds to avoid rapid wave advancement and allow time for enemies to despawn
       if (!this.waveInProgress && !this.waveStartPending && activeEnemyCount === 0 && this.waveSystem.getCurrentWave() > 0 && !this.waveSystem.isComplete()) {
-        const timeSinceWaveStart = time - this.waveStartTime
+        const pausedDuringWave = this.totalPausedTime - this.waveStartPausedTime
+        const timeSinceWaveStart = time - this.waveStartTime - pausedDuringWave
         // Only trigger if it's been at least 10 seconds since last wave start (avoid rapid re-trigger)
         if (timeSinceWaveStart > 10000) {
           console.warn('Wave system stuck - no wave in progress but no enemies. Starting next wave.')
@@ -2359,7 +2411,7 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  private handleEnemyDied(data: { x: number; y: number; xpValue: number; reachedBottom?: boolean }) {
+  private handleEnemyDied(data: { x: number; y: number; xpValue: number; reachedBottom?: boolean; type?: EnemyType }) {
     // If enemy reached bottom naturally, don't play sounds or spawn drops
     if (data.reachedBottom) {
       return
@@ -2399,11 +2451,57 @@ export default class GameScene extends Phaser.Scene {
       this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
     }
 
-    // Spawn XP drop at enemy position
-    this.xpDrops.spawnXP(data.x, data.y, multipliedXP)
+    // Check if this is a boss or mini-boss
+    const isBoss = data.type === EnemyType.BOSS
+    const isMiniBoss = data.type === EnemyType.MINI_BOSS
 
-    // Chance to spawn credit drop OR health potion (25% chance)
-    if (Math.random() < 0.25) {
+    if (isBoss || isMiniBoss) {
+      // Boss/Mini-boss drops: spawn lots of XP, credits, and guaranteed health pack
+      const xpDropCount = isBoss ? 15 : 8 // Boss drops 15 XP items, Mini-boss drops 8
+      const creditDropCount = isBoss ? 10 : 5 // Boss drops 10 credit items, Mini-boss drops 5
+
+      // Spawn XP items in a circle around boss
+      for (let i = 0; i < xpDropCount; i++) {
+        const angle = (i / xpDropCount) * Math.PI * 2
+        const radius = 60 + Math.random() * 40 // 60-100 pixel radius
+        const offsetX = Math.cos(angle) * radius
+        const offsetY = Math.sin(angle) * radius
+        this.xpDrops.spawnXP(data.x + offsetX, data.y + offsetY, Math.floor(multipliedXP / xpDropCount))
+      }
+
+      // Spawn credit items in a circle around boss
+      for (let i = 0; i < creditDropCount; i++) {
+        const angle = (i / creditDropCount) * Math.PI * 2 + Math.PI / creditDropCount // Offset from XP items
+        const radius = 40 + Math.random() * 30 // 40-70 pixel radius
+        const offsetX = Math.cos(angle) * radius
+        const offsetY = Math.sin(angle) * radius
+        const creditAmount = isBoss ? 5 : 3 // Boss credits worth more
+        this.creditDrops.spawnCredit(data.x + offsetX, data.y + offsetY, creditAmount)
+      }
+
+      // Always spawn health pack at boss center
+      this.powerUps.spawnPowerUp(data.x, data.y, PowerUpType.HEALTH)
+    } else {
+      // Normal enemy drops: spawn single XP drop at enemy position
+      this.xpDrops.spawnXP(data.x, data.y, multipliedXP)
+    }
+
+    // Golden enemy special drops: lots of credits in a circle
+    const isGolden = data.type === EnemyType.GOLDEN
+    if (isGolden) {
+      const creditDropCount = 8 // 8 credit drops in a circle
+      for (let i = 0; i < creditDropCount; i++) {
+        const angle = (i / creditDropCount) * Math.PI * 2
+        const radius = 40 + Math.random() * 30 // 40-70 pixel radius
+        const offsetX = Math.cos(angle) * radius
+        const offsetY = Math.sin(angle) * radius
+        const creditAmount = 6 // 6 credits per drop, 48 total
+        this.creditDrops.spawnCredit(data.x + offsetX, data.y + offsetY, creditAmount)
+      }
+    }
+
+    // Chance to spawn credit drop OR health potion (25% chance) - only for normal enemies
+    if (!isBoss && !isMiniBoss && !isGolden && Math.random() < 0.25) {
       // If player is hurt, chance to drop health potion instead of credits
       const isHurt = this.health < this.maxHealth
       const bonuses = this.gameState.getTotalBonuses()
@@ -2558,6 +2656,17 @@ export default class GameScene extends Phaser.Scene {
     // Play XP pickup sound
     soundManager.play(SoundType.XP_PICKUP, 0.3)
 
+    // OVERDRIVE_REACTOR: Trigger attack speed burst on XP pickup
+    const overdrivePassive = this.passives.find(p => p.getConfig().type === PassiveType.OVERDRIVE_REACTOR)
+    if (overdrivePassive) {
+      const level = overdrivePassive.getLevel()
+      const duration = (2 + level) * 1000 // 3s/4s/5s duration
+
+      // Add or refresh the buff
+      this.hasOverdrive = true
+      this.overdriveEndTime = this.time.now + duration
+    }
+
     // Update total XP
     this.totalXP += xpValue
     this.updateXPDisplay()
@@ -2631,6 +2740,7 @@ export default class GameScene extends Phaser.Scene {
           enemy.y - data.y,
           Phaser.Display.Color.HexStringToColor(data.color).color
         )
+        laserLine.setOrigin(0, 0) // Fix: Set origin to (0,0) so line starts from player position, not centered
         laserLine.setLineWidth(2)
         laserLine.setDepth(25)
 
@@ -3327,8 +3437,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private showUpgradeOptions() {
-    // Create semi-transparent overlay (reduced height to not obscure bottom UI)
-    const overlayHeight = this.cameras.main.height - 90 // Leave 90px at bottom for weapon/passive UI
+    // Create semi-transparent overlay (exact height to touch bottom UI area)
+    const overlayHeight = this.cameras.main.height - 70 // Touch exactly at top of bottom UI (weapon/passive slots)
     const overlay = this.add.rectangle(
       0, 0,
       this.cameras.main.width,
@@ -3337,10 +3447,10 @@ export default class GameScene extends Phaser.Scene {
       0.7
     ).setOrigin(0, 0).setDepth(100)
 
-    // Title
+    // Title (moved up to accommodate 4 skills + buttons)
     const title = this.add.text(
       this.cameras.main.centerX,
-      150,
+      80,
       'LEVEL UP!',
       {
         fontFamily: 'Courier New',
@@ -3351,7 +3461,7 @@ export default class GameScene extends Phaser.Scene {
 
     const subtitle = this.add.text(
       this.cameras.main.centerX,
-      200,
+      130,
       'Choose an upgrade:',
       {
         fontFamily: 'Courier New',
@@ -3415,11 +3525,11 @@ export default class GameScene extends Phaser.Scene {
     const shuffled = Phaser.Utils.Array.Shuffle([...upgrades])
     const selectedUpgrades = shuffled.slice(0, Math.min(upgradeCount, upgrades.length))
 
-    // Create upgrade buttons
-    const buttonHeight = 140
+    // Create upgrade buttons (adjusted for 4 skills + reroll/skip buttons)
+    const buttonHeight = 120  // Reduced from 140 to fit more content
     const buttonWidth = 460  // Reduced to fit 540px screen with proper margins
-    const buttonSpacing = 15
-    const startY = 280
+    const buttonSpacing = 10  // Reduced from 15 for tighter spacing
+    const startY = 175  // Moved up from 280 to fit all 4 skills + buttons
 
     const buttons: Phaser.GameObjects.GameObject[] = [overlay, title, subtitle]
 
@@ -3774,6 +3884,28 @@ export default class GameScene extends Phaser.Scene {
     // Apply chest value bonus (increases upgrade count)
     if (bonuses.chestValue && bonuses.chestValue > 0) {
       upgradeCount = Math.ceil(upgradeCount * (1 + bonuses.chestValue))
+    }
+
+    // Award gold based on chest tier (base values: Bronze=50, Silver=100, Gold=200)
+    let goldReward = 0
+    if (tierName === 'BRONZE') {
+      goldReward = 50
+    } else if (tierName === 'SILVER') {
+      goldReward = 100
+    } else if (tierName === 'GOLD') {
+      goldReward = 200
+    }
+
+    // Apply chest value bonus to gold reward
+    if (bonuses.chestValue && bonuses.chestValue > 0) {
+      goldReward = Math.ceil(goldReward * (1 + bonuses.chestValue))
+    }
+
+    // Award the gold
+    if (goldReward > 0) {
+      this.gameState.addCredits(goldReward)
+      this.creditsCollectedThisRun += goldReward
+      this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
     }
 
     // Play chest sound based on rarity
@@ -4631,8 +4763,8 @@ export default class GameScene extends Phaser.Scene {
 
   private showTreasureChest(upgradeCount: number) {
     // Game is already paused from openTreasureChest()
-    // Create semi-transparent overlay (reduced height to not obscure bottom UI)
-    const overlayHeight = this.cameras.main.height - 90 // Leave 90px at bottom for weapon/passive UI
+    // Create semi-transparent overlay (exact height to touch bottom UI area)
+    const overlayHeight = this.cameras.main.height - 70 // Touch exactly at top of bottom UI (weapon/passive slots)
     const overlay = this.add.rectangle(
       0, 0,
       this.cameras.main.width,
@@ -4965,9 +5097,112 @@ export default class GameScene extends Phaser.Scene {
       this.createCriticalHitBurst(enemy.x, enemy.y)
     }
 
+    // Apply status effect damage bonuses (PYROMANIAC, SHATTER_STRIKE, HEMORRHAGE)
+    // These are conditional bonuses that only apply when enemy has matching status
+    if ('isBurning' in enemy && (enemy as any).isBurning()) {
+      // PYROMANIAC: +25% damage per level vs burning enemies
+      const pyromaniacPassive = this.passives.find(p => p.getConfig().type === PassiveType.PYROMANIAC)
+      if (pyromaniacPassive) {
+        const bonusMultiplier = 1 + (0.25 * pyromaniacPassive.getLevel())
+        damage = Math.floor(damage * bonusMultiplier)
+      }
+    }
+
+    if ('isFrozen' in enemy && (enemy as any).isFrozen()) {
+      // SHATTER_STRIKE: +30% damage per level vs frozen enemies
+      const shatterStrikePassive = this.passives.find(p => p.getConfig().type === PassiveType.SHATTER_STRIKE)
+      if (shatterStrikePassive) {
+        const bonusMultiplier = 1 + (0.30 * shatterStrikePassive.getLevel())
+        damage = Math.floor(damage * bonusMultiplier)
+      }
+    }
+
+    if ('isBleeding' in enemy && (enemy as any).isBleeding()) {
+      // HEMORRHAGE: +10% damage per level per bleed stack (max 3 stacks)
+      const hemorrhagePassive = this.passives.find(p => p.getConfig().type === PassiveType.HEMORRHAGE)
+      if (hemorrhagePassive && 'getBleedStacks' in enemy) {
+        const bleedStacks = (enemy as any).getBleedStacks()
+        const bonusPerStack = 0.10 * hemorrhagePassive.getLevel()
+        const bonusMultiplier = 1 + (bonusPerStack * bleedStacks)
+        damage = Math.floor(damage * bonusMultiplier)
+      }
+    }
+
     // Track damage dealt
     this.totalDamageDealt += damage
     this.damageTrackingWindow.push({ timestamp: this.time.now, damage })
+
+    // VAMPIRIC_FIRE: Heal player for % of fire damage dealt
+    if (projectile.getDamageType() === DamageType.FIRE) {
+      const vampiricFirePassive = this.passives.find(p => p.getConfig().type === PassiveType.VAMPIRIC_FIRE)
+      if (vampiricFirePassive) {
+        const level = vampiricFirePassive.getLevel()
+        const healPercent = (1 + level) / 100 // 2%, 3%, or 4%
+        const healAmount = Math.floor(damage * healPercent)
+        if (healAmount > 0) {
+          this.health = Math.floor(Math.min(this.maxHealth, this.health + healAmount))
+          this.updateHealthDisplay()
+
+          // Show healing visual effect
+          const healText = this.add.text(this.player.x, this.player.y - 20, `+${healAmount}`, {
+            fontFamily: 'Courier New',
+            fontSize: '14px',
+            color: '#00ff00',
+            fontStyle: 'bold'
+          }).setOrigin(0.5).setDepth(50)
+
+          this.tweens.add({
+            targets: healText,
+            y: this.player.y - 40,
+            alpha: { from: 1, to: 0 },
+            duration: 800,
+            onComplete: () => healText.destroy()
+          })
+        }
+      }
+    }
+
+    // FROST_HASTE: Gain attack speed stack on cold damage hit
+    if (projectile.getDamageType() === DamageType.COLD) {
+      const frostHastePassive = this.passives.find(p => p.getConfig().type === PassiveType.FROST_HASTE)
+      if (frostHastePassive && this.frostHasteStacks < this.frostHasteMaxStacks) {
+        this.frostHasteStacks++
+        this.frostHasteExpireTimes.push(this.time.now + this.frostHasteStackDuration)
+
+        // Visual effect for stack gain
+        const stackText = this.add.text(this.player.x + 30, this.player.y - 10, `❄+1`, {
+          fontFamily: 'Courier New',
+          fontSize: '12px',
+          color: '#00ffff',
+          fontStyle: 'bold'
+        }).setOrigin(0.5).setDepth(50)
+
+        this.tweens.add({
+          targets: stackText,
+          y: this.player.y - 30,
+          alpha: { from: 1, to: 0 },
+          duration: 600,
+          onComplete: () => stackText.destroy()
+        })
+      }
+    }
+
+    // STATIC_FORTUNE: Chance to drop credits on nature damage
+    if (projectile.getDamageType() === DamageType.NATURE) {
+      const staticFortunePassive = this.passives.find(p => p.getConfig().type === PassiveType.STATIC_FORTUNE)
+      if (staticFortunePassive) {
+        const level = staticFortunePassive.getLevel()
+        const dropChance = 10 * level // 10%, 20%, or 30%
+        if (Math.random() * 100 < dropChance) {
+          // Save enemy position for credit drop
+          const creditX = enemy.x
+          const creditY = enemy.y
+          // Spawn a small credit drop (1-2 credits)
+          const creditAmount = 1 + Math.floor(Math.random() * 2)
+          this.creditDrops.spawnCredit(creditX, creditY, creditAmount)
+        }
+      }
+    }
 
     // Show damage number
     this.showDamageNumber(enemy.x, enemy.y, damage, isCritical)
@@ -4979,6 +5214,33 @@ export default class GameScene extends Phaser.Scene {
     // Apply damage to enemy
     const enemyDied = enemy.takeDamage(damage)
 
+    // TOXIC_ROUNDS: Chance to apply poison on any hit
+    const toxicRoundsPassive = this.passives.find(p => p.getConfig().type === PassiveType.TOXIC_ROUNDS)
+    if (toxicRoundsPassive && enemy.active) {
+      const level = toxicRoundsPassive.getLevel()
+      const poisonChance = 15 * level // 15%, 30%, or 45%
+      if (Math.random() * 100 < poisonChance) {
+        const poisonDuration = 3000 // 3 seconds
+        if ('applyPoison' in enemy) {
+          (enemy as any).applyPoison(poisonDuration)
+        }
+        // Show poison status effect indicator
+        this.showStatusEffect(enemyX, enemyY, '☠', '#88ff88')
+      }
+    }
+
+    // HEMORRHAGE: Apply bleed on every hit (damage amplification)
+    const hemorrhagePassive = this.passives.find(p => p.getConfig().type === PassiveType.HEMORRHAGE)
+    if (hemorrhagePassive && enemy.active) {
+      const bleedDuration = 5000 // 5 seconds
+      const maxStacks = 3 // Max 3 stacks
+      if ('applyBleed' in enemy) {
+        (enemy as any).applyBleed(bleedDuration, maxStacks)
+      }
+      // Show bleed status effect indicator
+      this.showStatusEffect(enemyX, enemyY, '♠', '#ff0000')
+    }
+
     // Apply special effects based on projectile type
     const projectileType = projectile.getType()
 
@@ -4986,6 +5248,12 @@ export default class GameScene extends Phaser.Scene {
     if (projectileType === ProjectileType.EXPLOSIVE) {
       const explosionRadius = projectile.getExplosionRadius()
       if (explosionRadius > 0) {
+        // Apply burn status to primary target (3 second duration)
+        const burnDuration = 3000
+        if (enemy.active && 'applyBurn' in enemy) {
+          (enemy as any).applyBurn(burnDuration)
+        }
+
         // Show burn status effect indicator on primary target
         this.showStatusEffect(enemyX, enemyY, '🔥', '#ff4400')
 
@@ -5002,6 +5270,12 @@ export default class GameScene extends Phaser.Scene {
               this.totalDamageDealt += aoeDamage
               this.damageTrackingWindow.push({ timestamp: this.time.now, damage: aoeDamage })
               this.showDamageNumber(nearbyEnemy.x, nearbyEnemy.y, aoeDamage)
+
+              // Apply burn status to AOE targets too
+              if ('applyBurn' in nearbyEnemy) {
+                (nearbyEnemy as any).applyBurn(burnDuration)
+              }
+
               // Show burn effect on AOE targets too
               this.showStatusEffect(nearbyEnemy.x, nearbyEnemy.y, '🔥', '#ff4400')
             }
@@ -5027,6 +5301,11 @@ export default class GameScene extends Phaser.Scene {
       if (Math.random() * 100 < freezeChance) {
         const freezeDuration = projectile.getFreezeDuration()
 
+        // Apply freeze status to enemy
+        if (enemy.active && 'applyFreeze' in enemy) {
+          (enemy as any).applyFreeze(freezeDuration)
+        }
+
         // Show freeze status effect indicator
         this.showStatusEffect(enemyX, enemyY, '❄', '#00ffff')
 
@@ -5035,7 +5314,6 @@ export default class GameScene extends Phaser.Scene {
         const originalColor = enemyText.style.color
         enemyText.setColor('#00ffff')
 
-        // Note: Enemy class doesn't have a freeze() method yet, so we just do visual for now
         this.time.delayedCall(freezeDuration, () => {
           if (enemy.active) {
             enemyText.setColor(originalColor)
@@ -5047,10 +5325,7 @@ export default class GameScene extends Phaser.Scene {
     // CHAINING: Chain lightning to nearby enemies
     if (projectileType === ProjectileType.CHAINING && projectile.getChainCount() > 0) {
       const chainCount = projectile.getChainCount()
-      const chainRange = 150
-
-      // Show shock status effect on primary target
-      this.showStatusEffect(enemy.x, enemy.y, '‡', '#00ff00')
+      const chainRange = 150 * this.weaponModifiers.explosionRadiusMultiplier
 
       // Find nearby enemies to chain to
       const nearbyEnemies = this.enemies.getNearbyEnemies(enemy.x, enemy.y, chainRange)
@@ -5064,10 +5339,8 @@ export default class GameScene extends Phaser.Scene {
         this.totalDamageDealt += chainDamage
         this.damageTrackingWindow.push({ timestamp: this.time.now, damage: chainDamage })
         this.showDamageNumber(chainedEnemy.x, chainedEnemy.y, chainDamage)
-        // Show shock effect on chained targets
-        this.showStatusEffect(chainedEnemy.x, chainedEnemy.y, '‡', '#00ff00')
 
-        // Visual: Draw lightning arc
+        // Visual: Draw lightning arc from primary target to chained enemy
         const lightning = this.add.line(
           0, 0,
           enemy.x, enemy.y,
@@ -5081,6 +5354,16 @@ export default class GameScene extends Phaser.Scene {
 
     // BOUNCING: Ricochet off enemies
     if (projectileType === ProjectileType.BOUNCING) {
+      // BLOOD_LANCE (NATURE damage BOUNCING projectiles) apply poison
+      if (projectile.getDamageType() === DamageType.NATURE && enemy.active) {
+        const poisonDuration = 3000
+        if ('applyPoison' in enemy) {
+          (enemy as any).applyPoison(poisonDuration)
+        }
+        // Show poison status effect indicator
+        this.showStatusEffect(enemyX, enemyY, '☠', '#88ff88')
+      }
+
       if (projectile.getBounceCount() > 0) {
         // Calculate bounce direction away from enemy
         const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, projectile.x, projectile.y)
@@ -5128,6 +5411,12 @@ export default class GameScene extends Phaser.Scene {
       const zoneRadius = projectile.getZoneRadius()
 
       if (zoneDuration > 0 && zoneRadius > 0) {
+        // Apply poison status to primary target (3 second duration)
+        const poisonDuration = 3000
+        if (enemy.active && 'applyPoison' in enemy) {
+          (enemy as any).applyPoison(poisonDuration)
+        }
+
         // Show poison status effect on primary target
         this.showStatusEffect(enemy.x, enemy.y, '☠', '#88ff88')
 
@@ -5386,6 +5675,12 @@ export default class GameScene extends Phaser.Scene {
       updated = true
     }
 
+    // Check overdrive
+    if (this.hasOverdrive && currentTime >= this.overdriveEndTime) {
+      this.hasOverdrive = false
+      updated = true
+    }
+
     if (updated) {
       this.updatePowerUpDisplay()
     }
@@ -5440,6 +5735,22 @@ export default class GameScene extends Phaser.Scene {
         endTime: this.magnetEndTime,
         duration: 10000
       })
+    }
+
+    if (this.hasOverdrive) {
+      const overdrivePassive = this.passives.find(p => p.getConfig().type === PassiveType.OVERDRIVE_REACTOR)
+      if (overdrivePassive) {
+        const level = overdrivePassive.getLevel()
+        const duration = (2 + level) * 1000 // 3s/4s/5s duration
+        buffsToShow.push({
+          key: 'overdrive',
+          icon: '◈',
+          color: 0xff88ff, // Consistent pink/magenta for all buffs
+          startTime: this.overdriveEndTime - duration,
+          endTime: this.overdriveEndTime,
+          duration: duration
+        })
+      }
     }
 
     // Remove buffs that are no longer active
@@ -6699,7 +7010,7 @@ class DamageZone {
     this.onDamageCallback = onDamageCallback
 
     // Create visual effect - pulsing circle
-    this.visual = scene.add.circle(x, y, radius, 0x884400, 0.4)
+    this.visual = scene.add.circle(x, y, radius, 0x88ff88, 0.4)
     this.visual.setDepth(5)
 
     // Add pulsing animation
