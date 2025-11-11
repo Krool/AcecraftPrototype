@@ -257,6 +257,12 @@ export default class GameScene extends Phaser.Scene {
     this.discoveredEvolutions = new Set()
     this.starFieldTweens = []
 
+    // Reset wave state flags (CRITICAL for scene restart)
+    this.waveInProgress = false
+    this.waveStartPending = false
+    this.currentWaveEnemyCount = 0
+    this.waveStartTime = 0
+
     // Clear buff displays map to ensure clean state on restart
     // IMPORTANT: Destroy visual elements before clearing to prevent memory leak
     this.buffDisplays.forEach((display) => {
