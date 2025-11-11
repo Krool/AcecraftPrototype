@@ -1,49 +1,51 @@
 import Phaser from 'phaser'
-import { ProjectileGroup, ProjectileType } from '../game/Projectile'
+import { ProjectileGroup, ProjectileType, Projectile } from '../game/Projectile'
 import { EnemyGroup, EnemyType, ENEMY_CONFIGS, Enemy } from '../game/Enemy'
 import { EnemyProjectileGroup } from '../game/EnemyProjectile'
+import { AllyGroup, AllyType } from '../game/Ally'
 import { XPDropGroup } from '../game/XPDrop'
 import { CreditDropGroup } from '../game/CreditDrop'
 import { PowerUpGroup, PowerUpType, POWERUP_CONFIGS } from '../game/PowerUp'
 import { Weapon, WeaponType, WeaponFactory, WeaponModifiers, DEFAULT_MODIFIERS, DamageType } from '../game/Weapon'
 import { Passive, PassiveType, PassiveFactory, PlayerStats } from '../game/Passive'
 import { Character, CharacterType, CharacterFactory, CHARACTER_CONFIGS } from '../game/Character'
-import { EvolutionManager, EVOLUTION_RECIPES, EvolvedWeapon, SuperEvolvedWeapon } from '../game/Evolution'
+import { EvolutionManager, EVOLUTION_RECIPES, EvolvedWeapon, SuperEvolvedWeapon, EvolutionType } from '../game/Evolution'
 import { GameState } from '../game/GameState'
 import { CampaignManager } from '../game/Campaign'
 import { soundManager, SoundType } from '../game/SoundManager'
 import { WaveSystem } from '../game/WaveSystem'
 import { gameProgression } from '../game/GameProgression'
 import { MobileDetection } from '../utils/MobileDetection'
+import { RunStatistics } from '../game/RunStatistics'
 
 // XP requirements for each level (index 0 = level 1→2, index 1 = level 2→3, etc.)
-// Curve accelerates significantly starting at level 6
+// Curve accelerates significantly starting at level 6, much steeper in late game
 const XP_REQUIREMENTS = [
-  75,    // Level 1→2
-  120,   // Level 2→3
-  150,   // Level 3→4
-  180,   // Level 4→5
-  210,   // Level 5→6
-  400,   // Level 6→7 (steeper acceleration begins)
-  550,   // Level 7→8
-  750,   // Level 8→9
-  1000,  // Level 9→10
-  1300,  // Level 10→11
-  1650,  // Level 11→12
-  2000,  // Level 12→13
-  2500,  // Level 13→14
-  3000,  // Level 14→15
-  3750,  // Level 15→16
+  30,    // Level 1→2
+  80,    // Level 2→3
+  110,   // Level 3→4
+  140,   // Level 4→5
+  180,   // Level 5→6
+  250,   // Level 6→7 (steeper acceleration begins)
+  350,   // Level 7→8
+  500,   // Level 8→9
+  700,   // Level 9→10
+  950,   // Level 10→11
+  1250,  // Level 11→12
+  1600,  // Level 12→13
+  2100,  // Level 13→14
+  2700,  // Level 14→15
+  3500,  // Level 15→16
   4500,  // Level 16→17
   6000,  // Level 17→18
-  7500,  // Level 18→19
-  10000, // Level 19→20
-  12500, // Level 20→21
-  15000, // Level 21→22
-  20000, // Level 22→23
-  25000, // Level 23→24
-  35000, // Level 24→25
-  50000, // Level 25+
+  8000,  // Level 18→19
+  11000, // Level 19→20
+  15000, // Level 20→21
+  20000, // Level 21→22
+  27000, // Level 22→23
+  35000, // Level 23→24
+  45000, // Level 24→25
+  60000, // Level 25+
 ]
 
 export default class GameScene extends Phaser.Scene {
@@ -53,6 +55,7 @@ export default class GameScene extends Phaser.Scene {
   private playerSpeed: number = 300
   private projectiles!: ProjectileGroup
   private enemies!: EnemyGroup
+  private allies!: AllyGroup
   private enemyProjectiles!: EnemyProjectileGroup
   private xpDrops!: XPDropGroup
   private creditDrops!: CreditDropGroup
@@ -64,10 +67,12 @@ export default class GameScene extends Phaser.Scene {
   private nextEnemySpawnTime: number = 0
   private baseEnemySpawnRate: number = 1500
   private minEnemySpawnRate: number = 400 // Minimum spawn rate (maximum difficulty)
+  private allyRespawnTimers: Map<string, number> = new Map() // Track respawn timers for allies
+  private allyRespawnDelay: number = 5000 // 5 seconds to respawn
   private totalXP: number = 0
   private xpText!: Phaser.GameObjects.Text
   private level: number = 1
-  private xpToNextLevel: number = 75 // Will be set from XP_REQUIREMENTS table
+  private xpToNextLevel: number = 30 // Will be set from XP_REQUIREMENTS table
   private levelText!: Phaser.GameObjects.Text
   private health: number = 100
   private maxHealth: number = 100
@@ -113,6 +118,7 @@ export default class GameScene extends Phaser.Scene {
   private bossHealthText!: Phaser.GameObjects.Text
   private currentWaveEnemyCount: number = 0
   private waveInProgress: boolean = false
+  private waveStartPending: boolean = false // Track if a wave start is already scheduled
   private waveStartTime: number = 0 // Failsafe: track when wave started
   private lastPoolLogTime: number = 0 // Track last pool status log
   private consecutiveFailedWaves: number = 0 // Track consecutive waves that failed to spawn enemies
@@ -141,6 +147,7 @@ export default class GameScene extends Phaser.Scene {
   private chestsSpawnedThisRun: number = 0
   private readonly maxChestsPerRun: number = 4
   private readonly guaranteedChestMilestones: number[] = [20, 60, 120, 200] // Kill counts for guaranteed chests
+  private chestPopupClickState: number = 0 // 0 = showing animation, 1 = showing rewards, 2+ = can close
 
   // New weapon/passive/character system
   private weapons: Weapon[] = []
@@ -167,6 +174,7 @@ export default class GameScene extends Phaser.Scene {
   private discoveredEvolutions: Set<string> = new Set() // Track discovered evolutions
   private starFieldTweens: Phaser.Tweens.Tween[] = [] // Track tweens for pausing
   private bgMusic?: Phaser.Sound.BaseSound
+  private runStatistics!: RunStatistics
 
   constructor() {
     super('GameScene')
@@ -179,20 +187,17 @@ export default class GameScene extends Phaser.Scene {
     // Initialize game state
     this.gameState = GameState.getInstance()
 
-    // Start random background music
+    // Start random background music (lazy loaded on-demand)
     const randomTrack = Phaser.Math.Between(1, 20)
     if (this.bgMusic) {
       this.bgMusic.stop()
     }
-    this.bgMusic = this.sound.add(`bgm-${randomTrack}`, { loop: true, volume: soundManager.getMusicVolume() * soundManager.getMasterVolume() })
-    if (!soundManager.isMuted()) {
-      this.bgMusic.play()
-    }
+    this.loadAndPlayMusic(randomTrack)
 
     // Reset all game state variables (important for scene restart)
     this.totalXP = 0
     this.level = 1
-    this.xpToNextLevel = XP_REQUIREMENTS[0] // Level 1→2 requires 25 XP
+    this.xpToNextLevel = XP_REQUIREMENTS[0] // Level 1→2 requires 30 XP
     this.health = 100
     this.maxHealth = 100
     this.isPaused = false
@@ -224,6 +229,9 @@ export default class GameScene extends Phaser.Scene {
 
     // Clear buff displays map to ensure clean state on restart
     this.buffDisplays.clear()
+
+    // Clear ally respawn timers
+    this.allyRespawnTimers.clear()
 
     // Clear weapons and passives arrays
     this.weapons = []
@@ -480,10 +488,11 @@ export default class GameScene extends Phaser.Scene {
     // Health text (overlaid on bar)
     this.healthText = this.add.text(0, 0, '100', {
       fontFamily: 'Courier New',
-      fontSize: '10px',
-      color: '#000000',
+      fontSize: '12px',
+      color: '#ffffff',
       fontStyle: 'bold'
     }).setOrigin(0.5).setDepth(52).setVisible(false)
+    this.healthText.setStroke('#000000', 2) // Black outline for visibility
 
     // Create combo text (below timer)
     this.comboText = this.add.text(
@@ -523,6 +532,10 @@ export default class GameScene extends Phaser.Scene {
     // Create enemy group with large pool to support hundreds of enemies
     this.enemies = new EnemyGroup(this, 200, 150)
 
+    // Create ally group for squadron support
+    this.allies = new AllyGroup(this, 20, 10)
+    this.allies.setProjectileGroup(this.projectiles)
+
     // Give projectiles access to enemy group for homing missiles
     this.projectiles.setEnemyGroup(this.enemies)
 
@@ -534,6 +547,10 @@ export default class GameScene extends Phaser.Scene {
     this.evolutionManager = new EvolutionManager(this)
     const selectedCharacterType = this.gameState.getSelectedCharacter()
     this.character = CharacterFactory.create(this, selectedCharacterType)
+
+    // Initialize run statistics tracking
+    this.runStatistics = RunStatistics.getInstance()
+    this.runStatistics.startRun(selectedCharacterType)
 
     // Create player with character's symbol and color
     const characterConfig = this.character.getConfig()
@@ -633,6 +650,33 @@ export default class GameScene extends Phaser.Scene {
       this
     )
 
+    // Enemy projectiles hit allies
+    this.physics.add.overlap(
+      this.allies,
+      this.enemyProjectiles,
+      this.handleAllyEnemyProjectileHit as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+      (allyObj, projObj) => {
+        const ally = allyObj as any
+        return ally.body && ally.body.enable && ally.active
+      },
+      this
+    )
+
+    // Allies collision with enemies (for wall allies)
+    this.physics.add.overlap(
+      this.allies,
+      this.enemies,
+      this.handleAllyEnemyCollision as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+      (allyObj, enemObj) => {
+        const ally = allyObj as any
+        const enemy = enemObj as any
+        // Only wall allies collide with enemies
+        return ally.active && ally.getType && ally.getType() === AllyType.WALL &&
+               enemy.body && enemy.body.enable && enemy.active
+      },
+      this
+    )
+
     // Setup event listeners (remove first to prevent duplicates)
     this.events.off('enemyDied', this.handleEnemyDied, this)
     this.events.off('xpCollected', this.handleXPCollected, this)
@@ -640,6 +684,9 @@ export default class GameScene extends Phaser.Scene {
     this.events.off('enemyExplosion', this.handleEnemyExplosion, this)
     this.events.off('enemySplit', this.handleEnemySplit, this)
     this.events.off('healNearbyEnemies', this.handleHealNearby, this)
+    this.events.off('allyExplosion', this.handleAllyExplosion, this)
+    this.events.off('allyRerollGenerated', this.handleAllyRerollGenerated, this)
+    this.events.off('allyDied', this.handleAllyDied, this)
 
     this.events.on('enemyDied', this.handleEnemyDied, this)
     this.events.on('xpCollected', this.handleXPCollected, this)
@@ -648,6 +695,9 @@ export default class GameScene extends Phaser.Scene {
     this.events.on('enemySplit', this.handleEnemySplit, this)
     this.events.on('healNearbyEnemies', this.handleHealNearby, this)
     this.events.on('laserFire', this.handleLaserFire, this)
+    this.events.on('allyExplosion', this.handleAllyExplosion, this)
+    this.events.on('allyRerollGenerated', this.handleAllyRerollGenerated, this)
+    this.events.on('allyDied', this.handleAllyDied, this)
 
     // Add touch/mouse controls (invisible joystick simulation)
     this.setupTouchControls()
@@ -677,6 +727,7 @@ export default class GameScene extends Phaser.Scene {
     // Create and add starting weapon
     const startingWeapon = WeaponFactory.create(this, startingWeaponType, this.projectiles)
     this.weapons.push(startingWeapon)
+    this.runStatistics.addWeapon(startingWeaponType)
 
     // Update player stats based on character
     this.playerStats.maxHealth = this.character.getBaseHealth()
@@ -701,6 +752,9 @@ export default class GameScene extends Phaser.Scene {
 
     this.updateHealthDisplay()
     this.updateSlotsDisplay()
+
+    // Initialize allies based on passives and building upgrades
+    this.updateAllies()
   }
 
   private updateSlotsDisplay() {
@@ -1017,7 +1071,7 @@ export default class GameScene extends Phaser.Scene {
             const partnerPassive = PassiveFactory.create(this, recipe.requiredPassive)
             const partnerConfig = partnerPassive.getConfig()
             return {
-              text: `⚡ Evolves → ${evolutionConfig.name}`,
+              text: `‡ Evolves → ${evolutionConfig.name}`,
               partnerIcon: partnerConfig.icon,
               partnerColor: partnerConfig.color,
               partnerName: partnerConfig.name
@@ -1038,7 +1092,7 @@ export default class GameScene extends Phaser.Scene {
             const partnerWeapon = WeaponFactory.create(this, recipe.baseWeapon, this.projectiles)
             const partnerConfig = partnerWeapon.getConfig()
             return {
-              text: `⚡ Evolves → ${evolutionConfig.name}`,
+              text: `‡ Evolves → ${evolutionConfig.name}`,
               partnerIcon: partnerConfig.icon,
               partnerColor: partnerConfig.color,
               partnerName: partnerConfig.name
@@ -1104,7 +1158,7 @@ export default class GameScene extends Phaser.Scene {
     if (availableEvolution) {
       const evolutionConfig = this.evolutionManager.getEvolutionConfig(availableEvolution.evolution)
       options.push({
-        name: `⚡ ${evolutionConfig.name} ⚡`,
+        name: `‡ ${evolutionConfig.name} ‡`,
         description: `[EVOLUTION] ${evolutionConfig.description}`,
         icon: evolutionConfig.icon,
         color: '#ffff00',
@@ -1123,6 +1177,7 @@ export default class GameScene extends Phaser.Scene {
             this.projectiles
           )
           this.weapons.push(evolvedWeapon)
+          this.runStatistics.addEvolution(availableEvolution.evolution)
 
           // Mark this evolution recipe as discovered
           const recipeKey = `${availableEvolution.baseWeapon}_${availableEvolution.requiredPassive}`
@@ -1658,10 +1713,14 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    this.enemies.spawnEnemy(x, y, type)
+    // Get current wave for health scaling
+    const currentWave = this.waveSystem.getCurrentWave()
+    this.enemies.spawnEnemy(x, y, type, currentWave)
 
-    // Track health spawned for debug metrics
-    const enemyHealth = ENEMY_CONFIGS[type].health
+    // Track health spawned for debug metrics (use scaled health)
+    const baseHealth = ENEMY_CONFIGS[type].health
+    const healthMultiplier = Math.pow(1.10, currentWave - 1)
+    const enemyHealth = Math.floor(baseHealth * healthMultiplier)
     this.healthTrackingWindow.push({ timestamp: this.time.now, health: enemyHealth })
   }
 
@@ -1721,9 +1780,18 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private startNextWave() {
+    // Clear the pending flag since we're starting now
+    this.waveStartPending = false
+
     // Prevent starting a new wave if one is already in progress
     if (this.waveInProgress) {
       console.warn('Attempted to start wave while one is already in progress - ignoring')
+      return
+    }
+
+    // Safety check: ensure enemy pool is still valid (prevent crashes during scene shutdown)
+    if (!this.enemies || !this.scene.isActive('GameScene')) {
+      console.warn('Cannot start wave - scene is shutting down or enemies destroyed')
       return
     }
 
@@ -1836,6 +1904,7 @@ export default class GameScene extends Phaser.Scene {
 
       // Try next wave with a longer delay to allow pool cleanup
       this.waveInProgress = false
+      this.waveStartPending = true
       this.time.delayedCall(2000, () => {
         this.startNextWave()
       })
@@ -1859,6 +1928,7 @@ export default class GameScene extends Phaser.Scene {
     const centerX = this.cameras.main.centerX
     const y = -50 // Spawn above the screen
     const spacing = formation.spacing || 60
+    const currentWave = this.waveSystem.getCurrentWave()
     let spawnedCount = 0
 
     switch (formation.type) {
@@ -1867,7 +1937,7 @@ export default class GameScene extends Phaser.Scene {
         for (let i = 0; i < count; i++) {
           const offsetX = (i - (count - 1) / 2) * 100
           const spawnX = this.clampSpawnX(centerX + offsetX)
-          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
           if (enemy) spawnedCount++
         }
         break
@@ -1875,7 +1945,7 @@ export default class GameScene extends Phaser.Scene {
       case 'line':
         for (let i = -4; i <= 4; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
           if (enemy) spawnedCount++
         }
         break
@@ -1883,22 +1953,22 @@ export default class GameScene extends Phaser.Scene {
       case 'v':
         for (let i = -2; i <= 2; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
           if (enemy) spawnedCount++
         }
         for (let i = -3; i <= 3; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 40, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 40, enemyType, currentWave)
           if (enemy) spawnedCount++
         }
         for (let i = -2; i <= 2; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 80, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 80, enemyType, currentWave)
           if (enemy) spawnedCount++
         }
         for (let i = -1; i <= 1; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 120, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 120, enemyType, currentWave)
           if (enemy) spawnedCount++
         }
         break
@@ -1909,7 +1979,7 @@ export default class GameScene extends Phaser.Scene {
           const offsetX = Math.cos(angle) * 80
           const offsetY = Math.sin(angle) * 40
           const spawnX = this.clampSpawnX(centerX + offsetX)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
           if (enemy) spawnedCount++
         }
         break
@@ -1918,7 +1988,7 @@ export default class GameScene extends Phaser.Scene {
         for (let i = -5; i <= 5; i++) {
           const waveOffset = Math.sin((i / 5) * Math.PI) * 30
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + waveOffset, enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + waveOffset, enemyType, currentWave)
           if (enemy) spawnedCount++
         }
         break
@@ -1996,6 +2066,10 @@ export default class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
+    // Cap delta to prevent physics explosions after long pauses (e.g., window loses focus)
+    // Max 100ms per frame = 10 FPS minimum
+    const cappedDelta = Math.min(delta, 100)
+
     // Set run start time on first update
     if (this.runStartTime === 0 && !this.isPaused) {
       this.runStartTime = time
@@ -2040,7 +2114,7 @@ export default class GameScene extends Phaser.Scene {
 
       // Apply health regeneration
       if (this.playerStats.healthRegen > 0) {
-        const regenAmount = (this.playerStats.healthRegen * delta) / 1000 // Convert to per-second
+        const regenAmount = (this.playerStats.healthRegen * cappedDelta) / 1000 // Convert to per-second
         this.health = Math.min(this.maxHealth, this.health + regenAmount)
       }
 
@@ -2073,7 +2147,7 @@ export default class GameScene extends Phaser.Scene {
       const activeEnemyCount = this.enemies.getChildren().filter((e: any) => e.active).length
 
       // Start first wave if not started yet
-      if (this.waveSystem.getCurrentWave() === 0 && !this.waveInProgress) {
+      if (this.waveSystem.getCurrentWave() === 0 && !this.waveInProgress && !this.waveStartPending) {
         this.startNextWave()
       }
 
@@ -2116,6 +2190,7 @@ export default class GameScene extends Phaser.Scene {
         this.waveInProgress = false
         this.currentWaveEnemyCount = 0
         this.consecutiveFailedWaves = 0 // Reset failure counter on successful wave completion
+        this.waveStartPending = true
         this.time.delayedCall(1000, () => {
           this.startNextWave()
         })
@@ -2143,6 +2218,7 @@ export default class GameScene extends Phaser.Scene {
           // Start next wave
           this.waveInProgress = false
           this.currentWaveEnemyCount = 0
+          this.waveStartPending = true
           this.time.delayedCall(1000, () => {
             this.startNextWave()
           })
@@ -2152,11 +2228,12 @@ export default class GameScene extends Phaser.Scene {
       // Failsafe 2: If no wave is in progress and no enemies are active, start next wave
       // This handles cases where the wave system got stuck
       // Increased delay to 10 seconds to avoid rapid wave advancement and allow time for enemies to despawn
-      if (!this.waveInProgress && activeEnemyCount === 0 && this.waveSystem.getCurrentWave() > 0 && !this.waveSystem.isComplete()) {
+      if (!this.waveInProgress && !this.waveStartPending && activeEnemyCount === 0 && this.waveSystem.getCurrentWave() > 0 && !this.waveSystem.isComplete()) {
         const timeSinceWaveStart = time - this.waveStartTime
         // Only trigger if it's been at least 10 seconds since last wave start (avoid rapid re-trigger)
         if (timeSinceWaveStart > 10000) {
           console.warn('Wave system stuck - no wave in progress but no enemies. Starting next wave.')
+          this.waveStartPending = true
           this.startNextWave()
         }
       }
@@ -2173,9 +2250,38 @@ export default class GameScene extends Phaser.Scene {
 
     // Update projectiles, enemies, and XP drops (only if not paused)
     if (!this.isPaused) {
-      this.projectiles.update()
-      this.enemies.update(time, delta)
-      this.enemyProjectiles.update()
+      this.projectiles.update(cappedDelta)
+      this.enemies.update(time, cappedDelta)
+      this.allies.update(time, cappedDelta, this.player.x, this.player.y, this.enemies)
+      this.enemyProjectiles.update(cappedDelta)
+
+      // Check for ally respawns
+      this.allyRespawnTimers.forEach((respawnTime, allyKey) => {
+        if (time >= respawnTime) {
+          // Remove from timer map
+          this.allyRespawnTimers.delete(allyKey)
+
+          // Respawn ONLY the Gun Buddy and Wingman allies (not building allies)
+          this.respawnAutoRespawnAllies()
+
+          // Show respawn notification
+          const text = this.add.text(this.player.x, this.player.y - 40, 'Ally Respawned!', {
+            fontFamily: 'Courier New',
+            fontSize: '16px',
+            color: '#00ff00',
+            stroke: '#000000',
+            strokeThickness: 2
+          }).setOrigin(0.5).setDepth(100)
+
+          this.tweens.add({
+            targets: text,
+            y: this.player.y - 70,
+            alpha: { from: 1, to: 0 },
+            duration: 1500,
+            onComplete: () => text.destroy()
+          })
+        }
+      })
 
       // Update XP drops (pass player's pickup radius from stats)
       this.xpDrops.update(this.player.x, this.player.y, this.playerStats.pickupRadius)
@@ -2196,7 +2302,7 @@ export default class GameScene extends Phaser.Scene {
 
       // Update combo timer
       if (this.comboCount > 0) {
-        this.comboTimer -= delta
+        this.comboTimer -= cappedDelta
         if (this.comboTimer <= 0) {
           this.resetCombo()
         }
@@ -3251,11 +3357,14 @@ export default class GameScene extends Phaser.Scene {
           alpha: 0,
           duration: 300,
           onComplete: () => {
-            overlay.destroy()
-            title.destroy()
-            subtitle.destroy()
-            message.destroy()
-            this.resumeGame()
+            // Safety check: ensure scene still exists
+            if (this.scene && this.scene.isActive()) {
+              overlay.destroy()
+              title.destroy()
+              subtitle.destroy()
+              message.destroy()
+              this.resumeGame()
+            }
           }
         })
       })
@@ -3278,21 +3387,21 @@ export default class GameScene extends Phaser.Scene {
     selectedUpgrades.forEach((upgrade, index) => {
       const y = startY + (buttonHeight + buttonSpacing) * index
 
-      // Button background (highlight if recommended)
+      // Button background (highlight if recommended) - start invisible and offset
       const bgColor = upgrade.recommended ? 0x1a2a1a : 0x0a0a1e
       const button = this.add.rectangle(
-        this.cameras.main.centerX,
+        this.cameras.main.centerX - 50, // Start offset to the left
         y,
         buttonWidth,
         buttonHeight,
         bgColor
-      ).setDepth(101).setInteractive({ useHandCursor: true })
+      ).setDepth(101).setAlpha(0).disableInteractive() // Start invisible and non-interactive
 
       // Add recommendation star indicator (positioned within button bounds)
       let starIcon: Phaser.GameObjects.Text | null = null
       if (upgrade.recommended) {
         starIcon = this.add.text(
-          this.cameras.main.centerX + 200,
+          this.cameras.main.centerX + 150, // Offset with button
           y - 20,
           '★',
           {
@@ -3300,14 +3409,14 @@ export default class GameScene extends Phaser.Scene {
             fontSize: '48px',
             color: '#ffff00',
           }
-        ).setOrigin(0.5).setDepth(102)
+        ).setOrigin(0.5).setDepth(102).setAlpha(0)
       }
 
       // Icon (if available)
       let iconText: Phaser.GameObjects.Text | null = null
       if (upgrade.icon) {
         iconText = this.add.text(
-          this.cameras.main.centerX - 195,
+          this.cameras.main.centerX - 245, // Offset with button
           y,
           upgrade.icon,
           {
@@ -3315,7 +3424,7 @@ export default class GameScene extends Phaser.Scene {
             fontSize: '56px',
             color: upgrade.color || '#ffffff',
           }
-        ).setOrigin(0.5).setDepth(102)
+        ).setOrigin(0.5).setDepth(102).setAlpha(0)
       }
 
       // Synergy partner icon (if available) - shows what it synergizes with
@@ -3324,7 +3433,7 @@ export default class GameScene extends Phaser.Scene {
       if (upgrade.synergyPartnerIcon && upgrade.enablesEvolution) {
         // Show "+" symbol
         synergyPlus = this.add.text(
-          this.cameras.main.centerX - 195,
+          this.cameras.main.centerX - 245, // Offset with button
           y - 50,
           '+',
           {
@@ -3332,11 +3441,11 @@ export default class GameScene extends Phaser.Scene {
             fontSize: '24px',
             color: '#ffff00',
           }
-        ).setOrigin(0.5).setDepth(102)
+        ).setOrigin(0.5).setDepth(102).setAlpha(0)
 
         // Show partner icon above
         synergyIcon = this.add.text(
-          this.cameras.main.centerX - 195,
+          this.cameras.main.centerX - 245, // Offset with button
           y - 70,
           upgrade.synergyPartnerIcon,
           {
@@ -3344,14 +3453,14 @@ export default class GameScene extends Phaser.Scene {
             fontSize: '32px',
             color: upgrade.synergyPartnerColor || '#ffffff',
           }
-        ).setOrigin(0.5).setDepth(102)
+        ).setOrigin(0.5).setDepth(102).setAlpha(0)
       }
 
       // EVO badge for items that enable evolutions (below the icon)
       let evoBadge: Phaser.GameObjects.Text | null = null
       if (upgrade.enablesEvolution) {
         evoBadge = this.add.text(
-          this.cameras.main.centerX - 195,
+          this.cameras.main.centerX - 245, // Offset with button
           y + 45,
           'EVO',
           {
@@ -3361,12 +3470,12 @@ export default class GameScene extends Phaser.Scene {
             backgroundColor: '#ffff00',
             padding: { x: 4, y: 2 }
           }
-        ).setOrigin(0.5).setDepth(102)
+        ).setOrigin(0.5).setDepth(102).setAlpha(0)
       }
 
       // Button text
       const nameText = this.add.text(
-        this.cameras.main.centerX - 125,
+        this.cameras.main.centerX - 175, // Offset with button
         y - 40,
         upgrade.name,
         {
@@ -3375,10 +3484,10 @@ export default class GameScene extends Phaser.Scene {
           color: '#00ff00',
           wordWrap: { width: 300, useAdvancedWrap: true }
         }
-      ).setOrigin(0, 0).setDepth(102)
+      ).setOrigin(0, 0).setDepth(102).setAlpha(0)
 
       const descText = this.add.text(
-        this.cameras.main.centerX - 125,
+        this.cameras.main.centerX - 175, // Offset with button
         y + 0,
         upgrade.description,
         {
@@ -3387,35 +3496,92 @@ export default class GameScene extends Phaser.Scene {
           color: '#aaaaaa',
           wordWrap: { width: 300, useAdvancedWrap: true }
         }
-      ).setOrigin(0, 0).setDepth(102)
+      ).setOrigin(0, 0).setDepth(102).setAlpha(0)
 
-      // Hover effects
-      button.on('pointerover', () => {
-        button.setFillStyle(upgrade.recommended ? 0x2a3a2a : 0x1a1a3e)
-      })
+      // Collect all elements to animate together
+      const elementsToAnimate: Phaser.GameObjects.GameObject[] = [button, nameText, descText]
+      if (iconText) elementsToAnimate.push(iconText)
+      if (starIcon) elementsToAnimate.push(starIcon)
+      if (evoBadge) elementsToAnimate.push(evoBadge)
+      if (synergyIcon) elementsToAnimate.push(synergyIcon)
+      if (synergyPlus) elementsToAnimate.push(synergyPlus)
 
-      button.on('pointerout', () => {
-        button.setFillStyle(upgrade.recommended ? 0x1a2a1a : 0x0a0a1e)
-      })
+      // Staggered animation: each button slides in from left with delay
+      const animDelay = 150 + (index * 100) // 150ms base delay + 100ms per button
+      this.time.delayedCall(animDelay, () => {
+        // Animate all elements sliding in and fading in
+        this.tweens.add({
+          targets: elementsToAnimate,
+          alpha: 1,
+          x: '+=50', // Slide 50px to the right to final position
+          duration: 250,
+          ease: 'Back.easeOut',
+          onComplete: () => {
+            // Safety check: ensure button and scene still exist
+            if (!button.scene || button.scene !== this) {
+              return
+            }
 
-      // Click handler
-      button.on('pointerdown', () => {
-        soundManager.play(SoundType.UPGRADE_SELECT)
-        upgrade.effect()
-        // Update slots display after upgrade
-        this.updateSlotsDisplay()
-        // Remove all upgrade UI elements
-        buttons.forEach(obj => obj.destroy())
-        nameText.destroy()
-        descText.destroy()
-        if (iconText) iconText.destroy()
-        if (evoBadge) evoBadge.destroy()
-        if (synergyIcon) synergyIcon.destroy()
-        if (synergyPlus) synergyPlus.destroy()
-        button.destroy()
+            // Enable interaction after animation completes
+            button.setInteractive({ useHandCursor: true })
 
-        // Resume game (will handle pending level ups automatically)
-        this.resumeGame()
+            // Hover effects
+            button.on('pointerover', () => {
+              button.setFillStyle(upgrade.recommended ? 0x2a3a2a : 0x1a1a3e)
+            })
+
+            button.on('pointerout', () => {
+              button.setFillStyle(upgrade.recommended ? 0x1a2a1a : 0x0a0a1e)
+            })
+
+            // Click handler
+            button.on('pointerdown', () => {
+              soundManager.play(SoundType.UPGRADE_SELECT)
+
+              // Check if this upgrade adds a new Gun Buddy weapon or Wingman passive
+              const weaponCountBefore = this.weapons.length
+              const passiveCountBefore = this.passives.length
+
+              upgrade.effect()
+
+              // Update slots display after upgrade
+              this.updateSlotsDisplay()
+
+              // Only update allies if we added a NEW Gun Buddy weapon or Wingman Protocol passive
+              const weaponCountAfter = this.weapons.length
+              const passiveCountAfter = this.passives.length
+
+              const addedNewWeapon = weaponCountAfter > weaponCountBefore
+              const addedNewPassive = passiveCountAfter > passiveCountBefore
+
+              if (addedNewWeapon || addedNewPassive) {
+                // Check if it's a Gun Buddy or Wingman
+                const lastWeapon = this.weapons[this.weapons.length - 1]
+                const lastPassive = this.passives[this.passives.length - 1]
+
+                const isGunBuddy = addedNewWeapon && lastWeapon && lastWeapon.getConfig().type === WeaponType.GUN_BUDDY
+                const isWingman = addedNewPassive && lastPassive && lastPassive.getConfig().type === PassiveType.WINGMAN_PROTOCOL
+
+                if (isGunBuddy || isWingman) {
+                  this.updateAllies()
+                }
+              }
+
+              // Remove all upgrade UI elements
+              buttons.forEach(obj => obj.destroy())
+              nameText.destroy()
+              descText.destroy()
+              if (iconText) iconText.destroy()
+              if (evoBadge) evoBadge.destroy()
+              if (synergyIcon) synergyIcon.destroy()
+              if (synergyPlus) synergyPlus.destroy()
+              button.destroy()
+
+              // Resume game (will handle pending level ups automatically)
+              this.resumeGame()
+            })
+          }
+        })
       })
 
       buttons.push(button, nameText, descText)
@@ -3431,6 +3597,9 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private openTreasureChest() {
+    // Reset click state
+    this.chestPopupClickState = 0
+
     // Randomly determine reward tier with weighted probabilities (+ building bonuses)
     const bonuses = this.gameState.getTotalBonuses()
     const baseGoldChance = 0.10 // 10% base
@@ -3477,14 +3646,14 @@ export default class GameScene extends Phaser.Scene {
     this.physics.pause()
     this.starFieldTweens.forEach(tween => tween.pause())
 
-    // Create dark overlay
+    // Create dark overlay (make it interactive for click handling)
     const overlay = this.add.rectangle(
       0, 0,
       this.cameras.main.width,
       this.cameras.main.height,
       0x000000,
       0.85
-    ).setOrigin(0, 0).setDepth(100)
+    ).setOrigin(0, 0).setDepth(100).setInteractive()
 
     // Create chest icon (starts closed)
     const chestIcon = this.add.text(
@@ -3498,16 +3667,46 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5).setDepth(101).setAlpha(0)
 
+    // Store references to tweens/timers so they can be cancelled
+    let fadeInTween: Phaser.Tweens.Tween | null = null
+    let delayedCallTimer: Phaser.Time.TimerEvent | null = null
+
+    // Click handler to skip animations
+    const handleClick = () => {
+      if (this.chestPopupClickState === 0) {
+        // First click: skip to end state (show rewards immediately)
+        // Cancel any ongoing animations
+        if (fadeInTween) fadeInTween.stop()
+        if (delayedCallTimer) delayedCallTimer.remove()
+        this.tweens.killTweensOf(chestIcon)
+
+        // Show final chest state
+        chestIcon.setText(chestSymbol)
+        chestIcon.setColor(tierColor)
+        chestIcon.setAlpha(1)
+        chestIcon.setScale(1.2)
+
+        // Jump straight to showing rewards
+        this.showChestReward(tierName, tierColor, upgradeCount, overlay, chestIcon)
+      }
+    }
+
+    overlay.on('pointerdown', handleClick)
+
     // Fade in chest
-    this.tweens.add({
+    fadeInTween = this.tweens.add({
       targets: chestIcon,
       alpha: 1,
       scale: { from: 0.5, to: 1.2 },
       duration: 400,
       ease: 'Back.easeOut',
       onComplete: () => {
+        // Safety check: ensure scene still exists
+        if (!this.scene || !this.scene.isActive()) {
+          return
+        }
         // Wait a moment, then start opening animation
-        this.time.delayedCall(300, () => {
+        delayedCallTimer = this.time.delayedCall(300, () => {
           this.playChestOpeningAnimation(chestIcon, chestSymbol, tierColor, tierName, upgradeCount, overlay)
         })
       }
@@ -3530,6 +3729,10 @@ export default class GameScene extends Phaser.Scene {
       yoyo: true,
       repeat: 5,
       onComplete: () => {
+        // Safety check: ensure chest icon and scene still exist
+        if (!chestIcon.scene || chestIcon.scene !== this) {
+          return
+        }
         // Change to open chest symbol and tier color
         chestIcon.setText(finalSymbol)
         chestIcon.setColor(tierColor)
@@ -3646,6 +3849,9 @@ export default class GameScene extends Phaser.Scene {
     overlay: Phaser.GameObjects.Rectangle,
     chestIcon: Phaser.GameObjects.Text
   ) {
+    // Update click state - now showing rewards
+    this.chestPopupClickState = 1
+
     // Fade out chest icon
     this.tweens.add({
       targets: chestIcon,
@@ -3659,36 +3865,99 @@ export default class GameScene extends Phaser.Scene {
     const allUpgrades = this.generateUpgradeOptions()
 
     // Filter to only level-ups (exclude new weapons/passives/evolutions)
-    const levelUpUpgrades = allUpgrades.filter(upgrade =>
+    let availableLevelUps = allUpgrades.filter(upgrade =>
       upgrade.name.includes('Level Up')
     )
 
-    // If no level-ups available, give evolutions or new items
+    // Select upgrades, allowing duplicates if item can continue leveling
     let selectedUpgrades: typeof allUpgrades = []
-    if (levelUpUpgrades.length === 0) {
-      // Fallback to any available upgrades
-      selectedUpgrades = Phaser.Utils.Array.Shuffle([...allUpgrades]).slice(0, upgradeCount)
-    } else {
-      // Randomly select from level-ups only
-      selectedUpgrades = Phaser.Utils.Array.Shuffle([...levelUpUpgrades]).slice(0, Math.min(upgradeCount, levelUpUpgrades.length))
+    let creditsEarned = 0
+
+    for (let i = 0; i < upgradeCount; i++) {
+      if (availableLevelUps.length === 0) {
+        // No more level-ups available, give 50 credits instead
+        creditsEarned += 50
+        continue
+      }
+
+      // Pick a random upgrade from available pool
+      const randomIndex = Math.floor(Math.random() * availableLevelUps.length)
+      const selectedUpgrade = availableLevelUps[randomIndex]
+
+      // Capture before/after levels for display BEFORE applying
+      let beforeLevel = 0
+      let afterLevel = 0
+      if (selectedUpgrade.name.includes('Level Up')) {
+        const levelMatch = selectedUpgrade.name.match(/Lv\.(\d+)/)
+        if (levelMatch) {
+          beforeLevel = parseInt(levelMatch[1]) - 1 // Current level is one less
+          afterLevel = parseInt(levelMatch[1])
+        }
+      }
+
+      selectedUpgrades.push({
+        upgrade: selectedUpgrade,
+        beforeLevel,
+        afterLevel
+      })
+
+      // Apply the upgrade immediately
+      selectedUpgrade.effect()
+
+      // Regenerate upgrades to see if items can still level up
+      const newUpgrades = this.generateUpgradeOptions()
+      availableLevelUps = newUpgrades.filter(upgrade =>
+        upgrade.name.includes('Level Up')
+      )
     }
 
-    // Automatically apply all upgrades
-    selectedUpgrades.forEach(upgrade => {
-      upgrade.effect()
-    })
+    // Award credits if any slots couldn't be filled
+    if (creditsEarned > 0) {
+      this.gameState.addCredits(creditsEarned)
+    }
+
+    // upgradeInfos now contains the applied upgrades with their level info
+    const upgradeInfos = selectedUpgrades
 
     // Update slots display
     this.updateSlotsDisplay()
 
-    // Show tier announcement with what was upgraded
-    const rewardText = selectedUpgrades.length > 0
-      ? selectedUpgrades.map(u => u.name).join('\n')
-      : 'No upgrades available!'
+    // Create glowing background based on chest tier
+    const glowRadius = 300
+    const glowGraphics = this.add.graphics().setDepth(100)
 
+    // Determine glow color based on tier
+    let glowColor: number
+    if (tierName === 'GOLD') {
+      glowColor = 0xffd700
+    } else if (tierName === 'SILVER') {
+      glowColor = 0xc0c0c0
+    } else {
+      glowColor = 0xcd7f32
+    }
+
+    // Draw radial gradient glow
+    for (let i = glowRadius; i > 0; i -= 20) {
+      const alpha = (1 - (i / glowRadius)) * 0.15
+      glowGraphics.fillStyle(glowColor, alpha)
+      glowGraphics.fillCircle(this.cameras.main.centerX, this.cameras.main.centerY, i)
+    }
+
+    // Pulsing animation for the glow
+    this.tweens.add({
+      targets: glowGraphics,
+      alpha: { from: 0.8, to: 1 },
+      scale: { from: 0.9, to: 1.1 },
+      duration: 1000,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    })
+
+    // Tier title
     const tierText = this.add.text(
       this.cameras.main.centerX,
-      this.cameras.main.centerY - 100,
+      80,
       `${tierName} CHEST!`,
       {
         fontFamily: 'Courier New',
@@ -3697,47 +3966,250 @@ export default class GameScene extends Phaser.Scene {
         stroke: '#000000',
         strokeThickness: 4
       }
-    ).setOrigin(0.5).setDepth(101).setAlpha(0)
+    ).setOrigin(0.5).setDepth(103).setAlpha(0)
 
-    const upgradesText = this.add.text(
-      this.cameras.main.centerX,
-      this.cameras.main.centerY + 20,
-      rewardText,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '22px',
-        color: '#00ff00',
-        align: 'center',
-        stroke: '#000000',
-        strokeThickness: 2
-      }
-    ).setOrigin(0.5).setDepth(101).setAlpha(0)
-
-    // Fade in text
+    // Fade in tier text
     this.tweens.add({
-      targets: [tierText, upgradesText],
+      targets: tierText,
       alpha: 1,
       scale: { from: 0.5, to: 1 },
       duration: 300,
-      ease: 'Back.easeOut',
-      onComplete: () => {
-        // Wait then clean up and resume
-        this.time.delayedCall(2000, () => {
-          this.tweens.add({
-            targets: [tierText, upgradesText, overlay],
-            alpha: 0,
-            duration: 300,
-            onComplete: () => {
-              tierText.destroy()
-              upgradesText.destroy()
-              overlay.destroy()
+      ease: 'Back.easeOut'
+    })
 
-              // Resume game (will handle pending level ups automatically)
-              this.resumeGame()
+    // Array to hold all animated elements for cleanup
+    const rewardElements: Phaser.GameObjects.GameObject[] = [glowGraphics, tierText]
+    // Array to hold all delayed timers for cleanup
+    const delayedTimers: Phaser.Time.TimerEvent[] = []
+
+    // Display credits earned if any
+    if (creditsEarned > 0) {
+      const creditsText = this.add.text(
+        this.cameras.main.centerX,
+        150,
+        `+${creditsEarned} Credits\n(No upgrades available)`,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '32px',
+          color: '#ffd700',
+          stroke: '#000000',
+          strokeThickness: 3,
+          align: 'center'
+        }
+      ).setOrigin(0.5).setDepth(103).setAlpha(0)
+
+      rewardElements.push(creditsText)
+
+      this.tweens.add({
+        targets: creditsText,
+        alpha: 1,
+        y: 140,
+        duration: 500,
+        ease: 'Back.easeOut'
+      })
+    }
+
+    // Animate each upgrade in a spiral pattern
+    const centerX = this.cameras.main.centerX
+    const centerY = this.cameras.main.centerY
+    const spiralRadius = 120 // Distance from center
+    const angleStep = (Math.PI * 2) / Math.max(upgradeInfos.length, 3) // Distribute evenly in a circle
+
+    upgradeInfos.forEach((info, index) => {
+      const delay = 300 + (index * 150) // Staggered appearance
+
+      // Calculate spiral position
+      const angle = angleStep * index
+      const targetX = centerX + Math.cos(angle) * spiralRadius
+      const targetY = centerY + Math.sin(angle) * spiralRadius
+
+      const timer = this.time.delayedCall(delay, () => {
+        const upgrade = info.upgrade
+        // Create upgrade icon background
+        const iconBg = this.add.rectangle(
+          centerX,
+          centerY,
+          80,
+          80,
+          upgrade.recommended ? 0xffff00 : 0x00ff00,
+          0.3
+        ).setDepth(102).setAlpha(0)
+
+        // Create upgrade icon
+        const icon = this.add.text(
+          centerX,
+          centerY,
+          upgrade.icon || '⬆',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '48px',
+            color: upgrade.color || '#00ff00',
+            stroke: '#000000',
+            strokeThickness: 3
+          }
+        ).setOrigin(0.5).setDepth(103).setAlpha(0)
+
+        // Create level pip indicator if it's a level up
+        let pipContainer: Phaser.GameObjects.Container | null = null
+        if (upgrade.name.includes('Level Up')) {
+          // Extract level from name (e.g., "Blaster Level Up (Lv.4)")
+          const levelMatch = upgrade.name.match(/Lv\.(\d+)/)
+          if (levelMatch) {
+            const level = parseInt(levelMatch[1])
+            const pips: Phaser.GameObjects.GameObject[] = []
+
+            // Create 8 pip slots (max level is usually 8)
+            for (let i = 0; i < 8; i++) {
+              const pipX = -35 + (i * 10)
+              const pipY = 45
+              const isFilled = i < level
+
+              const pip = this.add.circle(
+                pipX,
+                pipY,
+                3,
+                isFilled ? 0x00ff00 : 0x333333
+              ).setDepth(103).setAlpha(0)
+
+              pips.push(pip)
+            }
+
+            pipContainer = this.add.container(centerX, centerY, pips).setDepth(103)
+          }
+        }
+
+        // Create upgrade name text with level progression
+        let displayName = upgrade.name.replace(' Level Up', '').split('(')[0].trim()
+        if (info.beforeLevel > 0 && info.afterLevel > 0) {
+          displayName += `\nLv.${info.beforeLevel} → Lv.${info.afterLevel}`
+        }
+
+        const nameText = this.add.text(
+          centerX,
+          centerY + 50,
+          displayName,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '14px',
+            color: '#ffffff',
+            align: 'center',
+            stroke: '#000000',
+            strokeThickness: 2,
+            wordWrap: { width: 120 }
+          }
+        ).setOrigin(0.5).setDepth(103).setAlpha(0)
+
+        // Burst particle effect from center
+        const particles: Phaser.GameObjects.Text[] = []
+        for (let i = 0; i < 12; i++) {
+          const particleAngle = (Math.PI * 2 / 12) * i
+          const particle = this.add.text(
+            centerX,
+            centerY,
+            '✦',
+            {
+              fontFamily: 'Courier New',
+              fontSize: '16px',
+              color: upgrade.color || '#00ff00',
+            }
+          ).setOrigin(0.5).setDepth(102)
+
+          particles.push(particle)
+          rewardElements.push(particle)
+
+          this.tweens.add({
+            targets: particle,
+            x: centerX + Math.cos(particleAngle) * 60,
+            y: centerY + Math.sin(particleAngle) * 60,
+            alpha: 0,
+            scale: { from: 1, to: 0.5 },
+            duration: 400,
+            ease: 'Quad.easeOut',
+            onComplete: () => {
+              particle.destroy()
+              // Remove from rewardElements array
+              const idx = rewardElements.indexOf(particle)
+              if (idx > -1) rewardElements.splice(idx, 1)
             }
           })
+        }
+
+        // Animate elements spiraling out to final position
+        const elementsToAnimate: any[] = [iconBg, icon, nameText]
+        if (pipContainer) {
+          elementsToAnimate.push(pipContainer)
+          // Also animate pips individually
+          pipContainer.list.forEach(pip => elementsToAnimate.push(pip))
+        }
+
+        this.tweens.add({
+          targets: elementsToAnimate,
+          x: `+=${targetX - centerX}`,
+          y: `+=${targetY - centerY}`,
+          alpha: 1,
+          scale: { from: 0.3, to: 1 },
+          rotation: Math.PI * 2,
+          duration: 500,
+          ease: 'Back.easeOut'
         })
+
+        rewardElements.push(iconBg, icon, nameText)
+        if (pipContainer) rewardElements.push(pipContainer)
+      })
+
+      // Store timer for cleanup
+      delayedTimers.push(timer)
+    })
+
+    // Store auto-close timer so it can be cancelled
+    let autoCloseTimer: Phaser.Time.TimerEvent | null = null
+
+    // Add click handler for second click (close immediately)
+    const closeHandler = () => {
+      if (this.chestPopupClickState >= 1) {
+        // Cancel auto-close timer
+        if (autoCloseTimer) autoCloseTimer.remove()
+
+        // Cancel all pending delayed timers
+        delayedTimers.forEach(timer => timer.remove())
+
+        // Kill any ongoing tweens
+        this.tweens.killTweensOf(rewardElements)
+
+        // Close immediately - safely destroy all elements
+        rewardElements.forEach(el => {
+          if (el && el.active) {
+            el.destroy()
+          }
+        })
+        if (overlay && overlay.active) {
+          overlay.destroy()
+        }
+
+        // Resume game (will handle pending level ups automatically)
+        this.resumeGame()
       }
+    }
+
+    // Remove old handler and add new one
+    overlay.removeAllListeners('pointerdown')
+    overlay.on('pointerdown', closeHandler)
+
+    // Wait for all animations to complete, then auto-close
+    const totalAnimDuration = 300 + (upgradeInfos.length * 150) + 500
+    autoCloseTimer = this.time.delayedCall(totalAnimDuration + 1500, () => {
+      this.tweens.add({
+        targets: rewardElements,
+        alpha: 0,
+        duration: 300,
+        onComplete: () => {
+          rewardElements.forEach(el => el.destroy())
+          overlay.destroy()
+
+          // Resume game (will handle pending level ups automatically)
+          this.resumeGame()
+        }
+      })
     })
   }
 
@@ -4053,8 +4525,8 @@ export default class GameScene extends Phaser.Scene {
     const allUpgrades = this.generateUpgradeOptions()
 
     // Check for evolution - if present, automatically include it
-    const evolutionUpgrade = allUpgrades.find(u => u.name.includes('⚡'))
-    const otherUpgrades = allUpgrades.filter(u => !u.name.includes('⚡'))
+    const evolutionUpgrade = allUpgrades.find(u => u.name.includes('‡'))
+    const otherUpgrades = allUpgrades.filter(u => !u.name.includes('‡'))
 
     let selectedUpgrades: typeof allUpgrades = []
 
@@ -4318,6 +4790,7 @@ export default class GameScene extends Phaser.Scene {
       getDamage: () => number
       onHit: () => boolean
       getType: () => ProjectileType
+      getDamageType: () => DamageType
       getExplosionRadius: () => number
       getFreezeChance: () => number
       getFreezeDuration: () => number
@@ -4338,10 +4811,9 @@ export default class GameScene extends Phaser.Scene {
     let critChance = this.weaponModifiers.critChance
 
     // Tempest: +20% crit chance on Nature damage
-    // TODO: Implement getDamageType on Projectile class
-    // if (this.character.getConfig().type === 'TEMPEST' && projectile.getDamageType() === 'NATURE') {
-    //   critChance += 20
-    // }
+    if (this.character.getConfig().type === 'TEMPEST' && projectile.getDamageType() === DamageType.NATURE) {
+      critChance += 20
+    }
 
     const isCritical = Math.random() * 100 < critChance
     if (isCritical) {
@@ -4357,6 +4829,10 @@ export default class GameScene extends Phaser.Scene {
     // Show damage number
     this.showDamageNumber(enemy.x, enemy.y, damage, isCritical)
 
+    // Save enemy position before damage (in case enemy dies)
+    const enemyX = enemy.x
+    const enemyY = enemy.y
+
     // Apply damage to enemy
     const enemyDied = enemy.takeDamage(damage)
 
@@ -4368,7 +4844,7 @@ export default class GameScene extends Phaser.Scene {
       const explosionRadius = projectile.getExplosionRadius()
       if (explosionRadius > 0) {
         // Show burn status effect indicator on primary target
-        this.showStatusEffect(enemy.x, enemy.y, '🔥', '#ff4400')
+        this.showStatusEffect(enemyX, enemyY, '🔥', '#ff4400')
 
         // Find all enemies within radius
         const nearbyEnemies = this.enemies.getNearbyEnemies(projectile.x, projectile.y, explosionRadius)
@@ -4409,7 +4885,7 @@ export default class GameScene extends Phaser.Scene {
         const freezeDuration = projectile.getFreezeDuration()
 
         // Show freeze status effect indicator
-        this.showStatusEffect(enemy.x, enemy.y, '❄', '#00ffff')
+        this.showStatusEffect(enemyX, enemyY, '❄', '#00ffff')
 
         // Visual: Change enemy color to cyan temporarily
         const enemyText = enemy as Phaser.GameObjects.Text
@@ -4431,7 +4907,7 @@ export default class GameScene extends Phaser.Scene {
       const chainRange = 150
 
       // Show shock status effect on primary target
-      this.showStatusEffect(enemy.x, enemy.y, '⚡', '#ffff00')
+      this.showStatusEffect(enemy.x, enemy.y, '‡', '#00ff00')
 
       // Find nearby enemies to chain to
       const nearbyEnemies = this.enemies.getNearbyEnemies(enemy.x, enemy.y, chainRange)
@@ -4446,7 +4922,7 @@ export default class GameScene extends Phaser.Scene {
         this.damageTrackingWindow.push({ timestamp: this.time.now, damage: chainDamage })
         this.showDamageNumber(chainedEnemy.x, chainedEnemy.y, chainDamage)
         // Show shock effect on chained targets
-        this.showStatusEffect(chainedEnemy.x, chainedEnemy.y, '⚡', '#ffff00')
+        this.showStatusEffect(chainedEnemy.x, chainedEnemy.y, '‡', '#00ff00')
 
         // Visual: Draw lightning arc
         const lightning = this.add.line(
@@ -4544,11 +5020,17 @@ export default class GameScene extends Phaser.Scene {
       return
     }
 
-    const damageText = this.add.text(x, y, Math.floor(damage).toString(), {
+    // Ensure damage is a number and convert to string explicitly
+    const damageValue = typeof damage === 'number' ? Math.floor(damage) : parseInt(String(damage))
+    const damageString = `${damageValue}`
+
+    const damageText = this.add.text(x, y, damageString, {
       fontFamily: 'Courier New',
       fontSize: isCritical ? '48px' : '36px',
       color: isCritical ? '#ff4400' : '#ffff00',
-      fontStyle: 'bold'
+      fontStyle: 'bold',
+      stroke: '#000000',
+      strokeThickness: 3
     }).setOrigin(0.5).setDepth(50)
 
     // Animate the damage number
@@ -4909,10 +5391,11 @@ export default class GameScene extends Phaser.Scene {
       // Position health bar below player
       const playerY = this.player.y + 35 // 35 pixels below player
       const playerX = this.player.x
+      const healthBarHeight = 12
 
       this.healthBarBackground.setPosition(playerX, playerY)
       this.healthBarFill.setPosition(playerX - 29, playerY + 1) // Center the fill (60/2 - 1 for padding)
-      this.healthText.setPosition(playerX, playerY - 2)
+      this.healthText.setPosition(playerX, playerY + healthBarHeight / 2) // Center text inside bar
 
       // Update health text
       this.healthText.setText(`${this.health}`)
@@ -5145,7 +5628,7 @@ export default class GameScene extends Phaser.Scene {
     this.currentWaveEnemyCount = 0
 
     // Give brief invulnerability
-    this.lastHitTime = Date.now()
+    this.lastHitTime = this.time.now
 
     // Unpause game
     this.isPaused = false
@@ -5525,6 +6008,453 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
+  private handleAllyExplosion(data: { x: number; y: number; radius: number; damage: number }) {
+    // Damage all enemies within explosion radius
+    const activeEnemies = this.enemies.getChildren().filter((e: any) => e.active) as any[]
+
+    activeEnemies.forEach((enemy: any) => {
+      const distance = Phaser.Math.Distance.Between(data.x, data.y, enemy.x, enemy.y)
+      if (distance <= data.radius) {
+        enemy.takeDamage(data.damage)
+      }
+    })
+
+    // Visual shockwave
+    const shockwave = this.add.circle(data.x, data.y, 10, 0xff8800, 0)
+      .setStrokeStyle(2, 0xff8800, 1)
+      .setDepth(46)
+
+    this.tweens.add({
+      targets: shockwave,
+      radius: data.radius,
+      alpha: { from: 1, to: 0 },
+      duration: 400,
+      ease: 'Cubic.easeOut',
+      onComplete: () => shockwave.destroy(),
+    })
+  }
+
+  private handleAllyRerollGenerated() {
+    // Add a reroll charge
+    if (this.rerollsRemaining < this.maxRerolls) {
+      this.rerollsRemaining++
+      this.updateRerollDisplay()
+
+      // Show notification
+      const text = this.add.text(this.cameras.main.width - 120, 60, '+1 Reroll!', {
+        fontFamily: 'Courier New',
+        fontSize: '16px',
+        color: '#00ff00',
+        fontStyle: 'bold'
+      }).setDepth(100)
+
+      this.tweens.add({
+        targets: text,
+        y: 40,
+        alpha: { from: 1, to: 0 },
+        duration: 1500,
+        onComplete: () => text.destroy()
+      })
+    }
+  }
+
+  private handleAllyEnemyProjectileHit(allyObj: Phaser.GameObjects.GameObject, projObj: Phaser.GameObjects.GameObject) {
+    const ally = allyObj as any
+    const projectile = projObj as any
+
+    if (projectile.active && ally.active) {
+      // Ally takes damage
+      const damage = projectile.getDamage ? projectile.getDamage() : 10
+      ally.takeDamage(damage)
+
+      // Deactivate projectile
+      projectile.setActive(false)
+      projectile.setVisible(false)
+    }
+  }
+
+  private handleAllyEnemyCollision(allyObj: Phaser.GameObjects.GameObject, enemObj: Phaser.GameObjects.GameObject) {
+    const ally = allyObj as any
+    const enemy = enemObj as any
+
+    // Wall ally dies on contact with enemy, triggering explosion
+    if (ally.active && enemy.active && ally.getType && ally.getType() === AllyType.WALL) {
+      // Kill the ally (which triggers explosion)
+      ally.takeDamage(999)
+
+      // Also damage the enemy
+      enemy.takeDamage(50)
+    }
+  }
+
+  private handleAllyDied(data: { x: number; y: number; type: AllyType }) {
+    // Only respawn Gun Buddy and Wingman allies, not building upgrade allies
+    const shouldRespawn = data.type === AllyType.WINGMAN
+
+    if (shouldRespawn) {
+      // Generate a unique key for this ally type
+      const allyKey = `${data.type}_respawn`
+
+      // Set respawn timer (5 seconds from now)
+      this.allyRespawnTimers.set(allyKey, this.time.now + this.allyRespawnDelay)
+
+      // Show respawn notification
+      const text = this.add.text(data.x, data.y, 'Ally Down!\nRespawning...', {
+        fontFamily: 'Courier New',
+        fontSize: '14px',
+        color: '#ffaa00',
+        align: 'center',
+        stroke: '#000000',
+        strokeThickness: 2
+      }).setOrigin(0.5).setDepth(100)
+
+      this.tweens.add({
+        targets: text,
+        y: data.y - 50,
+        alpha: { from: 1, to: 0 },
+        duration: 2000,
+        onComplete: () => text.destroy()
+      })
+    }
+  }
+
+  private respawnAutoRespawnAllies() {
+    // Only respawn Gun Buddy and Wingman allies (not building allies)
+    // This method is called when allies auto-respawn after death
+
+    // Get current ally counts
+    const gunBuddyWeapon = this.weapons.find(w => w.getConfig().type === WeaponType.GUN_BUDDY)
+    const gunBuddyCount = gunBuddyWeapon ? gunBuddyWeapon.getLevel() : 0
+
+    const wingmanPassive = this.passives.find(p => p.getConfig().type === PassiveType.WINGMAN_PROTOCOL)
+    const wingmanCount = wingmanPassive ? wingmanPassive.getLevel() * 2 : 0
+
+    const totalRespawnAllies = gunBuddyCount + wingmanCount
+
+    // Get existing non-respawning allies (building allies)
+    const existingAllies = this.allies.getChildren().filter((a: any) => {
+      return a.active && (a.getType() === AllyType.RANGED || a.getType() === AllyType.WALL || a.getType() === AllyType.REROLL)
+    })
+
+    // Clear only the wingman type allies (Gun Buddy and Wingman Protocol)
+    this.allies.getChildren().forEach((a: any) => {
+      if (a.active && a.getType() === AllyType.WINGMAN) {
+        a.setActive(false)
+        a.setVisible(false)
+        if (a.body) {
+          a.body.enable = false
+        }
+      }
+    })
+
+    // Get bonuses
+    const bonuses = this.gameState.getTotalBonuses()
+    const allyDamageMultiplier = 1 + (bonuses.allyDamage || 0)
+    const allyFireRateMultiplier = 1 + (bonuses.allyRangedRate || 0)
+
+    let totalAlliesSpawned = existingAllies.length
+    const totalAllies = totalRespawnAllies + existingAllies.length
+
+    // Spawn Gun Buddy allies
+    for (let i = 0; i < gunBuddyCount; i++) {
+      const formation = this.calculateAllyFormation(totalAlliesSpawned, totalAllies)
+      const ally = this.allies.spawnAlly(
+        this.player.x + formation.x,
+        this.player.y + formation.y,
+        AllyType.WINGMAN,
+        allyDamageMultiplier,
+        allyFireRateMultiplier * 1.5
+      )
+
+      if (ally) {
+        ally.setFormationOffset(formation.x, formation.y)
+      }
+      totalAlliesSpawned++
+    }
+
+    // Spawn Wingman Protocol allies
+    for (let i = 0; i < wingmanCount; i++) {
+      const formation = this.calculateAllyFormation(totalAlliesSpawned, totalAllies)
+      const ally = this.allies.spawnAlly(
+        this.player.x + formation.x,
+        this.player.y + formation.y,
+        AllyType.WINGMAN,
+        allyDamageMultiplier,
+        allyFireRateMultiplier
+      )
+
+      if (ally) {
+        ally.setFormationOffset(formation.x, formation.y)
+      }
+      totalAlliesSpawned++
+    }
+  }
+
+  updateAllies() {
+    // First clear all existing allies
+    this.allies.clearAll()
+
+    // Get building bonuses for ally stats and counts
+    const bonuses = this.gameState.getTotalBonuses()
+    const allyDamageMultiplier = 1 + (bonuses.allyDamage || 0)
+    const allyFireRateMultiplier = 1 + (bonuses.allyRangedRate || 0)
+    const allyWallDamageMultiplier = 1 + (bonuses.allyWallDamage || 0)
+    const rerollAllyRateMultiplier = 1 + (bonuses.rerollAllyRate || 0)
+
+    let totalAlliesSpawned = 0
+
+    // Count wingman allies from WINGMAN_PROTOCOL passive
+    const wingmanPassive = this.passives.find(p => p.getConfig().type === PassiveType.WINGMAN_PROTOCOL)
+    const wingmanCount = wingmanPassive ? wingmanPassive.getLevel() * 2 : 0  // 2 wingmen per level
+
+    // Count Gun Buddy allies (visual allies from Gun Buddy weapon)
+    const gunBuddyWeapon = this.weapons.find(w => w.getConfig().type === WeaponType.GUN_BUDDY)
+    const gunBuddyCount = gunBuddyWeapon ? gunBuddyWeapon.getLevel() : 0  // 1 per level
+
+    // Count ranged allies from building upgrades
+    const rangedAllyUnlocked = (bonuses.allyRangedUnlocked || 0) > 0
+    // ALLY_RANGED_UNLOCK grants 1 base ally, ALLY_RANGED_COUNT adds additional allies
+    const rangedAllyCount = rangedAllyUnlocked ? (1 + (bonuses.allyRangedCount || 0)) : 0
+
+    // Count wall allies from building upgrades
+    const wallAllyCount = bonuses.allyWallCount || 0
+
+    // Count reroll allies from building upgrades
+    const rerollAllyUnlocked = (bonuses.rerollAllyUnlocked || 0) > 0
+    const rerollAllyCount = rerollAllyUnlocked ? 1 : 0  // Only 1 reroll ally max
+
+
+    // Total allies to spawn
+    const totalAllies = wingmanCount + gunBuddyCount + rangedAllyCount + wallAllyCount + rerollAllyCount
+
+    // Spawn wingman allies
+    for (let i = 0; i < wingmanCount; i++) {
+      const formation = this.calculateAllyFormation(totalAlliesSpawned, totalAllies)
+      const ally = this.allies.spawnAlly(
+        this.player.x + formation.x,
+        this.player.y + formation.y,
+        AllyType.WINGMAN,
+        allyDamageMultiplier,
+        allyFireRateMultiplier
+      )
+
+      if (ally) {
+        ally.setFormationOffset(formation.x, formation.y)
+      }
+      totalAlliesSpawned++
+    }
+
+    // Spawn Gun Buddy allies (visual allies from Gun Buddy weapon)
+    for (let i = 0; i < gunBuddyCount; i++) {
+      const formation = this.calculateAllyFormation(totalAlliesSpawned, totalAllies)
+      const ally = this.allies.spawnAlly(
+        this.player.x + formation.x,
+        this.player.y + formation.y,
+        AllyType.WINGMAN,  // Use wingman type for gun buddies
+        allyDamageMultiplier,
+        allyFireRateMultiplier * 1.5  // Gun buddies shoot faster
+      )
+
+      if (ally) {
+        ally.setFormationOffset(formation.x, formation.y)
+      }
+      totalAlliesSpawned++
+    }
+
+    // Spawn ranged allies
+    for (let i = 0; i < rangedAllyCount; i++) {
+      const formation = this.calculateAllyFormation(totalAlliesSpawned, totalAllies)
+      const ally = this.allies.spawnAlly(
+        this.player.x + formation.x,
+        this.player.y + formation.y,
+        AllyType.RANGED,
+        allyDamageMultiplier,
+        allyFireRateMultiplier
+      )
+
+      if (ally) {
+        ally.setFormationOffset(formation.x, formation.y)
+      }
+      totalAlliesSpawned++
+    }
+
+    // Spawn wall allies
+    for (let i = 0; i < wallAllyCount; i++) {
+      const formation = this.calculateAllyFormation(totalAlliesSpawned, totalAllies)
+      const ally = this.allies.spawnAlly(
+        this.player.x + formation.x,
+        this.player.y + formation.y,
+        AllyType.WALL,
+        allyWallDamageMultiplier,
+        1.0  // Wall allies don't shoot
+      )
+
+      if (ally) {
+        ally.setFormationOffset(formation.x, formation.y)
+      }
+      totalAlliesSpawned++
+    }
+
+    // Spawn reroll ally
+    for (let i = 0; i < rerollAllyCount; i++) {
+      const formation = this.calculateAllyFormation(totalAlliesSpawned, totalAllies)
+      const ally = this.allies.spawnAlly(
+        this.player.x + formation.x,
+        this.player.y + formation.y,
+        AllyType.REROLL,
+        1.0,  // Reroll allies don't deal damage
+        rerollAllyRateMultiplier
+      )
+
+      if (ally) {
+        ally.setFormationOffset(formation.x, formation.y)
+      }
+      totalAlliesSpawned++
+    }
+  }
+
+  private calculateAllyFormation(index: number, totalCount: number): { x: number, y: number } {
+    // Position allies in a wing formation to the left and right of the player
+    const spacing = 60
+    const verticalOffset = -20  // Slightly behind player
+
+    if (totalCount === 1) {
+      // Single ally - position to the left
+      return { x: -spacing, y: verticalOffset }
+    } else if (totalCount === 2) {
+      // Two allies - one on each side
+      return index === 0
+        ? { x: -spacing, y: verticalOffset }
+        : { x: spacing, y: verticalOffset }
+    } else {
+      // Multiple allies - alternate left and right
+      const side = index % 2 === 0 ? -1 : 1
+      const row = Math.floor(index / 2)
+      return {
+        x: side * (spacing + row * 20),
+        y: verticalOffset - row * 30
+      }
+    }
+  }
+
+  private getTrackName(trackNumber: number): string {
+    const trackNames = [
+      'Whispers from a Forgotten Console',
+      'Beyond the Pixelated Horizon',
+      'The Gentle Descent into the Cosmic Ruin',
+      'A Lullaby for the Digital Sun',
+      'Searching for a Signal in the Void',
+      'The Solitary Synth\'s Cosmic Hymn',
+      'The Surveyor\'s Quiet, Amiga Reverie',
+      'The Echo of a Lost Binary Heart',
+      'Reaching for the Starlight Echo',
+      'Through the Whispering Data Streams',
+      'The Ambient Glitch of a Fading Past',
+      'A Soft, Slow Journey through the Nebula',
+      'The Coded Serenity of the Ancient Star',
+      'Finding the Heart of the Digital Ruins',
+      'The Ethereal Rhythm of the Cosmic Dust',
+      'A Quiet Contemplation on a Ghostly Starfield',
+      'The Architect\'s Final Mod Symphony',
+      'Uncovering the Sunken Astro-Beacon',
+      'The Gentle Drift to the Crystal Maze',
+      'A Circuitry Dream on a Distant Shore'
+    ]
+    return trackNames[trackNumber - 1]
+  }
+
+  private loadAndPlayMusic(trackNumber: number) {
+    const trackNumberStr = trackNumber.toString().padStart(3, '0')
+    const trackName = this.getTrackName(trackNumber)
+    const trackKey = `bgm-${trackNumber}`
+
+    // Check if track is already loaded
+    if (this.cache.audio.exists(trackKey)) {
+      // Already loaded, play immediately
+      this.bgMusic = this.sound.add(trackKey, {
+        loop: true,
+        volume: soundManager.getMusicVolume() * soundManager.getMasterVolume()
+      })
+      if (!soundManager.isMuted()) {
+        this.bgMusic.play()
+      }
+
+      // Start lazy loading other tracks in background
+      this.lazyLoadRemainingTracks(trackNumber)
+    } else {
+      // Need to load this track first
+      console.log(`[Music] Loading track ${trackNumber}: ${trackName}`)
+
+      this.load.audio(trackKey, `assets/audio/8 Bit atmosphere/8 Bit atmosphere - ${trackNumberStr} - ${trackName}.mp3`)
+
+      this.load.once('complete', () => {
+        console.log(`[Music] Track ${trackNumber} loaded, playing now`)
+        this.bgMusic = this.sound.add(trackKey, {
+          loop: true,
+          volume: soundManager.getMusicVolume() * soundManager.getMasterVolume()
+        })
+        if (!soundManager.isMuted()) {
+          this.bgMusic.play()
+        }
+
+        // Start lazy loading other tracks in background
+        this.lazyLoadRemainingTracks(trackNumber)
+      })
+
+      this.load.once('loaderror', (file: any) => {
+        console.error(`[Music] Failed to load track ${trackNumber}:`, file)
+        // Game continues without music
+      })
+
+      this.load.start()
+    }
+  }
+
+  private lazyLoadRemainingTracks(excludeTrack: number) {
+    // Lazy load the remaining 19 tracks in the background
+    // This allows the game to start immediately while music loads progressively
+    console.log('[Music] Starting background lazy load of remaining tracks')
+
+    let tracksToLoad: number[] = []
+    for (let i = 1; i <= 20; i++) {
+      if (i !== excludeTrack && !this.cache.audio.exists(`bgm-${i}`)) {
+        tracksToLoad.push(i)
+      }
+    }
+
+    // Load tracks one at a time to avoid overwhelming the network
+    const loadNextTrack = () => {
+      if (tracksToLoad.length === 0) {
+        console.log('[Music] All tracks loaded')
+        return
+      }
+
+      const trackNumber = tracksToLoad.shift()!
+      const trackNumberStr = trackNumber.toString().padStart(3, '0')
+      const trackName = this.getTrackName(trackNumber)
+      const trackKey = `bgm-${trackNumber}`
+
+      this.load.audio(trackKey, `assets/audio/8 Bit atmosphere/8 Bit atmosphere - ${trackNumberStr} - ${trackName}.mp3`)
+
+      this.load.once('filecomplete', () => {
+        console.log(`[Music] Background loaded: track ${trackNumber}`)
+        // Load next track after a short delay to avoid blocking
+        this.time.delayedCall(500, loadNextTrack)
+      })
+
+      this.load.once('loaderror', () => {
+        console.warn(`[Music] Failed to load track ${trackNumber}, skipping`)
+        // Continue with next track
+        this.time.delayedCall(500, loadNextTrack)
+      })
+
+      this.load.start()
+    }
+
+    // Start loading after a 2 second delay to let the game settle
+    this.time.delayedCall(2000, loadNextTrack)
+  }
+
   shutdown() {
     // Clean up event listeners
     this.events.off('enemyDied', this.handleEnemyDied, this)
@@ -5533,6 +6463,15 @@ export default class GameScene extends Phaser.Scene {
     this.events.off('enemyExplosion', this.handleEnemyExplosion, this)
     this.events.off('enemySplit', this.handleEnemySplit, this)
     this.events.off('healNearbyEnemies', this.handleHealNearby, this)
+    this.events.off('allyExplosion', this.handleAllyExplosion, this)
+    this.events.off('allyRerollGenerated', this.handleAllyRerollGenerated, this)
+    this.events.off('allyDied', this.handleAllyDied, this)
+
+    // Clear ally respawn timers
+    this.allyRespawnTimers.clear()
+
+    // Remove all pending delayed calls to prevent callbacks after shutdown
+    this.time.removeAllEvents()
 
     // Stop all tweens
     this.starFieldTweens.forEach(tween => {
@@ -5552,6 +6491,9 @@ export default class GameScene extends Phaser.Scene {
     }
     if (this.enemies) {
       this.enemies.clear(true, true)
+    }
+    if (this.allies) {
+      this.allies.clear(true, true)
     }
     if (this.enemyProjectiles) {
       this.enemyProjectiles.clear(true, true)
