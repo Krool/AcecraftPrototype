@@ -183,6 +183,7 @@ export default class GameScene extends Phaser.Scene {
   private cachedActiveEnemyCount: number = 0
   private modifiersNeedRecalculation: boolean = true
   private lastPowerUpDisplayState: string = '' // Track power-up state to avoid unnecessary updates
+  private wasInvulnerable: boolean = false // Track if we need to restore color/scale
   private maxWeaponSlots: number = 4
   private maxPassiveSlots: number = 4
   private weaponModifiers: WeaponModifiers = { ...DEFAULT_MODIFIERS }
@@ -251,6 +252,8 @@ export default class GameScene extends Phaser.Scene {
     this.bossesKilled = 0
     this.runStartTime = 0
     this.pauseStartTime = 0
+    this.lastHitTime = 0
+    this.wasInvulnerable = false
     this.totalPausedTime = 0
     this.waveStartPausedTime = 0
     this.chestsSpawnedThisRun = 0
@@ -2386,27 +2389,38 @@ export default class GameScene extends Phaser.Scene {
     // Star power invulnerability visual effect
     if (!this.isPaused) {
       const timeSinceHit = time - this.lastHitTime
-      if (timeSinceHit < this.playerStats.invulnFrames) {
-        // Create rainbow flash effect like Mario star power
-        // Cycle through colors rapidly (every 50ms)
-        const colorIndex = Math.floor(time / 50) % 7
-        const rainbowColors = [
-          '#ff0000', // Red
-          '#ff7f00', // Orange
-          '#ffff00', // Yellow
-          '#00ff00', // Green
-          '#00ffff', // Cyan
-          '#0000ff', // Blue
-          '#ff00ff', // Magenta
-        ]
-        this.player.setColor(rainbowColors[colorIndex])
+      const isInvulnerable = timeSinceHit < this.playerStats.invulnFrames
 
-        // Add a subtle glow effect by pulsing scale
-        const glowPhase = Math.sin(time / 100) * 0.05 + 1
-        this.player.setScale(glowPhase)
-      } else {
-        // Not invulnerable, restore normal color and scale
-        this.player.setColor(this.characterColor)
+      if (isInvulnerable) {
+        // Currently invulnerable - show star effect (unless shield is active)
+        if (!this.hasShield) {
+          // Create rainbow flash effect like Mario star power
+          // Cycle through colors rapidly (every 50ms)
+          const colorIndex = Math.floor(time / 50) % 7
+          const rainbowColors = [
+            '#ff0000', // Red
+            '#ff7f00', // Orange
+            '#ffff00', // Yellow
+            '#00ff00', // Green
+            '#00ffff', // Cyan
+            '#0000ff', // Blue
+            '#ff00ff', // Magenta
+          ]
+          this.player.setColor(rainbowColors[colorIndex])
+
+          // Add a subtle glow effect by pulsing scale
+          const glowPhase = Math.sin(time / 100) * 0.05 + 1
+          this.player.setScale(glowPhase)
+        }
+        this.wasInvulnerable = true
+      } else if (this.wasInvulnerable) {
+        // Just finished being invulnerable - restore color/scale once
+        this.wasInvulnerable = false
+
+        // Only restore if no other effects are active
+        if (!this.hasShield) {
+          this.player.setColor(this.characterColor)
+        }
         this.player.setScale(1)
       }
     }
@@ -5794,13 +5808,23 @@ export default class GameScene extends Phaser.Scene {
       const chainCount = projectile.getChainCount()
       const chainRange = 150 * this.weaponModifiers.explosionRadiusMultiplier
 
-      // Find nearby enemies to chain to
+      // Find nearby enemies to chain to (filter for valid on-screen positions)
       const nearbyEnemies = this.enemies.getNearbyEnemies(enemy.x, enemy.y, chainRange)
-        .filter(e => e !== enemy && e.active) // Don't chain to same enemy
+        .filter(e => {
+          // Don't chain to same enemy, and ensure valid on-screen position
+          return e !== enemy && e.active &&
+                 e.y > 0 && e.y < this.cameras.main.height &&
+                 e.x >= 0 && e.x <= this.cameras.main.width
+        })
         .slice(0, chainCount)
 
       // Deal reduced damage to chained enemies
       nearbyEnemies.forEach(chainedEnemy => {
+        // Extra safety check: ensure both enemies have valid positions
+        if (!chainedEnemy.active || chainedEnemy.x < 0 || chainedEnemy.y <= 0) {
+          return
+        }
+
         const chainDamage = Math.floor(damage * 0.7)
         chainedEnemy.takeDamage(chainDamage)
         this.totalDamageDealt += chainDamage
@@ -6039,6 +6063,9 @@ export default class GameScene extends Phaser.Scene {
           this.shieldFlashTween.stop()
         }
 
+        // Reset scale (in case invulnerability glow was active)
+        this.player.setScale(1)
+
         // Reset to normal color first
         this.player.setColor(this.characterColor)
 
@@ -6148,12 +6175,18 @@ export default class GameScene extends Phaser.Scene {
     if (this.hasShield && currentTime >= this.shieldEndTime) {
       this.hasShield = false
 
-      // Stop the flashing tween and restore normal color
+      // Stop the flashing tween
       if (this.shieldFlashTween) {
         this.shieldFlashTween.stop()
         this.shieldFlashTween = undefined
       }
-      this.player.setColor(this.characterColor)
+
+      // Only restore color if not invulnerable (star effect takes priority)
+      const timeSinceHit = currentTime - this.lastHitTime
+      const isInvulnerable = timeSinceHit < this.playerStats.invulnFrames
+      if (!isInvulnerable) {
+        this.player.setColor(this.characterColor)
+      }
       updated = true
     }
 
