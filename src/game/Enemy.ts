@@ -992,11 +992,9 @@ export class Enemy extends Phaser.GameObjects.Text {
 
     // Don't take damage until visible on screen (prevent off-screen kills)
     if (this.y < 0) {
-      console.log(`[Enemy] Blocked damage while off-screen: type=${this.enemyType}, y=${this.y}, damage=${damage}`)
       return false
     }
 
-    console.log(`[Enemy] Taking damage: type=${this.enemyType}, health=${this.currentHealth}/${this.maxHealth}, damage=${damage}, y=${this.y}`)
     this.currentHealth -= damage
 
     // Visual feedback - flash white
