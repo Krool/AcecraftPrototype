@@ -49,9 +49,9 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '<o>',
     color: '#ff3333',
     fontSize: '36px',
-    health: 36, // Reduced by 40% from 60
+    health: 27, // Reduced by 25% from 36 (originally 60, reduced by 40%, then by 25%)
     speed: 84, // Reduced by 30% (was 120)
-    xpValue: 5,
+    xpValue: 2,
     scoreValue: 8,
     behavior: {
       shootsBack: false, // Fodder enemy - no shooting
@@ -64,7 +64,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '42px',
     health: 42, // Reduced by 30% from 60
     speed: 126, // Reduced by 30% (was 180)
-    xpValue: 12,
+    xpValue: 4,
     scoreValue: 15,
     behavior: {
       shootsBack: false,
@@ -77,7 +77,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '60px',
     health: 280, // Reduced by 30% from 400
     speed: 42, // Reduced by 30% (was 60)
-    xpValue: 40,
+    xpValue: 10,
     scoreValue: 50,
     behavior: {
       shootsBack: true,
@@ -92,7 +92,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '48px',
     health: 84, // Reduced by 30% from 120
     speed: 56, // Reduced by 30% (was 80)
-    xpValue: 25,
+    xpValue: 6,
     scoreValue: 30,
     behavior: {
       shootsBack: true,
@@ -107,7 +107,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '30px',
     health: 28, // Reduced by 30% from 40
     speed: 98, // Reduced by 30% (was 140)
-    xpValue: 6,
+    xpValue: 3,
     scoreValue: 8,
     behavior: {
       shootsBack: false,
@@ -121,7 +121,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '48px',
     health: 112, // Reduced by 30% from 160
     speed: 63, // Reduced by 30% (was 90)
-    xpValue: 35,
+    xpValue: 8,
     scoreValue: 40,
     behavior: {
       shootsBack: false,
@@ -135,7 +135,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '42px',
     health: 98, // Reduced by 30% from 140
     speed: 70, // Reduced by 30% (was 100)
-    xpValue: 20,
+    xpValue: 5,
     scoreValue: 25,
     behavior: {
       shootsBack: true,
@@ -149,7 +149,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '54px',
     health: 70, // Reduced by 30% from 100
     speed: 84, // Reduced by 30% (was 120)
-    xpValue: 30,
+    xpValue: 7,
     scoreValue: 35,
     behavior: {
       shootsBack: false,
@@ -163,7 +163,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '48px',
     health: 126, // Reduced by 30% from 180
     speed: 49, // Reduced by 30% (was 70)
-    xpValue: 28,
+    xpValue: 7,
     scoreValue: 32,
     behavior: {
       shootsBack: false,
@@ -177,7 +177,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '45px',
     health: 98, // Reduced by 30% from 140
     speed: 105, // Reduced by 30% (was 150)
-    xpValue: 22,
+    xpValue: 5,
     scoreValue: 28,
     behavior: {
       shootsBack: true,
@@ -191,7 +191,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '54px',
     health: 168, // Reduced by 30% from 240
     speed: 35, // Slow moving turret (slowest enemy)
-    xpValue: 18,
+    xpValue: 5,
     scoreValue: 22,
     behavior: {
       shootsBack: true,
@@ -205,7 +205,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '48px',
     health: 78, // Reduced by 30% from 112
     speed: 154, // Reduced by 30% (was 220)
-    xpValue: 18,
+    xpValue: 4,
     scoreValue: 20,
     behavior: {
       shootsBack: false,
@@ -218,7 +218,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '52px',
     health: 140, // Reduced by 30% from 200
     speed: 50,
-    xpValue: 32,
+    xpValue: 8,
     scoreValue: 40,
     behavior: {
       shootsBack: true,
@@ -233,7 +233,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '64px',
     health: 210, // Reduced by 30% from 300
     speed: 35,
-    xpValue: 50,
+    xpValue: 10,
     scoreValue: 60,
     behavior: {
       shootsBack: false,
@@ -247,7 +247,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '42px',
     health: 98, // Reduced by 30% from 140
     speed: 70,
-    xpValue: 20,
+    xpValue: 5,
     scoreValue: 25,
     behavior: {
       shootsBack: true,
@@ -261,7 +261,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '54px',
     health: 168, // Reduced by 30% from 240
     speed: 60,
-    xpValue: 38,
+    xpValue: 9,
     scoreValue: 45,
     behavior: {
       shootsBack: true,
@@ -276,7 +276,7 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     fontSize: '48px',
     health: 84, // Reduced by 30% from 120
     speed: 90,
-    xpValue: 28,
+    xpValue: 6,
     scoreValue: 35,
     behavior: {
       shootsBack: false,
@@ -288,9 +288,9 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '▓▓▓',
     color: '#ff0000',
     fontSize: '64px',
-    health: 1400, // Reduced by 30% from 2000
+    health: 2800, // Reduced by 50% from 5600
     speed: 40,
-    xpValue: 150,
+    xpValue: 30,
     scoreValue: 200,
     behavior: {
       shootsBack: true,
@@ -303,9 +303,9 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '█████',
     color: '#ff00ff',
     fontSize: '96px',
-    health: 3500, // Reduced by 30% from 5000
+    health: 7000, // Reduced by 50% from 14000
     speed: 30,
-    xpValue: 500,
+    xpValue: 80,
     scoreValue: 1000,
     name: 'ANNIHILATOR',
     behavior: {
@@ -342,6 +342,7 @@ export class Enemy extends Phaser.GameObjects.Text {
   private patrolRange: number = 150
   public shield: Phaser.GameObjects.Arc | null = null
   private config: EnemyTypeConfig
+  private colorResetTimer: Phaser.Time.TimerEvent | null = null
   declare body: Phaser.Physics.Arcade.Body
 
   constructor(
@@ -386,7 +387,15 @@ export class Enemy extends Phaser.GameObjects.Text {
     this.enemyProjectiles = projectiles
   }
 
-  spawn(x: number, y: number, type?: EnemyType) {
+  spawn(x: number, y: number, type?: EnemyType, wave: number = 1) {
+    // Safety check: ensure scene exists
+    if (!this.scene) {
+      console.error('[Enemy] Cannot spawn - scene is undefined')
+      this.setActive(false)
+      this.setVisible(false)
+      return
+    }
+
     if (type && this.enemyType !== type) {
       // Only update if changing type
       this.enemyType = type
@@ -422,7 +431,9 @@ export class Enemy extends Phaser.GameObjects.Text {
       }
 
       this.originalColor = config.color
-      this.maxHealth = config.health
+      // Apply wave-based health scaling: 13% compound per wave (exponential)
+      const healthMultiplier = Math.pow(1.13, wave - 1)
+      this.maxHealth = Math.floor(config.health * healthMultiplier)
       this.speed = config.speed
       this.xpValue = config.xpValue
       this.scoreValue = config.scoreValue
@@ -430,23 +441,34 @@ export class Enemy extends Phaser.GameObjects.Text {
     } else if (type) {
       // Same type, just use existing config
       const config = ENEMY_CONFIGS[type]
-      this.maxHealth = config.health
+      // Apply wave-based health scaling: 13% compound per wave (exponential)
+      const healthMultiplier = Math.pow(1.13, wave - 1)
+      this.maxHealth = Math.floor(config.health * healthMultiplier)
       this.xpValue = config.xpValue
       this.scoreValue = config.scoreValue
       this.behavior = config.behavior
     }
 
     this.currentHealth = this.maxHealth
-    this.spawnTime = Date.now()
+    this.spawnTime = this.scene.time.now
     this.zigzagTime = 0
     this.circleAngle = 0
     this.isCharging = false
-    this.lastShotTime = Date.now()
-    this.healPulseTime = Date.now()
+    this.lastShotTime = this.scene.time.now
+    this.healPulseTime = this.scene.time.now
     this.spiralAngle = 0
-    this.lastSpawnTime = Date.now()
+    this.lastSpawnTime = this.scene.time.now
     this.patrolStartX = x
     this.patrolDirection = 1
+
+    // Cancel any pending color reset timers from previous life
+    if (this.colorResetTimer) {
+      this.colorResetTimer.remove()
+      this.colorResetTimer = null
+    }
+
+    // Always reset color to original (fixes white enemies persisting after respawn)
+    this.setColor(this.originalColor)
 
     // Create shield for shielded enemies
     if (this.behavior.specialAbility === 'shield') {
@@ -542,11 +564,17 @@ export class Enemy extends Phaser.GameObjects.Text {
     this.currentHealth -= damage
 
     // Visual feedback - flash white
+    // Cancel any pending color reset to prevent conflicts
+    if (this.colorResetTimer) {
+      this.colorResetTimer.remove()
+    }
+
     this.setColor('#ffffff')
-    this.scene.time.delayedCall(50, () => {
+    this.colorResetTimer = this.scene.time.delayedCall(50, () => {
       if (this.active) {
         this.setColor(this.originalColor)
       }
+      this.colorResetTimer = null
     })
 
     if (this.currentHealth <= 0) {
@@ -581,6 +609,12 @@ export class Enemy extends Phaser.GameObjects.Text {
     if (this.shield) {
       this.shield.destroy()
       this.shield = null
+    }
+
+    // Cancel any pending color reset timers
+    if (this.colorResetTimer) {
+      this.colorResetTimer.remove()
+      this.colorResetTimer = null
     }
 
     // Stop undulation animation
@@ -853,10 +887,14 @@ export class Enemy extends Phaser.GameObjects.Text {
   update(time: number, delta: number) {
     if (!this.active) return
 
+    // Cap delta to prevent physics explosions after long pauses (e.g., window loses focus)
+    // Max 100ms per frame = 10 FPS minimum
+    const cappedDelta = Math.min(delta, 100)
+
     // Update movement patterns
     switch (this.behavior.movementPattern) {
       case 'zigzag':
-        this.zigzagTime += delta
+        this.zigzagTime += cappedDelta
         const zigzagFrequency = 500
         const zigzagAmplitude = 100
         const xOffset = Math.sin((this.zigzagTime / zigzagFrequency) * Math.PI * 2) * zigzagAmplitude
@@ -865,7 +903,7 @@ export class Enemy extends Phaser.GameObjects.Text {
         break
 
       case 'sinwave':
-        this.zigzagTime += delta
+        this.zigzagTime += cappedDelta
         const sinFrequency = 800
         const sinAmplitude = 60
         const sinOffset = Math.sin((this.zigzagTime / sinFrequency) * Math.PI * 2) * sinAmplitude
@@ -887,7 +925,7 @@ export class Enemy extends Phaser.GameObjects.Text {
 
       case 'circle':
         if (this.playerRef) {
-          this.circleAngle += delta * 0.002
+          this.circleAngle += cappedDelta * 0.002
           const player = this.playerRef as Phaser.GameObjects.Text
           const radius = 150
           const targetX = player.x + Math.cos(this.circleAngle) * radius
@@ -929,7 +967,7 @@ export class Enemy extends Phaser.GameObjects.Text {
 
     // Handle spawning minions (Spawner)
     if (this.behavior.specialAbility === 'spawn_minions') {
-      const now = Date.now()
+      const now = this.scene.time.now
       if (now - this.lastSpawnTime > 3000) { // Spawn every 3 seconds
         this.scene.events.emit('spawnMinion', {
           x: this.x,
@@ -951,7 +989,7 @@ export class Enemy extends Phaser.GameObjects.Text {
 
     // Handle shooting
     if (this.behavior.shootsBack && this.behavior.shootInterval) {
-      const now = Date.now()
+      const now = this.scene.time.now
       if (now - this.lastShotTime > this.behavior.shootInterval && this.enemyProjectiles && this.playerRef) {
         this.shoot()
         this.lastShotTime = now
@@ -960,7 +998,7 @@ export class Enemy extends Phaser.GameObjects.Text {
 
     // Handle healing
     if (this.behavior.specialAbility === 'heal_nearby') {
-      const now = Date.now()
+      const now = this.scene.time.now
       if (now - this.healPulseTime > 2000) {
         this.scene.events.emit('healNearbyEnemies', {
           x: this.x,
@@ -1045,18 +1083,24 @@ export class Enemy extends Phaser.GameObjects.Text {
       }
     } else if (this.behavior.specialAbility === 'charged_shot') {
       // Sniper charges up (flash effect)
+      // Cancel any pending color reset to prevent conflicts
+      if (this.colorResetTimer) {
+        this.colorResetTimer.remove()
+      }
+
       this.setColor('#ffffff')
-      this.scene.time.delayedCall(500, () => {
+      this.colorResetTimer = this.scene.time.delayedCall(500, () => {
         if (this.active && this.playerRef) {
           const player = this.playerRef as Phaser.GameObjects.Text
           this.enemyProjectiles?.fireAtTarget(this.x, this.y + 20, player.x, player.y, 300, 20)
           this.setColor(this.originalColor)
         }
+        this.colorResetTimer = null
       })
     } else if (this.behavior.specialAbility === 'multi_pattern') {
       // Mini-boss (DEVASTATOR) shoots in varied patterns based on health phase
       const healthPercent = this.currentHealth / this.maxHealth
-      const shotCount = (Date.now() - this.spawnTime) / this.behavior.shootInterval!
+      const shotCount = (this.scene.time.now - this.spawnTime) / this.behavior.shootInterval!
       const pattern = Math.floor(shotCount) % 3 // Cycle through 3 patterns
 
       if (healthPercent > 0.66) {
@@ -1115,7 +1159,7 @@ export class Enemy extends Phaser.GameObjects.Text {
     } else if (this.behavior.specialAbility === 'boss_barrage') {
       // Final Boss (ANNIHILATOR) - extremely aggressive patterns
       const healthPercent = this.currentHealth / this.maxHealth
-      const shotCount = (Date.now() - this.spawnTime) / this.behavior.shootInterval!
+      const shotCount = (this.scene.time.now - this.spawnTime) / this.behavior.shootInterval!
       const pattern = Math.floor(shotCount) % 4 // Cycle through 4 patterns
 
       if (healthPercent > 0.75) {
@@ -1268,7 +1312,7 @@ export class EnemyGroup extends Phaser.Physics.Arcade.Group {
     this.pool.forEach(enemy => enemy.setProjectileGroup(projectiles))
   }
 
-  spawnEnemy(x: number, y: number, type: EnemyType = EnemyType.DRONE) {
+  spawnEnemy(x: number, y: number, type: EnemyType = EnemyType.DRONE, wave: number = 1) {
     const activeCount = this.pool.filter(e => e.active).length
     if (activeCount >= this.maxEnemies) {
       console.warn(`[EnemyGroup] Cannot spawn - pool at max capacity: ${activeCount}/${this.maxEnemies}`)
@@ -1278,7 +1322,13 @@ export class EnemyGroup extends Phaser.Physics.Arcade.Group {
     const enemy = this.pool.find(e => !e.active)
 
     if (enemy) {
-      enemy.spawn(x, y, type)
+      // Verify enemy has valid scene reference before spawning
+      if (!enemy.scene) {
+        console.error(`[EnemyGroup] Found enemy without scene - pool may be corrupted`)
+        return null
+      }
+
+      enemy.spawn(x, y, type, wave)
       // Check if enemy is actually active after spawn (spawn might fail silently)
       if (!enemy.active) {
         console.error(`[EnemyGroup] Enemy spawn failed - enemy not active after spawn() call`)
