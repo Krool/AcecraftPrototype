@@ -64,10 +64,10 @@ export default class GameScene extends Phaser.Scene {
   private damageZones: DamageZone[] = []
   private campaignManager!: CampaignManager
   private campaignLevelText!: Phaser.GameObjects.Text
-  private enemySpawnRate: number = 1500 // Time between enemy spawns in milliseconds
+  private enemySpawnRate: number = WAVE_SPAWNING.BASE_SPAWN_RATE // Time between enemy spawns in milliseconds
   private nextEnemySpawnTime: number = 0
-  private baseEnemySpawnRate: number = 1500
-  private minEnemySpawnRate: number = 400 // Minimum spawn rate (maximum difficulty)
+  private baseEnemySpawnRate: number = WAVE_SPAWNING.BASE_SPAWN_RATE
+  private minEnemySpawnRate: number = WAVE_SPAWNING.MIN_SPAWN_RATE // Minimum spawn rate (maximum difficulty)
   private allyRespawnTimers: Map<string, number> = new Map() // Track respawn timers for allies
   private allyRespawnDelay: number = ALLIES.RESPAWN_DELAY
   private totalXP: number = 0
@@ -231,9 +231,9 @@ export default class GameScene extends Phaser.Scene {
     this.maxHealth = PLAYER.DEFAULT_HEALTH
     this.isPaused = false
     this.playerSpeed = PLAYER.DEFAULT_MOVE_SPEED
-    this.enemySpawnRate = 1500
-    this.baseEnemySpawnRate = 1500
-    this.minEnemySpawnRate = 400
+    this.enemySpawnRate = WAVE_SPAWNING.BASE_SPAWN_RATE
+    this.baseEnemySpawnRate = WAVE_SPAWNING.BASE_SPAWN_RATE
+    this.minEnemySpawnRate = WAVE_SPAWNING.MIN_SPAWN_RATE
     this.nextEnemySpawnTime = 0
     this.comboCount = 0
     this.comboTimer = 0
