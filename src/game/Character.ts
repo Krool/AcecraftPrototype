@@ -3,6 +3,11 @@ import { WeaponType } from './Weapon'
 import { WeaponModifiers } from './Weapon'
 import { PlayerStats } from './Passive'
 import { DamageType } from './Weapon'
+import {
+  VULCAN, SCATTERSHOT, TEMPEST, GLACIER, INFERNO, TSUNAMI,
+  BASTION, ECLIPSE, PHOTON, REFLEX, ARSENAL, CORONA,
+  REAPER, SUPERNOVA, CYCLONE, ZENITH, HAVOC, WARDEN, PHANTOM
+} from '../constants'
 
 export enum CharacterType {
   VULCAN = 'VULCAN',
@@ -50,10 +55,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     name: 'Vulcan',
     type: CharacterType.VULCAN,
     startingWeapon: WeaponType.CANNON,
-    innateAbility: '+10% pickup radius per level cleared',
+    innateAbility: '+10% pickup radius per 2 waves, +5% XP gain',
     description: 'Heavy Artillery Cruiser with growing collection power',
     symbol: '/█\\',
-    color: '#ffffff',
+    color: '#ffff00', // Yellow for Physical damage
     baseHealth: 100,
     baseMoveSpeed: 200,
     weaponSlots: 4,
@@ -70,7 +75,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     innateAbility: '-15% incoming damage',
     description: 'Close-Range Brawler with damage mitigation',
     symbol: '‹››',
-    color: '#ff8800',
+    color: '#ffff00', // Yellow for Physical damage
     baseHealth: 125,
     baseMoveSpeed: 175,
     weaponSlots: 4,
@@ -87,7 +92,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     innateAbility: '+1 passive slot, -1 weapon slot',
     description: 'Drone Carrier focused on passive synergies',
     symbol: '<◉>',
-    color: '#88ff00',
+    color: '#ffff00', // Yellow for Physical damage
     baseHealth: 100,
     baseMoveSpeed: 195,
     weaponSlots: 3,
@@ -103,8 +108,8 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     startingWeapon: WeaponType.LIGHTNING,
     innateAbility: '+20% crit chance on Nature damage',
     description: 'Storm Interceptor with critical power',
-    symbol: '{⚡}',
-    color: '#00ffff',
+    symbol: '{‡}',
+    color: '#00ff00', // Green for Nature damage
     baseHealth: 90,
     baseMoveSpeed: 215,
     weaponSlots: 4,
@@ -118,10 +123,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     name: 'Glacier',
     type: CharacterType.GLACIER,
     startingWeapon: WeaponType.ICE,
-    innateAbility: '+25% attack speed for Cold weapons',
+    innateAbility: '+20% attack speed for Cold weapons',
     description: 'Cryo Suppressor with rapid cold damage',
     symbol: '‹❄›',
-    color: '#aaffff',
+    color: '#00aaff', // Blue for Cold damage
     baseHealth: 90,
     baseMoveSpeed: 210,
     weaponSlots: 4,
@@ -138,7 +143,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     innateAbility: 'All projectiles bounce once',
     description: 'Pyro Bomber with explosive power',
     symbol: '/※\\',
-    color: '#ff4400',
+    color: '#ff8800', // Orange for Fire damage
     baseHealth: 110,
     baseMoveSpeed: 190,
     weaponSlots: 4,
@@ -152,7 +157,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     name: 'Tsunami',
     type: CharacterType.TSUNAMI,
     startingWeapon: WeaponType.WATER,
-    innateAbility: 'Weapons fire twice but deal 50% less damage',
+    innateAbility: 'Weapons fire twice but deal 65% damage',
     description: 'Hydro Destroyer with high volume attacks',
     symbol: '{≈}',
     color: '#00aaff',
@@ -169,10 +174,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     name: 'Bastion',
     type: CharacterType.BASTION,
     startingWeapon: WeaponType.EARTH,
-    innateAbility: 'Generates small shield every 10s if stationary',
-    description: 'Fortress Defender with positional gameplay',
+    innateAbility: 'Cannot move while firing, +75% damage, +50% fire rate',
+    description: 'Fortress Turret that roots to unleash devastation',
     symbol: '[▓]',
-    color: '#884400',
+    color: '#00ff00', // Green for Nature damage
     baseHealth: 130,
     baseMoveSpeed: 170,
     weaponSlots: 4,
@@ -186,10 +191,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     name: 'Eclipse',
     type: CharacterType.ECLIPSE,
     startingWeapon: WeaponType.DARK,
-    innateAbility: '10% chance enemies revive as allies',
-    description: 'Void Striker that converts foes',
+    innateAbility: 'Unlimited rerolls, -15% damage',
+    description: 'Void Manipulator that bends probability',
     symbol: '(●)',
-    color: '#8800ff',
+    color: '#00aaff', // Blue for Cold damage
     baseHealth: 120,
     baseMoveSpeed: 180,
     weaponSlots: 4,
@@ -206,7 +211,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     innateAbility: '+15% damage at max heat, slower overheat',
     description: 'Beam Frigate with heat management',
     symbol: '=━=',
-    color: '#ff0000',
+    color: '#ff8800', // Orange for Fire damage
     baseHealth: 85,
     baseMoveSpeed: 200,
     weaponSlots: 4,
@@ -223,7 +228,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     innateAbility: '+1 ricochet bounce, +10% projectile speed',
     description: 'Deflector Scout with bouncing projectiles',
     symbol: '<◇>',
-    color: '#ffaa00',
+    color: '#ffff00', // Yellow for Physical damage
     baseHealth: 95,
     baseMoveSpeed: 205,
     weaponSlots: 4,
@@ -240,7 +245,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     innateAbility: '+1 missile per salvo, +10% explosion radius',
     description: 'Missile Cruiser with area denial',
     symbol: '▲▲▲',
-    color: '#ff6600',
+    color: '#ffff00', // Yellow for Physical damage
     baseHealth: 140,
     baseMoveSpeed: 160,
     weaponSlots: 4,
@@ -254,10 +259,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     name: 'Corona',
     type: CharacterType.CORONA,
     startingWeapon: WeaponType.FIREBALL_RING,
-    innateAbility: 'Start with +2 Fire projectiles, +30% burn duration',
+    innateAbility: 'Start with +1 Fire projectile, +30% burn duration',
     description: 'Stellar Annihilator wreathed in flames',
     symbol: '(✹)',
-    color: '#ff6600',
+    color: '#ff8800', // Orange for Fire damage
     baseHealth: 105,
     baseMoveSpeed: 195,
     weaponSlots: 4,
@@ -274,7 +279,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     innateAbility: 'Kill enemies under 15% HP instantly, +20% bleed damage',
     description: 'Death Incarnate that executes the weak',
     symbol: '✠✠✠',
-    color: '#cc0000',
+    color: '#00ff00', // Green for Nature damage
     baseHealth: 95,
     baseMoveSpeed: 220,
     weaponSlots: 4,
@@ -288,10 +293,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     name: 'Supernova',
     type: CharacterType.SUPERNOVA,
     startingWeapon: WeaponType.PLASMA_AURA,
-    innateAbility: 'Aura heals 1HP per enemy hit, aura radius +40%',
-    description: 'Living Star with regenerating energy field',
+    innateAbility: 'Auto-selects upgrades, +30% XP gain',
+    description: 'Living Star on autopilot, always growing',
     symbol: '◉⊛◉',
-    color: '#ff00ff',
+    color: '#ff8800', // Orange for Fire damage
     baseHealth: 80,
     baseMoveSpeed: 185,
     weaponSlots: 5,
@@ -305,10 +310,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     name: 'Cyclone',
     type: CharacterType.CYCLONE,
     startingWeapon: WeaponType.VORTEX_BLADE,
-    innateAbility: 'Vortex pulls enemies inward, +25% spiral speed',
-    description: 'Storm Engine that devours all',
+    innateAbility: '-1 projectile, +100% damage',
+    description: 'Focused Vortex of concentrated destruction',
     symbol: '◈◈◈',
-    color: '#00ddff',
+    color: '#00aaff', // Blue for Cold damage
     baseHealth: 110,
     baseMoveSpeed: 210,
     weaponSlots: 4,
@@ -322,10 +327,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     name: 'Zenith',
     type: CharacterType.ZENITH,
     startingWeapon: WeaponType.ORBITAL_STRIKE,
-    innateAbility: '+3 strikes per barrage, strikes track enemies',
+    innateAbility: '+1 strike per barrage, +20% explosion radius',
     description: 'Orbital Command Platform of destruction',
     symbol: '▼▼▼',
-    color: '#ffdd00',
+    color: '#ff8800', // Orange for Fire damage
     baseHealth: 115,
     baseMoveSpeed: 175,
     weaponSlots: 4,
@@ -342,7 +347,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     innateAbility: 'Minigun never stops firing, +50% bullet speed',
     description: 'Relentless War Machine of pure violence',
     symbol: '▪▪▪',
-    color: '#ff0000',
+    color: '#ffff00', // Yellow for Physical damage
     baseHealth: 120,
     baseMoveSpeed: 205,
     weaponSlots: 5,
@@ -356,10 +361,10 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     name: 'Warden',
     type: CharacterType.WARDEN,
     startingWeapon: WeaponType.TRAP_LAYER,
-    innateAbility: 'Traps last 3x longer, +2 traps per cast',
+    innateAbility: 'Traps last 2x longer, +1 trap per cast',
     description: 'Defensive Architect controlling the battlefield',
     symbol: '✻✻✻',
-    color: '#88ff00',
+    color: '#00ff00', // Green for Nature damage
     baseHealth: 150,
     baseMoveSpeed: 165,
     weaponSlots: 4,
@@ -376,7 +381,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     innateAbility: 'Headshots deal 3x damage, +100% crit on snipers',
     description: 'Ghost Assassin who never misses',
     symbol: '═══',
-    color: '#aa00ff',
+    color: '#ffff00', // Yellow for Physical damage
     baseHealth: 75,
     baseMoveSpeed: 225,
     weaponSlots: 3,
@@ -440,10 +445,22 @@ export abstract class Character {
 
 // Vulcan Implementation
 export class VulcanCharacter extends Character {
+  private wavesCleared: number = 0
+
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +10% pickup radius per level cleared
-    const radiusBonus = 1 + (this.levelsCleared * 0.1)
+    // +10% pickup radius per 2 waves cleared (faster scaling)
+    const radiusBonus = 1 + (Math.floor(this.wavesCleared / VULCAN.WAVES_PER_BONUS) * VULCAN.RADIUS_BONUS_PER_WAVES)
     playerStats.pickupRadius *= radiusBonus
+    // +5% XP gain
+    playerStats.xpMultiplier = (playerStats.xpMultiplier || 1) * VULCAN.XP_MULTIPLIER
+  }
+
+  onWaveCleared(): void {
+    this.wavesCleared++
+  }
+
+  getWavesCleared(): number {
+    return this.wavesCleared
   }
 }
 
@@ -467,15 +484,15 @@ export class SwarmCharacter extends Character {
 export class TempestCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
     // +20% crit chance on Nature damage (lightning weapons)
-    modifiers.critChance += 0.2
+    modifiers.critChance += TEMPEST.CRIT_CHANCE_BONUS / 100
   }
 }
 
 // Glacier Implementation
 export class GlacierCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +25% attack speed for Cold weapons (all weapons for this ship)
-    modifiers.fireRateMultiplier *= 1 - 0.25 // 25% faster = 0.75x cooldown
+    // +20% attack speed for Cold weapons (all weapons for this ship)
+    modifiers.fireRateMultiplier *= GLACIER.FIRE_RATE_MULTIPLIER // 20% faster = 0.833x cooldown
   }
 }
 
@@ -483,7 +500,7 @@ export class GlacierCharacter extends Character {
 export class InfernoCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
     // All projectiles bounce once
-    modifiers.pierceCount += 1 // Use pierce for bounce mechanic
+    modifiers.pierceCount += INFERNO.PIERCE_BONUS // Use pierce for bounce mechanic
   }
 }
 
@@ -491,46 +508,39 @@ export class InfernoCharacter extends Character {
 export class TsunamiCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
     // Weapons fire twice (add extra shot)
-    modifiers.additionalShots = (modifiers.additionalShots || 0) + 1
-    // But deal 50% less damage
-    modifiers.damageMultiplier *= 0.5
+    modifiers.additionalShots = (modifiers.additionalShots || 0) + TSUNAMI.ADDITIONAL_SHOTS
+    // But deal 65% damage (30% total DPS increase)
+    modifiers.damageMultiplier *= TSUNAMI.DAMAGE_PER_SHOT
   }
 }
 
-// Bastion Implementation
+// Bastion Implementation (Turret Mode)
 export class BastionCharacter extends Character {
-  private stationaryTime: number = 0
-  private lastShieldTime: number = 0
+  private isFiring: boolean = false
 
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // Generates small shield every 10s if stationary
-    // This will be handled in update loop based on player velocity
-  }
-
-  updateStationaryTime(delta: number, isStationary: boolean): void {
-    if (isStationary) {
-      this.stationaryTime += delta
-    } else {
-      this.stationaryTime = 0
+    // Cannot move while firing, +75% damage, +50% fire rate
+    if (this.isFiring) {
+      modifiers.damageMultiplier *= BASTION.DAMAGE_BONUS
+      modifiers.fireRateMultiplier *= BASTION.FIRE_RATE_MULTIPLIER // 50% faster = 0.667x cooldown
     }
   }
 
-  shouldGenerateShield(): boolean {
-    const now = Date.now()
-    if (this.stationaryTime >= 10000 && now - this.lastShieldTime >= 10000) {
-      this.lastShieldTime = now
-      this.stationaryTime = 0
-      return true
-    }
-    return false
+  setFiring(firing: boolean): void {
+    this.isFiring = firing
+  }
+
+  isFiringWeapons(): boolean {
+    return this.isFiring
   }
 }
 
-// Eclipse Implementation
+// Eclipse Implementation (Unlimited Rerolls)
 export class EclipseCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // 10% chance enemies revive as allies
-    // This will be handled in enemy death logic in GameScene
+    // Unlimited rerolls, -15% damage
+    modifiers.damageMultiplier *= ECLIPSE.DAMAGE_PENALTY
+    playerStats.unlimitedRerolls = ECLIPSE.HAS_UNLIMITED_REROLLS
   }
 }
 
@@ -538,7 +548,7 @@ export class EclipseCharacter extends Character {
 export class PhotonCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
     // +15% damage at max heat (simplified to always on)
-    modifiers.damageMultiplier += 0.15
+    modifiers.damageMultiplier += PHOTON.DAMAGE_BONUS
     // Slower overheat would need special weapon logic
   }
 }
@@ -548,7 +558,7 @@ export class ReflexCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
     // +1 ricochet bounce already handled in character config
     // +10% projectile speed
-    modifiers.projectileSpeedMultiplier += 0.1
+    modifiers.projectileSpeedMultiplier += REFLEX.PROJECTILE_SPEED_BONUS
   }
 }
 
@@ -556,19 +566,19 @@ export class ReflexCharacter extends Character {
 export class ArsenalCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
     // +1 missile per salvo (add 1 extra projectile for missiles)
-    modifiers.projectileCount += 1
+    modifiers.projectileCount += ARSENAL.PROJECTILE_BONUS
     // +10% explosion radius
-    modifiers.explosionRadiusMultiplier = (modifiers.explosionRadiusMultiplier || 1) * 1.1
+    modifiers.explosionRadiusMultiplier = (modifiers.explosionRadiusMultiplier || 1) * ARSENAL.EXPLOSION_RADIUS_MULTIPLIER
   }
 }
 
 // Corona Implementation
 export class CoronaCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +2 Fire projectiles
-    modifiers.projectileCount += 2
+    // +1 Fire projectile
+    modifiers.projectileCount += CORONA.PROJECTILE_BONUS
     // +30% burn duration (increase DoT duration)
-    modifiers.dotDurationMultiplier = (modifiers.dotDurationMultiplier || 1) * 1.3
+    modifiers.dotDurationMultiplier = (modifiers.dotDurationMultiplier || 1) * CORONA.BURN_DURATION_MULTIPLIER
   }
 }
 
@@ -577,35 +587,35 @@ export class ReaperCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
     // Kill enemies under 15% HP instantly, +20% bleed damage
     // This will be handled in combat logic and blood lance weapon
-    modifiers.damageMultiplier += 0.2 // Extra bleed damage
+    modifiers.damageMultiplier += REAPER.BLEED_DAMAGE_BONUS // Extra bleed damage
   }
 }
 
-// Supernova Implementation
+// Supernova Implementation (Autopilot)
 export class SupernovaCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // Aura heals 1HP per enemy hit (needs special handling in weapon)
-    // Aura radius +40%
-    modifiers.projectileSizeMultiplier += 0.4
+    // Auto-selects upgrades, +30% XP gain
+    playerStats.autoSelectUpgrades = SUPERNOVA.AUTO_SELECT_UPGRADES
+    playerStats.xpMultiplier = (playerStats.xpMultiplier || 1) * SUPERNOVA.XP_MULTIPLIER
   }
 }
 
-// Cyclone Implementation
+// Cyclone Implementation (Focused Power)
 export class CycloneCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // Vortex pulls enemies inward, +25% spiral speed
-    // This will be handled in vortex blade weapon logic
-    modifiers.projectileSpeedMultiplier += 0.25
+    // -1 projectile (minimum 1), +100% damage
+    modifiers.projectileCount = Math.max(CYCLONE.MIN_PROJECTILES, modifiers.projectileCount - 1)
+    modifiers.damageMultiplier *= CYCLONE.DAMAGE_BONUS
   }
 }
 
 // Zenith Implementation
 export class ZenithCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +3 strikes per barrage
-    modifiers.projectileCount += 3
-    // Strikes track enemies (homing enabled)
-    modifiers.homingEnabled = true
+    // +1 strike per barrage
+    modifiers.projectileCount += ZENITH.PROJECTILE_BONUS
+    // +20% explosion radius
+    modifiers.explosionRadiusMultiplier = (modifiers.explosionRadiusMultiplier || 1) * ZENITH.EXPLOSION_RADIUS_MULTIPLIER
   }
 }
 
@@ -614,17 +624,17 @@ export class HavocCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
     // Minigun never stops firing, +50% bullet speed
     // This will be handled in minigun weapon logic
-    modifiers.projectileSpeedMultiplier += 0.5
+    modifiers.projectileSpeedMultiplier += HAVOC.PROJECTILE_SPEED_BONUS
   }
 }
 
 // Warden Implementation
 export class WardenCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // Traps last 3x longer
-    modifiers.projectileLifetimeMultiplier = (modifiers.projectileLifetimeMultiplier || 1) * 3
-    // +2 traps per cast
-    modifiers.projectileCount += 2
+    // Traps last 2x longer
+    modifiers.projectileLifetimeMultiplier = (modifiers.projectileLifetimeMultiplier || 1) * WARDEN.TRAP_DURATION_MULTIPLIER
+    // +1 trap per cast
+    modifiers.projectileCount += WARDEN.TRAP_COUNT_BONUS
   }
 }
 
@@ -633,8 +643,8 @@ export class PhantomCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
     // Headshots deal 3x damage, +100% crit on snipers
     // This will be handled in sniper rifle weapon logic
-    modifiers.critChance += 1.0 // 100% crit chance for snipers
-    modifiers.critDamage += 1.5 // Additional 1.5x for "headshots" = 3x total
+    modifiers.critChance += PHANTOM.CRIT_CHANCE_BONUS / 100 // 100% crit chance for snipers
+    modifiers.critDamage += PHANTOM.CRIT_DAMAGE_BONUS // Additional 1.5x for "headshots" = 3x total
   }
 }
 
