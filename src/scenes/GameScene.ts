@@ -6343,7 +6343,31 @@ export default class GameScene extends Phaser.Scene {
       return
     }
 
-    this.health -= amount
+    // Check for dodge
+    if (this.playerStats.dodgeChance > 0 && Math.random() < this.playerStats.dodgeChance) {
+      // Dodged! Show visual feedback
+      const dodgeText = this.add.text(this.player.x, this.player.y - 40, 'DODGE!', {
+        fontFamily: 'Courier New',
+        fontSize: '20px',
+        color: '#ffff00',
+        fontStyle: 'bold',
+      }).setOrigin(0.5).setDepth(100)
+
+      this.tweens.add({
+        targets: dodgeText,
+        y: dodgeText.y - 30,
+        alpha: 0,
+        duration: 800,
+        onComplete: () => dodgeText.destroy()
+      })
+      return
+    }
+
+    // Apply damage reduction from armor/buildings
+    const damageReduction = Math.min(0.75, this.playerStats.damageReduction) // Cap at 75% reduction
+    const reducedDamage = amount * (1 - damageReduction)
+
+    this.health -= reducedDamage
     this.health = Math.floor(Math.max(0, this.health))
     this.updateHealthDisplay()
 
