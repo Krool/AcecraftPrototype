@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { WeaponType, Weapon, WeaponConfig } from './Weapon'
+import { WeaponType, Weapon, WeaponConfig, DamageType } from './Weapon'
 import { PassiveType } from './Passive'
 import { ProjectileGroup } from './Projectile'
 
@@ -214,9 +214,9 @@ export const SUPER_EVOLUTION_CONFIGS: Record<SuperEvolutionType, SuperEvolutionC
   [SuperEvolutionType.OMEGA_DESTROYER]: {
     name: 'Omega Destroyer',
     type: WeaponType.CANNON,
-    damageType: 'PHYSICAL' as any,
-    baseDamage: 200,
-    baseFireRate: 80,
+    damageType: DamageType.PHYSICAL,
+    baseDamage: 90,
+    baseFireRate: 200, // Balanced for ~450 DPS
     description: 'Reality-breaking physical carnage',
     maxLevel: 1,
     icon: '╬╬╬',
@@ -226,9 +226,9 @@ export const SUPER_EVOLUTION_CONFIGS: Record<SuperEvolutionType, SuperEvolutionC
   [SuperEvolutionType.INFERNO_TITAN]: {
     name: 'Inferno Titan',
     type: WeaponType.FIRE,
-    damageType: 'FIRE' as any,
-    baseDamage: 180,
-    baseFireRate: 150,
+    damageType: DamageType.FIRE,
+    baseDamage: 90,
+    baseFireRate: 225,
     description: 'Apocalyptic inferno that consumes all',
     maxLevel: 1,
     icon: '✹✹✹',
@@ -238,9 +238,9 @@ export const SUPER_EVOLUTION_CONFIGS: Record<SuperEvolutionType, SuperEvolutionC
   [SuperEvolutionType.FROZEN_APOCALYPSE]: {
     name: 'Frozen Apocalypse',
     type: WeaponType.ICE,
-    damageType: 'COLD' as any,
-    baseDamage: 160,
-    baseFireRate: 120,
+    damageType: DamageType.COLD,
+    baseDamage: 80,
+    baseFireRate: 180,
     description: 'Eternal winter freezes time itself',
     maxLevel: 1,
     icon: '❅❅❅',
@@ -250,21 +250,21 @@ export const SUPER_EVOLUTION_CONFIGS: Record<SuperEvolutionType, SuperEvolutionC
   [SuperEvolutionType.STORM_GOD]: {
     name: 'Storm God',
     type: WeaponType.LIGHTNING,
-    damageType: 'NATURE' as any,
-    baseDamage: 170,
-    baseFireRate: 100,
+    damageType: DamageType.NATURE,
+    baseDamage: 85,
+    baseFireRate: 150,
     description: 'Wrath of nature unleashed',
     maxLevel: 1,
-    icon: '⚡⚡⚡',
+    icon: '‡‡‡',
     color: '#ffff00',
     superEvolutionType: SuperEvolutionType.STORM_GOD,
   },
   [SuperEvolutionType.VOID_NEXUS]: {
     name: 'Void Nexus',
     type: WeaponType.DARK,
-    damageType: 'CONTROL' as any,
-    baseDamage: 250,
-    baseFireRate: 200,
+    damageType: DamageType.CONTROL,
+    baseDamage: 125,
+    baseFireRate: 300,
     description: 'Harness the void between dimensions',
     maxLevel: 1,
     icon: '◐◐◐',
@@ -274,9 +274,9 @@ export const SUPER_EVOLUTION_CONFIGS: Record<SuperEvolutionType, SuperEvolutionC
   [SuperEvolutionType.PRISMATIC_ANNIHILATOR]: {
     name: 'Prismatic Annihilator',
     type: WeaponType.LASER_BEAM,
-    damageType: 'FIRE' as any,
-    baseDamage: 100,
-    baseFireRate: 40,
+    damageType: DamageType.FIRE,
+    baseDamage: 40,
+    baseFireRate: 83, // Balanced for ~482 DPS
     description: 'Pure concentrated energy obliteration',
     maxLevel: 1,
     icon: '━━━',
@@ -290,9 +290,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.RAILSTORM_GATLING]: {
     name: 'Railstorm Gatling',
     type: WeaponType.CANNON,
-    damageType: 'PHYSICAL' as any,
-    baseDamage: 25,
-    baseFireRate: 100,
+    damageType: DamageType.PHYSICAL,
+    baseDamage: 10,
+    baseFireRate: 300, // Balanced for ~100 DPS (3 barrels)
     description: 'Rapid triple-barrel cannon with shockwaves',
     maxLevel: 1,
     icon: '⦿⦿⦿',
@@ -302,9 +302,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.AUTO_SCATTER]: {
     name: 'Auto Scatter',
     type: WeaponType.SHOTGUN,
-    damageType: 'PHYSICAL' as any,
-    baseDamage: 20,
-    baseFireRate: 150,
+    damageType: DamageType.PHYSICAL,
+    baseDamage: 6,
+    baseFireRate: 750, // Balanced for ~120 DPS (15 pellets)
     description: 'Wide-arc auto-fire filling half screen',
     maxLevel: 1,
     icon: '✺✺✺',
@@ -314,9 +314,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.DRONE_SWARM]: {
     name: 'Drone Swarm',
     type: WeaponType.GUN_BUDDY,
-    damageType: 'PHYSICAL' as any,
-    baseDamage: 15,
-    baseFireRate: 150,
+    damageType: DamageType.PHYSICAL,
+    baseDamage: 7,
+    baseFireRate: 350, // Balanced for ~100 DPS (5 drones)
     description: 'Five orbiting drones firing volleys',
     maxLevel: 1,
     icon: '⚙◉⚙',
@@ -326,21 +326,21 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.STORM_NEXUS]: {
     name: 'Storm Nexus',
     type: WeaponType.LIGHTNING,
-    damageType: 'NATURE' as any,
-    baseDamage: 30,
-    baseFireRate: 200,
+    damageType: DamageType.NATURE,
+    baseDamage: 15,
+    baseFireRate: 300,
     description: 'Arc lightning chaining indefinitely',
     maxLevel: 1,
-    icon: '⚡⟡⚡',
+    icon: '‡⟡‡',
     color: '#00ffff',
     evolutionType: EvolutionType.STORM_NEXUS,
   },
   [EvolutionType.CRYO_LANCER]: {
     name: 'Cryo Lancer',
     type: WeaponType.ICE,
-    damageType: 'COLD' as any,
-    baseDamage: 28,
-    baseFireRate: 180,
+    damageType: DamageType.COLD,
+    baseDamage: 14,
+    baseFireRate: 270,
     description: 'Piercing ice lances shatter into shards',
     maxLevel: 1,
     icon: '❅━❅',
@@ -350,9 +350,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.COMBUSTION_CORE]: {
     name: 'Combustion Core',
     type: WeaponType.FIRE,
-    damageType: 'FIRE' as any,
-    baseDamage: 35,
-    baseFireRate: 300,
+    damageType: DamageType.FIRE,
+    baseDamage: 18,
+    baseFireRate: 450,
     description: 'Explosions trigger chain reactions',
     maxLevel: 1,
     icon: '✹※✹',
@@ -362,9 +362,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.TIDAL_SURGE]: {
     name: 'Tidal Surge',
     type: WeaponType.WATER,
-    damageType: 'COLD' as any,
-    baseDamage: 32,
-    baseFireRate: 250,
+    damageType: DamageType.COLD,
+    baseDamage: 16,
+    baseFireRate: 375,
     description: 'Giant wave rippling across screen',
     maxLevel: 1,
     icon: '≋≋≋',
@@ -374,9 +374,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.TECTONIC_BLOOM]: {
     name: 'Tectonic Bloom',
     type: WeaponType.EARTH,
-    damageType: 'NATURE' as any,
-    baseDamage: 40,
-    baseFireRate: 400,
+    damageType: DamageType.NATURE,
+    baseDamage: 20,
+    baseFireRate: 600,
     description: 'Pulsing ground cracks spread fractally',
     maxLevel: 1,
     icon: '✤▓✤',
@@ -386,9 +386,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.SHADOW_LEGION]: {
     name: 'Shadow Legion',
     type: WeaponType.DARK,
-    damageType: 'CONTROL' as any,
-    baseDamage: 45,
-    baseFireRate: 800,
+    damageType: DamageType.CONTROL,
+    baseDamage: 21,
+    baseFireRate: 300, // Balanced for ~70 DPS (converts enemies as bonus)
     description: 'Converts enemies into permanent allies',
     maxLevel: 1,
     icon: '◐◑◐',
@@ -398,9 +398,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.SOLAR_LANCE]: {
     name: 'Solar Lance',
     type: WeaponType.LASER_BEAM,
-    damageType: 'FIRE' as any,
-    baseDamage: 12,
-    baseFireRate: 30,
+    damageType: DamageType.FIRE,
+    baseDamage: 5,
+    baseFireRate: 45, // Balanced for ~111 DPS (wide beam)
     description: 'Beam widens into screenwide burn',
     maxLevel: 1,
     icon: '☀━☀',
@@ -410,9 +410,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.PINBALL_VORTEX]: {
     name: 'Pinball Vortex',
     type: WeaponType.RICOCHET_DISK,
-    damageType: 'PHYSICAL' as any,
-    baseDamage: 38,
-    baseFireRate: 200,
+    damageType: DamageType.PHYSICAL,
+    baseDamage: 19,
+    baseFireRate: 300,
     description: 'Multiplying bouncing disks create chaos',
     maxLevel: 1,
     icon: '◊◇◈',
@@ -422,9 +422,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.NOVA_BARRAGE]: {
     name: 'Nova Barrage',
     type: WeaponType.MISSILE_POD,
-    damageType: 'FIRE' as any,
-    baseDamage: 50,
-    baseFireRate: 500,
+    damageType: DamageType.FIRE,
+    baseDamage: 25,
+    baseFireRate: 750,
     description: 'Splitting missiles blanket screen',
     maxLevel: 1,
     icon: '▲▼▲',
@@ -434,9 +434,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.INFERNAL_CROWN]: {
     name: 'Infernal Crown',
     type: WeaponType.FIREBALL_RING,
-    damageType: 'FIRE' as any,
-    baseDamage: 38,
-    baseFireRate: 250,
+    damageType: DamageType.FIRE,
+    baseDamage: 19,
+    baseFireRate: 375,
     description: 'Massive orbiting fireballs ignite everything',
     maxLevel: 1,
     icon: '✹◉✹',
@@ -446,9 +446,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.CRIMSON_REAPER]: {
     name: 'Crimson Reaper',
     type: WeaponType.BLOOD_LANCE,
-    damageType: 'PHYSICAL' as any,
-    baseDamage: 28,
-    baseFireRate: 200,
+    damageType: DamageType.PHYSICAL,
+    baseDamage: 14,
+    baseFireRate: 300,
     description: 'Endless bouncing lances spread hemorrhage',
     maxLevel: 1,
     icon: '✠╬✠',
@@ -458,9 +458,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.SUPERNOVA_RING]: {
     name: 'Supernova Ring',
     type: WeaponType.PLASMA_AURA,
-    damageType: 'FIRE' as any,
-    baseDamage: 15,
-    baseFireRate: 60,
+    damageType: DamageType.FIRE,
+    baseDamage: 8,
+    baseFireRate: 90,
     description: 'Pulsing waves heal as they annihilate',
     maxLevel: 1,
     icon: '⊛✧⊛',
@@ -470,9 +470,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.SPIRAL_TEMPEST]: {
     name: 'Spiral Tempest',
     type: WeaponType.VORTEX_BLADE,
-    damageType: 'PHYSICAL' as any,
-    baseDamage: 35,
-    baseFireRate: 350,
+    damageType: DamageType.PHYSICAL,
+    baseDamage: 18,
+    baseFireRate: 525,
     description: 'Accelerating spiral blades freeze on contact',
     maxLevel: 1,
     icon: '◈✦◈',
@@ -482,9 +482,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.APOCALYPSE_RAY]: {
     name: 'Apocalypse Ray',
     type: WeaponType.ORBITAL_STRIKE,
-    damageType: 'FIRE' as any,
-    baseDamage: 12,
-    baseFireRate: 550,
+    damageType: DamageType.FIRE,
+    baseDamage: 18,
+    baseFireRate: 300, // Balanced for ~60 DPS (spawns credits as bonus)
     description: 'Cascading orbital beams rain credits',
     maxLevel: 1,
     icon: '▼✹▼',
@@ -494,9 +494,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.STORM_BREAKER]: {
     name: 'Storm Breaker',
     type: WeaponType.MINIGUN,
-    damageType: 'PHYSICAL' as any,
-    baseDamage: 6,
-    baseFireRate: 30,
+    damageType: DamageType.PHYSICAL,
+    baseDamage: 3,
+    baseFireRate: 45,
     description: 'Toxic bullet storm melts armor',
     maxLevel: 1,
     icon: '▪▪▪',
@@ -506,9 +506,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.MINEFIELD]: {
     name: 'Minefield',
     type: WeaponType.TRAP_LAYER,
-    damageType: 'NATURE' as any,
-    baseDamage: 65,
-    baseFireRate: 1100,
+    damageType: DamageType.NATURE,
+    baseDamage: 25,
+    baseFireRate: 400, // Balanced for ~63 DPS (persistent explosions)
     description: 'Explosive traps shatter frozen enemies',
     maxLevel: 1,
     icon: '✻✦✻',
@@ -518,9 +518,9 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.VOID_PIERCER]: {
     name: 'Void Piercer',
     type: WeaponType.SNIPER_RIFLE,
-    damageType: 'PHYSICAL' as any,
-    baseDamage: 140,
-    baseFireRate: 1400,
+    damageType: DamageType.PHYSICAL,
+    baseDamage: 70,
+    baseFireRate: 2100,
     description: 'Accelerating shots pierce everything',
     maxLevel: 1,
     icon: '═══',
@@ -629,6 +629,7 @@ export class EvolvedWeapon extends Weapon {
   fire(x: number, y: number, modifiers: any): void {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount + 5 // Evolutions have bonus pierce
+    const bonusCount = modifiers.projectileCount || 0 // Building/character projectile bonuses
 
     // Evolutions fire more powerful versions of their base weapons
     const evolutionType = this.evolutionConfig.evolutionType
@@ -636,34 +637,35 @@ export class EvolvedWeapon extends Weapon {
     switch (evolutionType) {
       case EvolutionType.RAILSTORM_GATLING:
         // Triple barrel rapid fire
-        for (let i = 0; i < 3; i++) {
-          const offsetX = (i - 1) * 25
+        for (let i = 0; i < 3 + bonusCount; i++) {
+          const offsetX = (i - (3 + bonusCount - 1) / 2) * 25
           this.projectileGroup.fireProjectile(x + offsetX, y, damage, pierce)
         }
         break
 
       case EvolutionType.COMBUSTION_CORE:
         // Massive explosions
-        for (let i = 0; i < 5; i++) {
-          const offsetX = (i - 2) * 30
+        for (let i = 0; i < 5 + bonusCount; i++) {
+          const offsetX = (i - (5 + bonusCount - 1) / 2) * 30
           this.projectileGroup.fireProjectile(x + offsetX, y, damage * 1.5, pierce, 0, -350)
         }
         break
 
       case EvolutionType.STORM_NEXUS:
         // Screen-wide lightning
-        this.projectileGroup.fireSpread(x, y, damage, pierce + 10, 7, 60)
+        this.projectileGroup.fireSpread(x, y, damage, pierce + 10, 7 + bonusCount, 60)
         break
 
       case EvolutionType.AUTO_SCATTER:
         // Constant shotgun spread
-        this.projectileGroup.fireSpread(x, y, damage, pierce, 15, 90)
+        this.projectileGroup.fireSpread(x, y, damage, pierce, 15 + bonusCount, 90)
         break
 
       case EvolutionType.DRONE_SWARM:
         // 5 orbiting drones
-        for (let i = 0; i < 5; i++) {
-          const angle = (Math.PI * 2 / 5) * i
+        const droneCount = 5 + bonusCount
+        for (let i = 0; i < droneCount; i++) {
+          const angle = (Math.PI * 2 / droneCount) * i
           const offsetX = Math.cos(angle) * 50
           const offsetY = Math.sin(angle) * 50
           this.projectileGroup.fireProjectile(x + offsetX, y + offsetY, damage, pierce)
@@ -672,8 +674,9 @@ export class EvolvedWeapon extends Weapon {
 
       case EvolutionType.INFERNAL_CROWN:
         // Massive fireballs orbiting with explosions
-        for (let i = 0; i < 8; i++) {
-          const angle = (Math.PI * 2 / 8) * i
+        const crownCount = 8 + bonusCount
+        for (let i = 0; i < crownCount; i++) {
+          const angle = (Math.PI * 2 / crownCount) * i
           const offsetX = Math.cos(angle) * 80
           const offsetY = Math.sin(angle) * 80
           this.projectileGroup.fireProjectile(x + offsetX, y + offsetY, damage, pierce, 0, -350)
@@ -682,16 +685,17 @@ export class EvolvedWeapon extends Weapon {
 
       case EvolutionType.CRIMSON_REAPER:
         // Many bouncing lances
-        for (let i = 0; i < 7; i++) {
-          const offsetX = (i - 3) * 15
+        for (let i = 0; i < 7 + bonusCount; i++) {
+          const offsetX = (i - (7 + bonusCount - 1) / 2) * 15
           this.projectileGroup.fireProjectile(x + offsetX, y, damage, pierce + 10, 0, -600)
         }
         break
 
       case EvolutionType.SUPERNOVA_RING:
         // Dense expanding ring
-        for (let i = 0; i < 24; i++) {
-          const angle = (Math.PI * 2 / 24) * i
+        const ringCount = 24 + bonusCount
+        for (let i = 0; i < ringCount; i++) {
+          const angle = (Math.PI * 2 / ringCount) * i
           const velocityX = Math.cos(angle) * 250
           const velocityY = Math.sin(angle) * 250
           this.projectileGroup.fireProjectile(x, y, damage, pierce, velocityX, velocityY)
@@ -700,8 +704,9 @@ export class EvolvedWeapon extends Weapon {
 
       case EvolutionType.SPIRAL_TEMPEST:
         // Multiple spiraling projectiles
-        for (let i = 0; i < 12; i++) {
-          const angle = (Math.PI * 2 / 12) * i
+        const tempestCount = 12 + bonusCount
+        for (let i = 0; i < tempestCount; i++) {
+          const angle = (Math.PI * 2 / tempestCount) * i
           const velocityX = Math.cos(angle) * 450
           const velocityY = Math.sin(angle) * 450 - 250
           this.projectileGroup.fireProjectile(x, y, damage, pierce, velocityX, velocityY)
@@ -711,15 +716,15 @@ export class EvolvedWeapon extends Weapon {
       case EvolutionType.APOCALYPSE_RAY:
         // Multiple orbital strikes
         const screenWidth = this.scene.cameras.main.width
-        for (let i = 0; i < 10; i++) {
-          const strikeX = (screenWidth / 11) * (i + 1)
+        for (let i = 0; i < 10 + bonusCount; i++) {
+          const strikeX = (screenWidth / (10 + bonusCount + 1)) * (i + 1)
           this.projectileGroup.fireProjectile(strikeX, 30, damage, pierce, 0, 400)
         }
         break
 
       case EvolutionType.STORM_BREAKER:
         // Rapid fire bullets in tight spread
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 10 + bonusCount; i++) {
           const offsetX = (Math.random() - 0.5) * 40
           const velocityX = (Math.random() - 0.5) * 100
           this.projectileGroup.fireProjectile(x + offsetX, y, damage, pierce, velocityX, -700)
@@ -728,24 +733,24 @@ export class EvolvedWeapon extends Weapon {
 
       case EvolutionType.MINEFIELD:
         // Multiple large traps
-        for (let i = 0; i < 5; i++) {
-          const offsetX = (i - 2) * 60
+        for (let i = 0; i < 5 + bonusCount; i++) {
+          const offsetX = (i - (5 + bonusCount - 1) / 2) * 60
           this.projectileGroup.fireProjectile(x + offsetX, y, damage, pierce, 0, 0)
         }
         break
 
       case EvolutionType.VOID_PIERCER:
         // Powerful piercing shots
-        for (let i = 0; i < 3; i++) {
-          const offsetX = (i - 1) * 30
+        for (let i = 0; i < 3 + bonusCount; i++) {
+          const offsetX = (i - (3 + bonusCount - 1) / 2) * 30
           this.projectileGroup.fireProjectile(x + offsetX, y, damage, pierce + 15, 0, -1000)
         }
         break
 
       default:
         // Default evolution behavior - powerful multi-shot
-        for (let i = 0; i < 7; i++) {
-          const offsetX = (i - 3) * 20
+        for (let i = 0; i < 7 + bonusCount; i++) {
+          const offsetX = (i - (7 + bonusCount - 1) / 2) * 20
           this.projectileGroup.fireProjectile(x + offsetX, y, damage, pierce)
         }
         break
@@ -789,14 +794,15 @@ export class SuperEvolvedWeapon extends Weapon {
   fire(x: number, y: number, modifiers: any): void {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount + 20 // Super evolutions have massive pierce
+    const bonusCount = modifiers.projectileCount || 0 // Building/character projectile bonuses
 
     const superEvolutionType = this.superEvolutionConfig.superEvolutionType
 
     switch (superEvolutionType) {
       case SuperEvolutionType.OMEGA_DESTROYER:
         // Gatling + bouncing = screen-filling chaos
-        for (let i = 0; i < 20; i++) {
-          const offsetX = (i - 9.5) * 10
+        for (let i = 0; i < 20 + bonusCount; i++) {
+          const offsetX = (i - (20 + bonusCount - 1) / 2) * 10
           const velocityX = (Math.random() - 0.5) * 200
           this.projectileGroup.fireProjectile(x + offsetX, y, damage, pierce, velocityX, -700)
         }
@@ -804,8 +810,9 @@ export class SuperEvolvedWeapon extends Weapon {
 
       case SuperEvolutionType.INFERNO_TITAN:
         // Massive explosions everywhere
-        for (let i = 0; i < 16; i++) {
-          const angle = (Math.PI * 2 / 16) * i
+        const titanCount = 16 + bonusCount
+        for (let i = 0; i < titanCount; i++) {
+          const angle = (Math.PI * 2 / titanCount) * i
           const distance = 100
           const offsetX = Math.cos(angle) * distance
           const offsetY = Math.sin(angle) * distance
@@ -815,8 +822,9 @@ export class SuperEvolvedWeapon extends Weapon {
 
       case SuperEvolutionType.FROZEN_APOCALYPSE:
         // Freezing spiral that expands
-        for (let i = 0; i < 30; i++) {
-          const angle = (Math.PI * 2 / 30) * i
+        const frozenCount = 30 + bonusCount
+        for (let i = 0; i < frozenCount; i++) {
+          const angle = (Math.PI * 2 / frozenCount) * i
           const velocityX = Math.cos(angle) * 500
           const velocityY = Math.sin(angle) * 500
           this.projectileGroup.fireProjectile(x, y, damage, pierce, velocityX, velocityY)
@@ -825,16 +833,17 @@ export class SuperEvolvedWeapon extends Weapon {
 
       case SuperEvolutionType.STORM_GOD:
         // Lightning chains + earth zones
-        for (let i = 0; i < 15; i++) {
-          const offsetX = (i - 7) * 30
+        for (let i = 0; i < 15 + bonusCount; i++) {
+          const offsetX = (i - (15 + bonusCount - 1) / 2) * 30
           this.projectileGroup.fireProjectile(x + offsetX, y, damage, pierce + 10, 0, -600)
         }
         break
 
       case SuperEvolutionType.VOID_NEXUS:
         // Piercing void shots that split reality
-        for (let i = 0; i < 8; i++) {
-          const angle = (Math.PI * 2 / 8) * i
+        const voidCount = 8 + bonusCount
+        for (let i = 0; i < voidCount; i++) {
+          const angle = (Math.PI * 2 / voidCount) * i
           const velocityX = Math.cos(angle) * 600
           const velocityY = Math.sin(angle) * 600
           this.projectileGroup.fireProjectile(x, y, damage, pierce + 25, velocityX, velocityY)
@@ -844,16 +853,16 @@ export class SuperEvolvedWeapon extends Weapon {
       case SuperEvolutionType.PRISMATIC_ANNIHILATOR:
         // Screen-wide beam death
         const screenWidth = this.scene.cameras.main.width
-        for (let i = 0; i < 20; i++) {
-          const offsetX = (screenWidth / 21) * (i + 0.5) - screenWidth / 2
+        for (let i = 0; i < 20 + bonusCount; i++) {
+          const offsetX = (screenWidth / (20 + bonusCount + 1)) * (i + 0.5) - screenWidth / 2
           this.projectileGroup.fireProjectile(x + offsetX, y, damage, pierce, 0, -1200)
         }
         break
 
       default:
         // Default super evolution - ultimate multi-shot
-        for (let i = 0; i < 25; i++) {
-          const offsetX = (i - 12) * 15
+        for (let i = 0; i < 25 + bonusCount; i++) {
+          const offsetX = (i - (25 + bonusCount - 1) / 2) * 15
           this.projectileGroup.fireProjectile(x + offsetX, y, damage, pierce)
         }
         break

@@ -95,55 +95,457 @@ export class WaveSystem {
   }
 
   private generateLevelWaves(level: number): LevelWaves {
+    // Use level-specific wave structure
+    switch (level) {
+      case 1:
+        return this.generateLevel1Waves()
+      case 2:
+        return this.generateLevel2Waves()
+      case 3:
+        return this.generateLevel3Waves()
+      case 4:
+        return this.generateLevel4Waves()
+      case 5:
+        return this.generateLevel5Waves()
+      case 6:
+        return this.generateLevel6Waves()
+      case 7:
+        return this.generateLevel7Waves()
+      case 8:
+        return this.generateLevel8Waves()
+      case 9:
+        return this.generateLevel9Waves()
+      case 10:
+        return this.generateLevel10Waves()
+      default:
+        return this.generateGenericWaves(level)
+    }
+  }
+
+  // Fallback for levels beyond 10
+  private generateGenericWaves(level: number): LevelWaves {
     const totalWaves = 15
     const waves: Wave[] = []
+    const availableEnemies = this.getAvailableEnemies(level, 0)
 
-    // Get cumulative enemy pool up to this level
-    const availableEnemies = this.getAvailableEnemies(level, 0) // All enemies unlocked so far
+    for (let i = 1; i <= 14; i++) {
+      const difficulty = i <= 5 ? 'early' : i <= 10 ? 'mid' : 'late'
+      waves.push(this.createStandardWave(i, availableEnemies, difficulty))
+    }
+    waves.push(this.createBossWave(15, availableEnemies))
 
-    // Wave 1: Introduce first new enemy type
-    const wave1Enemies = LEVEL_ENEMY_SCHEDULE[level]?.wave1 || []
-    waves.push(this.createIntroWave(1, wave1Enemies, availableEnemies, 'Introduction Wave'))
+    return { level, totalWaves, waves }
+  }
 
-    // Waves 2-5: Build up with available enemies
-    for (let i = 2; i <= 5; i++) {
-      waves.push(this.createStandardWave(i, availableEnemies, 'early'))
+  // ==================== LEVEL-SPECIFIC WAVE GENERATORS ====================
+
+  private generateLevel1Waves(): LevelWaves {
+    // Level 1: Scout Commander (12 waves)
+    const waves: Wave[] = []
+    const enemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.SWARMER]
+
+    // Waves 1-11: Build up
+    for (let i = 1; i <= 11; i++) {
+      const difficulty = i <= 4 ? 'early' : i <= 8 ? 'mid' : 'late'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
     }
 
-    // Wave 6: Introduce second new enemy type
-    const wave6Enemies = LEVEL_ENEMY_SCHEDULE[level]?.wave6 || []
-    const enemiesUpToWave6 = this.getAvailableEnemies(level, 6)
-    waves.push(this.createIntroWave(6, wave6Enemies, enemiesUpToWave6, 'New Threat'))
+    // Wave 12: Scout Commander Boss
+    waves.push({
+      waveNumber: 12,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.SCOUT_COMMANDER], count: 1 },
+          { type: 'circle', enemyTypes: enemies, spacing: 60 }
+        ],
+        minEnemies: 15,
+        maxEnemies: 25,
+      }],
+      isBoss: true,
+      isMiniBoss: false,
+      description: 'Scout Commander',
+    })
 
-    // Wave 7: First Mini-Boss + support
-    waves.push(this.createMiniBossWave(7, enemiesUpToWave6))
+    return { level: 1, totalWaves: 12, waves }
+  }
 
-    // Waves 8-10: Escalation
-    for (let i = 8; i <= 10; i++) {
-      waves.push(this.createStandardWave(i, enemiesUpToWave6, 'mid'))
+  private generateLevel2Waves(): LevelWaves {
+    // Level 2: Tank Twins (10 waves)
+    const waves: Wave[] = []
+    const enemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.SWARMER, EnemyType.TANK, EnemyType.SNIPER, EnemyType.HUNTER]
+
+    // Waves 1-9: Build up
+    for (let i = 1; i <= 9; i++) {
+      const difficulty = i <= 3 ? 'early' : i <= 6 ? 'mid' : 'late'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
     }
 
-    // Wave 11: Introduce third new enemy type
-    const wave11Enemies = LEVEL_ENEMY_SCHEDULE[level]?.wave11 || []
-    const allEnemies = this.getAvailableEnemies(level, 11)
-    waves.push(this.createIntroWave(11, wave11Enemies, allEnemies, 'Elite Force'))
+    // Wave 10: Tank Twins Boss (2 bosses)
+    waves.push({
+      waveNumber: 10,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.TANK_TWIN], count: 2 }, // Spawns 2 twins
+          { type: 'line', enemyTypes: enemies, spacing: 50 }
+        ],
+        minEnemies: 20,
+        maxEnemies: 30,
+      }],
+      isBoss: true,
+      isMiniBoss: false,
+      description: 'Twin Terrors',
+    })
 
-    // Wave 12: Second Mini-Boss + heavy support
-    waves.push(this.createMiniBossWave(12, allEnemies))
+    return { level: 2, totalWaves: 10, waves }
+  }
 
-    // Waves 13-14: Final escalation
-    for (let i = 13; i <= 14; i++) {
+  private generateLevel3Waves(): LevelWaves {
+    // Level 3: Hive Queen (13 waves)
+    const waves: Wave[] = []
+    const enemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.SWARMER, EnemyType.TANK, EnemyType.SNIPER, EnemyType.HUNTER, EnemyType.PATROLLER, EnemyType.TURRET, EnemyType.BOMBER]
+
+    // Waves 1-12: Build up
+    for (let i = 1; i <= 12; i++) {
+      const difficulty = i <= 4 ? 'early' : i <= 8 ? 'mid' : 'late'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 13: Hive Queen Boss (eggs spawned automatically by handleBossSpawn)
+    waves.push({
+      waveNumber: 13,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.HIVE_QUEEN], count: 1 },
+          { type: 'wave', enemyTypes: enemies, spacing: 45 }
+        ],
+        minEnemies: 25,
+        maxEnemies: 40,
+      }],
+      isBoss: true,
+      isMiniBoss: false,
+      description: 'Hive Queen',
+    })
+
+    return { level: 3, totalWaves: 13, waves }
+  }
+
+  private generateLevel4Waves(): LevelWaves {
+    // Level 4: Orbital Devastator (11 waves)
+    const waves: Wave[] = []
+    const enemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.TANK, EnemyType.SNIPER, EnemyType.HUNTER, EnemyType.PATROLLER, EnemyType.TURRET, EnemyType.BOMBER, EnemyType.ORBITER, EnemyType.CHARGER, EnemyType.SPIRAL_SHOOTER]
+
+    // Waves 1-10: Build up
+    for (let i = 1; i <= 10; i++) {
+      const difficulty = i <= 3 ? 'early' : i <= 7 ? 'mid' : 'late'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 11: Orbital Devastator Boss (shields spawned automatically)
+    waves.push({
+      waveNumber: 11,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.ORBITAL_DEVASTATOR], count: 1 },
+          { type: 'circle', enemyTypes: enemies, spacing: 70 }
+        ],
+        minEnemies: 30,
+        maxEnemies: 45,
+      }],
+      isBoss: true,
+      isMiniBoss: false,
+      description: 'Orbital Devastator',
+    })
+
+    return { level: 4, totalWaves: 11, waves }
+  }
+
+  private generateLevel5Waves(): LevelWaves {
+    // Level 5: Fractured Titan (14 waves)
+    const waves: Wave[] = []
+    const enemies = [EnemyType.WASP, EnemyType.TANK, EnemyType.SNIPER, EnemyType.HUNTER, EnemyType.PATROLLER, EnemyType.BOMBER, EnemyType.CHARGER, EnemyType.SPLITTER, EnemyType.SPAWNER, EnemyType.HEALER]
+
+    // Waves 1-13: Build up
+    for (let i = 1; i <= 13; i++) {
+      const difficulty = i <= 4 ? 'early' : i <= 9 ? 'mid' : 'late'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 14: Fractured Titan Boss (splits on damage)
+    waves.push({
+      waveNumber: 14,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.FRACTURED_TITAN], count: 1 },
+          { type: 'v', enemyTypes: enemies, spacing: 55 }
+        ],
+        minEnemies: 35,
+        maxEnemies: 50,
+      }],
+      isBoss: true,
+      isMiniBoss: false,
+      description: 'Fractured Titan',
+    })
+
+    return { level: 5, totalWaves: 14, waves }
+  }
+
+  private generateLevel6Waves(): LevelWaves {
+    // Level 6: Shield Warden (10 waves)
+    const waves: Wave[] = []
+    const enemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.TANK, EnemyType.HUNTER, EnemyType.BOMBER, EnemyType.SPLITTER, EnemyType.SPAWNER, EnemyType.HEALER, EnemyType.SHIELDED, EnemyType.EXPLODER]
+
+    // Waves 1-9: Build up
+    for (let i = 1; i <= 9; i++) {
+      const difficulty = i <= 3 ? 'early' : i <= 6 ? 'mid' : 'late'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 10: Shield Warden Boss
+    waves.push({
+      waveNumber: 10,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.SHIELD_WARDEN], count: 1 },
+          { type: 'single', enemyTypes: [EnemyType.SHIELDED], count: 8 }, // Shielded minions
+          { type: 'wave', enemyTypes: enemies, spacing: 50 }
+        ],
+        minEnemies: 30,
+        maxEnemies: 45,
+      }],
+      isBoss: true,
+      isMiniBoss: false,
+      description: 'Shield Warden',
+    })
+
+    return { level: 6, totalWaves: 10, waves }
+  }
+
+  private generateLevel7Waves(): LevelWaves {
+    // Level 7: Bomber Squadron (12 waves with mini-boss)
+    const waves: Wave[] = []
+    const enemies = [EnemyType.WASP, EnemyType.TANK, EnemyType.SNIPER, EnemyType.HUNTER, EnemyType.BOMBER, EnemyType.EXPLODER, EnemyType.CHARGER]
+
+    // Waves 1-5: Build up
+    for (let i = 1; i <= 5; i++) {
+      waves.push(this.createStandardWave(i, enemies, 'early'))
+    }
+
+    // Wave 6: Prototype Bomber Mini-Boss
+    waves.push({
+      waveNumber: 6,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.PROTOTYPE_BOMBER], count: 1 },
+          { type: 'line', enemyTypes: enemies, spacing: 50 }
+        ],
+        minEnemies: 15,
+        maxEnemies: 25,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Prototype Bomber',
+    })
+
+    // Waves 7-11: Escalation
+    for (let i = 7; i <= 11; i++) {
+      waves.push(this.createStandardWave(i, enemies, 'mid'))
+    }
+
+    // Wave 12: Ace Bomber with Escorts
+    waves.push({
+      waveNumber: 12,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.ACE_BOMBER], count: 1 },
+          { type: 'single', enemyTypes: [EnemyType.ESCORT_BOMBER], count: 2 },
+          { type: 'circle', enemyTypes: enemies, spacing: 60 }
+        ],
+        minEnemies: 30,
+        maxEnemies: 45,
+      }],
+      isBoss: true,
+      isMiniBoss: false,
+      description: 'Bomber Squadron',
+    })
+
+    return { level: 7, totalWaves: 12, waves }
+  }
+
+  private generateLevel8Waves(): LevelWaves {
+    // Level 8: Void Nexus (15 waves with 2 mini-bosses)
+    const waves: Wave[] = []
+    const enemies = [EnemyType.HUNTER, EnemyType.PATROLLER, EnemyType.BOMBER, EnemyType.CHARGER, EnemyType.SHIELDED, EnemyType.EXPLODER]
+
+    // Waves 1-4: Build up
+    for (let i = 1; i <= 4; i++) {
+      waves.push(this.createStandardWave(i, enemies, 'early'))
+    }
+
+    // Wave 5: First Void Herald Mini-Boss
+    waves.push({
+      waveNumber: 5,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.VOID_HERALD], count: 1 },
+          { type: 'wave', enemyTypes: enemies, spacing: 50 }
+        ],
+        minEnemies: 20,
+        maxEnemies: 30,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Void Herald',
+    })
+
+    // Waves 6-9: Mid game
+    for (let i = 6; i <= 9; i++) {
+      waves.push(this.createStandardWave(i, enemies, 'mid'))
+    }
+
+    // Wave 10: Second Void Herald Mini-Boss
+    waves.push({
+      waveNumber: 10,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.VOID_HERALD], count: 1 },
+          { type: 'circle', enemyTypes: enemies, spacing: 65 }
+        ],
+        minEnemies: 25,
+        maxEnemies: 35,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Void Herald',
+    })
+
+    // Waves 11-14: Late game escalation
+    for (let i = 11; i <= 14; i++) {
+      waves.push(this.createStandardWave(i, enemies, 'late'))
+    }
+
+    // Wave 15: Void Nexus Final Boss
+    waves.push({
+      waveNumber: 15,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.VOID_NEXUS], count: 1 },
+          { type: 'wave', enemyTypes: enemies, spacing: 45 },
+          { type: 'circle', enemyTypes: enemies, spacing: 70 }
+        ],
+        minEnemies: 40,
+        maxEnemies: 60,
+      }],
+      isBoss: true,
+      isMiniBoss: false,
+      description: 'Void Nexus',
+    })
+
+    return { level: 8, totalWaves: 15, waves }
+  }
+
+  private generateLevel9Waves(): LevelWaves {
+    // Level 9: Siege Engine (18 waves - longest level)
+    const waves: Wave[] = []
+    const enemies = [EnemyType.CHARGER, EnemyType.SHIELDED, EnemyType.EXPLODER, EnemyType.TANK, EnemyType.TURRET, EnemyType.SPAWNER, EnemyType.HEALER]
+
+    // Waves 1-17: Prolonged battle
+    for (let i = 1; i <= 17; i++) {
+      const difficulty = i <= 6 ? 'early' : i <= 12 ? 'mid' : 'late'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 18: Siege Engine Boss (turrets spawned automatically)
+    waves.push({
+      waveNumber: 18,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.SIEGE_ENGINE], count: 1 },
+          { type: 'line', enemyTypes: enemies, spacing: 50 },
+          { type: 'wave', enemyTypes: enemies, spacing: 45 }
+        ],
+        minEnemies: 50,
+        maxEnemies: 70,
+      }],
+      isBoss: true,
+      isMiniBoss: false,
+      description: 'Siege Engine',
+    })
+
+    return { level: 9, totalWaves: 18, waves }
+  }
+
+  private generateLevel10Waves(): LevelWaves {
+    // Level 10: THE MOTHERSHIP OMEGA (20 waves - THE ULTIMATE BATTLE)
+    const waves: Wave[] = []
+    const allEnemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.TANK, EnemyType.SNIPER, EnemyType.HUNTER, EnemyType.BOMBER, EnemyType.CHARGER, EnemyType.SHIELDED, EnemyType.EXPLODER, EnemyType.SPAWNER, EnemyType.HEALER]
+
+    // Waves 1-9: Build up to first mini-boss
+    for (let i = 1; i <= 9; i++) {
+      const difficulty = i <= 3 ? 'early' : 'mid'
+      waves.push(this.createStandardWave(i, allEnemies, difficulty))
+    }
+
+    // Wave 10: Assault Cruiser Mini-Boss
+    waves.push({
+      waveNumber: 10,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.ASSAULT_CRUISER], count: 1 },
+          { type: 'v', enemyTypes: allEnemies, spacing: 55 }
+        ],
+        minEnemies: 30,
+        maxEnemies: 45,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Assault Cruiser',
+    })
+
+    // Waves 11-14: Continue escalation
+    for (let i = 11; i <= 14; i++) {
+      waves.push(this.createStandardWave(i, allEnemies, 'mid'))
+    }
+
+    // Wave 15: Battle Coordinator Mini-Boss
+    waves.push({
+      waveNumber: 15,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.BATTLE_COORDINATOR], count: 1 },
+          { type: 'circle', enemyTypes: allEnemies, spacing: 65 }
+        ],
+        minEnemies: 35,
+        maxEnemies: 50,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Battle Coordinator',
+    })
+
+    // Waves 16-19: Final escalation
+    for (let i = 16; i <= 19; i++) {
       waves.push(this.createStandardWave(i, allEnemies, 'late'))
     }
 
-    // Wave 15: Final Boss + full army
-    waves.push(this.createBossWave(15, allEnemies))
+    // Wave 20: MOTHERSHIP OMEGA - THE FINAL BOSS (weapon ports spawned automatically)
+    waves.push({
+      waveNumber: 20,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.MOTHERSHIP_OMEGA], count: 1 },
+          { type: 'circle', enemyTypes: allEnemies, spacing: 80 },
+          { type: 'wave', enemyTypes: allEnemies, spacing: 45 },
+          { type: 'line', enemyTypes: allEnemies, spacing: 50 }
+        ],
+        minEnemies: 60,
+        maxEnemies: 100,
+      }],
+      isBoss: true,
+      isMiniBoss: false,
+      description: 'MOTHERSHIP OMEGA',
+    })
 
-    return {
-      level,
-      totalWaves,
-      waves,
-    }
+    return { level: 10, totalWaves: 20, waves }
   }
 
   // Get all enemies available up to a specific wave in a level

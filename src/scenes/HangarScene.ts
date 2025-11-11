@@ -17,6 +17,10 @@ export default class HangarScene extends Phaser.Scene {
   private maxScroll: number = 0
   private hasDragged: boolean = false
 
+  // Track interactive objects and input listeners for cleanup
+  private interactiveObjects: Phaser.GameObjects.GameObject[] = []
+  private inputListeners: { event: string, handler: Function }[] = []
+
   constructor() {
     super('HangarScene')
   }
@@ -108,6 +112,9 @@ export default class HangarScene extends Phaser.Scene {
       })
     })
 
+    // Track for cleanup
+    this.interactiveObjects.push(creditButton)
+
     // Back button
     const backButton = this.add.text(
       20,
@@ -131,6 +138,9 @@ export default class HangarScene extends Phaser.Scene {
     backButton.on('pointerdown', () => {
       this.scene.start('MainMenuScene')
     })
+
+    // Track for cleanup
+    this.interactiveObjects.push(backButton)
 
     // Create left list container (scrollable)
     this.listContainer = this.add.container(0, 140)
@@ -311,6 +321,9 @@ export default class HangarScene extends Phaser.Scene {
         this.refreshScene()
       }
     })
+
+    // Track for cleanup
+    this.interactiveObjects.push(bg)
 
     this.listContainer.add(container)
   }
@@ -610,6 +623,9 @@ export default class HangarScene extends Phaser.Scene {
           })
         }
       })
+
+      // Track for cleanup
+      this.interactiveObjects.push(buyButton)
     } else if (!isSelected) {
       const selectButton = this.add.rectangle(
         panelWidth / 2, buttonY,
@@ -655,6 +671,9 @@ export default class HangarScene extends Phaser.Scene {
           })
         }
       })
+
+      // Track for cleanup
+      this.interactiveObjects.push(selectButton)
     } else {
       // Show SELECTED indicator
       const selectedText = this.add.text(
@@ -715,8 +734,11 @@ export default class HangarScene extends Phaser.Scene {
       totalDragDistance = 0
     })
 
+    // Track for cleanup
+    this.interactiveObjects.push(dragZone)
+
     // Use global input for move to capture drags that go outside the zone
-    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+    const pointerMoveHandler = (pointer: Phaser.Input.Pointer) => {
       if (this.isDragging) {
         const dragDelta = pointer.y - this.dragStartY
 
@@ -735,24 +757,30 @@ export default class HangarScene extends Phaser.Scene {
           this.hasDragged = true
         }
       }
-    })
+    }
+    this.input.on('pointermove', pointerMoveHandler)
+    this.inputListeners.push({ event: 'pointermove', handler: pointerMoveHandler })
 
     // Use global input for pointerup to ensure drag ends even if outside zone
-    this.input.on('pointerup', () => {
+    const pointerUpHandler = () => {
       if (this.isDragging) {
         this.isDragging = false
       }
-    })
+    }
+    this.input.on('pointerup', pointerUpHandler)
+    this.inputListeners.push({ event: 'pointerup', handler: pointerUpHandler })
 
     // Also handle pointerupoutside for when pointer is released outside the game
-    this.input.on('pointerupoutside', () => {
+    const pointerUpOutsideHandler = () => {
       if (this.isDragging) {
         this.isDragging = false
       }
-    })
+    }
+    this.input.on('pointerupoutside', pointerUpOutsideHandler)
+    this.inputListeners.push({ event: 'pointerupoutside', handler: pointerUpOutsideHandler })
 
     // Add mouse wheel scrolling
-    this.input.on('wheel', (pointer: Phaser.Input.Pointer, gameObjects: any[], deltaX: number, deltaY: number) => {
+    const wheelHandler = (pointer: Phaser.Input.Pointer, gameObjects: any[], deltaX: number, deltaY: number) => {
       // Only scroll if pointer is over the list area (left 50% of screen)
       if (pointer.x < screenWidth / 2 && pointer.y > 140) {
         const scrollSpeed = 30 // Pixels per wheel tick
@@ -763,7 +791,9 @@ export default class HangarScene extends Phaser.Scene {
         )
         this.listContainer.y = 140 - this.scrollY
       }
-    })
+    }
+    this.input.on('wheel', wheelHandler)
+    this.inputListeners.push({ event: 'wheel', handler: wheelHandler })
 
     // Add scroll indicator if content is scrollable
     if (this.maxScroll > 0) {
@@ -793,10 +823,13 @@ export default class HangarScene extends Phaser.Scene {
     scrollbarThumb.setName('scrollbarThumb')
 
     // Update scrollbar position on scroll
-    this.events.on('postupdate', () => {
+    const postUpdateHandler = () => {
       const thumbY = 140 + (this.scrollY / this.maxScroll) * (visibleHeight - thumbHeight)
       scrollbarThumb.setY(thumbY)
-    })
+    }
+    this.events.on('postupdate', postUpdateHandler)
+    // Track scene event separately
+    this.inputListeners.push({ event: 'scene:postupdate', handler: postUpdateHandler })
   }
 
   private playCannotAffordFeedback() {
@@ -949,5 +982,28 @@ export default class HangarScene extends Phaser.Scene {
         flash.destroy()
       }
     })
+  }
+
+  shutdown(): void {
+    // Clean up all game object event listeners
+    this.interactiveObjects.forEach(obj => {
+      if (obj && obj.active) {
+        obj.removeAllListeners()
+      }
+    })
+    this.interactiveObjects = []
+
+    // Clean up input and scene event listeners
+    this.inputListeners.forEach(({ event, handler }) => {
+      if (event.startsWith('scene:')) {
+        // Scene events
+        const sceneEvent = event.split(':')[1]
+        this.events.off(sceneEvent, handler as any)
+      } else {
+        // Input events
+        this.input.off(event, handler as any)
+      }
+    })
+    this.inputListeners = []
   }
 }

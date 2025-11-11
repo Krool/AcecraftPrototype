@@ -67,8 +67,9 @@ export class EnemyProjectile extends Phaser.GameObjects.Text {
     return this.damage
   }
 
-  update() {
+  update(delta?: number) {
     // Deactivate if off screen (tighter bounds for better cleanup)
+    // Note: delta parameter not used for enemy projectiles, but kept for consistency
     if (this.active) {
       const cam = this.scene.cameras.main
       if (this.y > cam.height + 20 || this.y < -20 || this.x < -20 || this.x > cam.width + 20) {
@@ -113,10 +114,10 @@ export class EnemyProjectileGroup extends Phaser.Physics.Arcade.Group {
     return null
   }
 
-  update() {
+  update(delta?: number) {
     this.pool.forEach(projectile => {
       if (projectile.active) {
-        projectile.update()
+        projectile.update(delta)
       }
     })
   }

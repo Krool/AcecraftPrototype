@@ -71,9 +71,9 @@ export class PowerUp extends Phaser.GameObjects.Text {
     scene.add.existing(this)
     scene.physics.add.existing(this)
 
-    // Make collision body larger for easier pickup (3x bigger)
-    this.body.setSize(144, 144) // 48px text * 3
-    this.body.setOffset(-48, -48) // Center the larger body
+    // Make collision body slightly larger for easier pickup (1.5x bigger)
+    this.body.setSize(72, 72) // 48px text * 1.5
+    this.body.setOffset(-12, -12) // Center the larger body
 
     // Start inactive and move off-screen to prevent collisions at 0,0
     this.setActive(false)

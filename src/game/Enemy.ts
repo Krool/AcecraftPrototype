@@ -24,6 +24,29 @@ export enum EnemyType {
   SHIELDED = 'SHIELDED',    // Has shield that blocks projectiles from below
   EXPLODER = 'EXPLODER',    // Explodes on death damaging everything
   GOLDEN = 'GOLDEN',        // Golden pinata - drops extra credits
+
+  // Level-specific bosses
+  SCOUT_COMMANDER = 'SCOUT_COMMANDER',       // Level 1 boss
+  TANK_TWIN = 'TANK_TWIN',                   // Level 2 boss (spawns in pairs)
+  HIVE_QUEEN = 'HIVE_QUEEN',                 // Level 3 boss
+  HIVE_EGG = 'HIVE_EGG',                     // Level 3 boss eggs
+  ORBITAL_DEVASTATOR = 'ORBITAL_DEVASTATOR', // Level 4 boss
+  ORBITAL_SHIELD = 'ORBITAL_SHIELD',         // Level 4 boss shields
+  FRACTURED_TITAN = 'FRACTURED_TITAN',       // Level 5 boss
+  FRACTURED_MEDIUM = 'FRACTURED_MEDIUM',     // Level 5 boss split
+  FRACTURED_SMALL = 'FRACTURED_SMALL',       // Level 5 boss split
+  SHIELD_WARDEN = 'SHIELD_WARDEN',           // Level 6 boss
+  PROTOTYPE_BOMBER = 'PROTOTYPE_BOMBER',     // Level 7 mini-boss
+  ACE_BOMBER = 'ACE_BOMBER',                 // Level 7 boss
+  ESCORT_BOMBER = 'ESCORT_BOMBER',           // Level 7 boss support
+  VOID_HERALD = 'VOID_HERALD',               // Level 8 mini-boss
+  VOID_NEXUS = 'VOID_NEXUS',                 // Level 8 boss
+  SIEGE_ENGINE = 'SIEGE_ENGINE',             // Level 9 boss
+  SIEGE_TURRET = 'SIEGE_TURRET',             // Level 9 boss turrets
+  ASSAULT_CRUISER = 'ASSAULT_CRUISER',       // Level 10 mini-boss 1
+  BATTLE_COORDINATOR = 'BATTLE_COORDINATOR', // Level 10 mini-boss 2
+  MOTHERSHIP_OMEGA = 'MOTHERSHIP_OMEGA',     // Level 10 final boss
+  WEAPON_PORT = 'WEAPON_PORT',               // Level 10 boss parts
 }
 
 export interface EnemyBehavior {
@@ -331,6 +354,365 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
       movementPattern: 'zigzag',
     },
   },
+
+  // ==================== LEVEL-SPECIFIC BOSSES ====================
+
+  // Level 1 Boss: Scout Commander
+  [EnemyType.SCOUT_COMMANDER]: {
+    symbol: '◈◈◈',
+    color: '#ff6600',
+    fontSize: '72px',
+    health: 800,
+    speed: 60,
+    xpValue: 50,
+    scoreValue: 300,
+    name: 'SCOUT COMMANDER',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 1200,
+      movementPattern: 'sinwave',
+      specialAbility: 'scout_swoop',
+    },
+  },
+
+  // Level 2 Boss: Tank Twin (spawns in pairs)
+  [EnemyType.TANK_TWIN]: {
+    symbol: '[■■]',
+    color: '#cc0000',
+    fontSize: '68px',
+    health: 600,
+    speed: 45,
+    xpValue: 40,
+    scoreValue: 250,
+    name: 'TANK TWIN',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 1000,
+      movementPattern: 'patrol',
+      specialAbility: 'twin_link',
+    },
+  },
+
+  // Level 3 Boss: Hive Queen
+  [EnemyType.HIVE_QUEEN]: {
+    symbol: '♛♛♛',
+    color: '#9900ff',
+    fontSize: '88px',
+    health: 1200,
+    speed: 0,
+    xpValue: 60,
+    scoreValue: 400,
+    name: 'HIVE QUEEN',
+    behavior: {
+      shootsBack: false,
+      movementPattern: 'stationary',
+      specialAbility: 'hive_spawn',
+    },
+  },
+
+  [EnemyType.HIVE_EGG]: {
+    symbol: '(◉)',
+    color: '#cc00ff',
+    fontSize: '48px',
+    health: 150,
+    speed: 0,
+    xpValue: 5,
+    scoreValue: 20,
+    behavior: {
+      shootsBack: false,
+      movementPattern: 'stationary',
+      specialAbility: 'egg_shield',
+    },
+  },
+
+  // Level 4 Boss: Orbital Devastator
+  [EnemyType.ORBITAL_DEVASTATOR]: {
+    symbol: '◎◎◎',
+    color: '#00ccff',
+    fontSize: '80px',
+    health: 1400,
+    speed: 35,
+    xpValue: 70,
+    scoreValue: 450,
+    name: 'ORBITAL DEVASTATOR',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 1500,
+      movementPattern: 'circle',
+      specialAbility: 'orbital_laser',
+    },
+  },
+
+  [EnemyType.ORBITAL_SHIELD]: {
+    symbol: '◐',
+    color: '#0099cc',
+    fontSize: '36px',
+    health: 100,
+    speed: 0,
+    xpValue: 3,
+    scoreValue: 10,
+    behavior: {
+      shootsBack: false,
+      movementPattern: 'stationary',
+      specialAbility: 'shield_orbit',
+    },
+  },
+
+  // Level 5 Boss: Fractured Titan
+  [EnemyType.FRACTURED_TITAN]: {
+    symbol: '╬╬╬',
+    color: '#ff0099',
+    fontSize: '92px',
+    health: 1600,
+    speed: 40,
+    xpValue: 80,
+    scoreValue: 500,
+    name: 'FRACTURED TITAN',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 900,
+      movementPattern: 'sinwave',
+      specialAbility: 'fracture_split',
+    },
+  },
+
+  [EnemyType.FRACTURED_MEDIUM]: {
+    symbol: '╬╬',
+    color: '#ff0099',
+    fontSize: '64px',
+    health: 400,
+    speed: 60,
+    xpValue: 15,
+    scoreValue: 50,
+    behavior: {
+      shootsBack: true,
+      shootInterval: 800,
+      movementPattern: 'zigzag',
+      specialAbility: 'fracture_split',
+    },
+  },
+
+  [EnemyType.FRACTURED_SMALL]: {
+    symbol: '╬',
+    color: '#ff0099',
+    fontSize: '42px',
+    health: 150,
+    speed: 90,
+    xpValue: 8,
+    scoreValue: 25,
+    behavior: {
+      shootsBack: true,
+      shootInterval: 700,
+      movementPattern: 'charge',
+      specialAbility: 'none',
+    },
+  },
+
+  // Level 6 Boss: Shield Warden
+  [EnemyType.SHIELD_WARDEN]: {
+    symbol: '✦✦✦',
+    color: '#ffcc00',
+    fontSize: '84px',
+    health: 1800,
+    speed: 30,
+    xpValue: 90,
+    scoreValue: 550,
+    name: 'SHIELD WARDEN',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 1100,
+      movementPattern: 'sinwave',
+      specialAbility: 'pulsing_shield',
+    },
+  },
+
+  // Level 7 Bosses: Bomber Squadron
+  [EnemyType.PROTOTYPE_BOMBER]: {
+    symbol: '►B◄',
+    color: '#ff9900',
+    fontSize: '68px',
+    health: 1000,
+    speed: 55,
+    xpValue: 50,
+    scoreValue: 300,
+    name: 'PROTOTYPE BOMBER',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 1300,
+      movementPattern: 'patrol',
+      specialAbility: 'explosive_trail',
+    },
+  },
+
+  [EnemyType.ACE_BOMBER]: {
+    symbol: '►►B◄◄',
+    color: '#ff3300',
+    fontSize: '86px',
+    health: 2000,
+    speed: 50,
+    xpValue: 100,
+    scoreValue: 600,
+    name: 'ACE BOMBER',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 1000,
+      movementPattern: 'sinwave',
+      specialAbility: 'bombing_run',
+    },
+  },
+
+  [EnemyType.ESCORT_BOMBER]: {
+    symbol: '►b◄',
+    color: '#ff6600',
+    fontSize: '58px',
+    health: 600,
+    speed: 60,
+    xpValue: 30,
+    scoreValue: 150,
+    behavior: {
+      shootsBack: true,
+      shootInterval: 900,
+      movementPattern: 'patrol',
+      specialAbility: 'escort_fire',
+    },
+  },
+
+  // Level 8 Bosses: Void Nexus
+  [EnemyType.VOID_HERALD]: {
+    symbol: '◈◈◈',
+    color: '#6600cc',
+    fontSize: '70px',
+    health: 1200,
+    speed: 45,
+    xpValue: 60,
+    scoreValue: 350,
+    name: 'VOID HERALD',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 1100,
+      movementPattern: 'sinwave',
+      specialAbility: 'void_pulse',
+    },
+  },
+
+  [EnemyType.VOID_NEXUS]: {
+    symbol: '◉◉◉',
+    color: '#3300cc',
+    fontSize: '94px',
+    health: 2200,
+    speed: 40,
+    xpValue: 120,
+    scoreValue: 700,
+    name: 'VOID NEXUS',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 1200,
+      movementPattern: 'sinwave',
+      specialAbility: 'void_teleport',
+    },
+  },
+
+  // Level 9 Boss: Siege Engine
+  [EnemyType.SIEGE_ENGINE]: {
+    symbol: '███',
+    color: '#666666',
+    fontSize: '98px',
+    health: 3000,
+    speed: 25,
+    xpValue: 150,
+    scoreValue: 800,
+    name: 'SIEGE ENGINE',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 800,
+      movementPattern: 'straight',
+      specialAbility: 'siege_phase',
+    },
+  },
+
+  [EnemyType.SIEGE_TURRET]: {
+    symbol: '/▲\\',
+    color: '#999999',
+    fontSize: '48px',
+    health: 300,
+    speed: 0,
+    xpValue: 10,
+    scoreValue: 40,
+    behavior: {
+      shootsBack: true,
+      shootInterval: 1000,
+      movementPattern: 'stationary',
+      specialAbility: 'turret_fire',
+    },
+  },
+
+  // Level 10 Bosses: The Final Battle
+  [EnemyType.ASSAULT_CRUISER]: {
+    symbol: '▬▬▬▬',
+    color: '#ff00cc',
+    fontSize: '76px',
+    health: 1800,
+    speed: 35,
+    xpValue: 80,
+    scoreValue: 400,
+    name: 'ASSAULT CRUISER',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 900,
+      movementPattern: 'sinwave',
+      specialAbility: 'cruiser_barrage',
+    },
+  },
+
+  [EnemyType.BATTLE_COORDINATOR]: {
+    symbol: '◆◆◆◆',
+    color: '#cc00ff',
+    fontSize: '80px',
+    health: 2000,
+    speed: 40,
+    xpValue: 90,
+    scoreValue: 450,
+    name: 'BATTLE COORDINATOR',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 1000,
+      movementPattern: 'circle',
+      specialAbility: 'coordinate_strike',
+    },
+  },
+
+  [EnemyType.MOTHERSHIP_OMEGA]: {
+    symbol: '▓▓▓▓▓',
+    color: '#ff0000',
+    fontSize: '120px',
+    health: 5000,
+    speed: 20,
+    xpValue: 200,
+    scoreValue: 1500,
+    name: 'MOTHERSHIP OMEGA',
+    behavior: {
+      shootsBack: true,
+      shootInterval: 600,
+      movementPattern: 'sinwave',
+      specialAbility: 'omega_phase',
+    },
+  },
+
+  [EnemyType.WEAPON_PORT]: {
+    symbol: '[◈]',
+    color: '#cc0000',
+    fontSize: '44px',
+    health: 250,
+    speed: 0,
+    xpValue: 8,
+    scoreValue: 30,
+    behavior: {
+      shootsBack: true,
+      shootInterval: 1200,
+      movementPattern: 'stationary',
+      specialAbility: 'port_fire',
+    },
+  },
 }
 
 export class Enemy extends Phaser.GameObjects.Text {
@@ -371,6 +753,17 @@ export class Enemy extends Phaser.GameObjects.Text {
     bleedEndTime: 0,
     bleedStacks: 0 // HEMORRHAGE stacks for damage amplification
   }
+
+  // Boss-specific properties
+  private bossPhase: number = 1
+  private linkedBoss: Enemy | null = null // For Tank Twins
+  private orbitalShields: Enemy[] = [] // For Orbital Devastator
+  private childEnemies: Enemy[] = [] // For bosses with spawned adds
+  private lastSpecialAbilityTime: number = 0
+  private vulnerableUntil: number = 0 // For time-based vulnerability windows
+  private teleportCooldown: number = 0
+  private phaseChangeTriggered: boolean = false
+
   declare body: Phaser.Physics.Arcade.Body
 
   constructor(
@@ -1371,6 +1764,124 @@ export class Enemy extends Phaser.GameObjects.Text {
       // Standard aimed shot
       this.enemyProjectiles.fireAtTarget(this.x, this.y + 20, player.x, player.y, 200, 10)
     }
+  }
+
+  // ==================== BOSS-SPECIFIC METHODS ====================
+
+  getBossPhase(): number {
+    return this.bossPhase
+  }
+
+  setBossPhase(phase: number) {
+    this.bossPhase = phase
+    this.phaseChangeTriggered = false
+  }
+
+  hasChangedPhase(): boolean {
+    return this.phaseChangeTriggered
+  }
+
+  checkPhaseChange(): boolean {
+    const healthPercent = (this.currentHealth / this.maxHealth) * 100
+    const newPhase = this.calculatePhaseFromHealth(healthPercent)
+
+    if (newPhase !== this.bossPhase) {
+      this.bossPhase = newPhase
+      this.phaseChangeTriggered = true
+      return true
+    }
+    return false
+  }
+
+  private calculatePhaseFromHealth(healthPercent: number): number {
+    // 4-phase bosses (MOTHERSHIP_OMEGA, SIEGE_ENGINE)
+    if (this.enemyType === EnemyType.MOTHERSHIP_OMEGA) {
+      if (healthPercent > 75) return 1
+      if (healthPercent > 50) return 2
+      if (healthPercent > 25) return 3
+      return 4
+    }
+
+    if (this.enemyType === EnemyType.SIEGE_ENGINE) {
+      if (healthPercent > 50) return 1
+      if (healthPercent > 25) return 2
+      return 3
+    }
+
+    // 2-phase bosses
+    if (healthPercent > 66) return 1
+    if (healthPercent > 33) return 2
+    return 3
+  }
+
+  setLinkedBoss(boss: Enemy) {
+    this.linkedBoss = boss
+  }
+
+  getLinkedBoss(): Enemy | null {
+    return this.linkedBoss
+  }
+
+  addOrbitalShield(shield: Enemy) {
+    this.orbitalShields.push(shield)
+  }
+
+  getOrbitalShields(): Enemy[] {
+    return this.orbitalShields
+  }
+
+  clearOrbitalShields() {
+    this.orbitalShields = []
+  }
+
+  addChildEnemy(enemy: Enemy) {
+    this.childEnemies.push(enemy)
+  }
+
+  getChildEnemies(): Enemy[] {
+    return this.childEnemies.filter(e => e.active)
+  }
+
+  clearChildEnemies() {
+    this.childEnemies = []
+  }
+
+  canUseSpecialAbility(cooldown: number = 3000): boolean {
+    return this.scene.time.now - this.lastSpecialAbilityTime >= cooldown
+  }
+
+  useSpecialAbility() {
+    this.lastSpecialAbilityTime = this.scene.time.now
+  }
+
+  setVulnerable(duration: number) {
+    this.vulnerableUntil = this.scene.time.now + duration
+  }
+
+  isVulnerable(): boolean {
+    if (this.vulnerableUntil === 0) return true // Always vulnerable by default
+    return this.scene.time.now < this.vulnerableUntil
+  }
+
+  setTeleportCooldown(cooldown: number) {
+    this.teleportCooldown = cooldown
+  }
+
+  canTeleport(): boolean {
+    return this.scene.time.now >= this.teleportCooldown
+  }
+
+  preDestroy() {
+    // Clean up timer to prevent memory leak
+    if (this.colorResetTimer) {
+      this.colorResetTimer.remove()
+      this.colorResetTimer = null
+    }
+
+    // Clean up boss-specific references
+    this.linkedBoss = null
+    this.orbitalShields = []
+    this.childEnemies = []
   }
 }
 

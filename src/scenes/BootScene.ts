@@ -14,28 +14,12 @@ export default class BootScene extends Phaser.Scene {
     // Create loading UI first (this happens before actual loading)
     this.createLoadingUI()
 
-    let filesLoaded = 0
-    const totalFiles = 20
-    const barWidth = 400
+    // Music is now lazy-loaded in GameScene on-demand
+    // This dramatically improves boot time from ~60s to <1s
 
-    // Load all 20 background music tracks
-    for (let i = 1; i <= 20; i++) {
-      const trackNumber = i.toString().padStart(3, '0')
-      this.load.audio(`bgm-${i}`, `assets/audio/8 Bit atmosphere/8 Bit atmosphere - ${trackNumber} - ${this.getTrackName(i)}.mp3`)
-    }
-
-    // Track when each file completes loading
-    this.load.on('filecomplete', (key: string) => {
-      filesLoaded++
-      const percent = Math.floor((filesLoaded / totalFiles) * 100)
-      this.loadingText.setText(`Loading Audio ${filesLoaded}/${totalFiles} (${percent}%)`)
-      this.progressBar.width = barWidth * (filesLoaded / totalFiles)
-    })
-
-    this.load.on('complete', () => {
-      this.loadingText.setText('Loading Complete! (100%)')
-      this.progressBar.width = barWidth
-    })
+    // Update loading text immediately since we have nothing to load
+    this.loadingText.setText('Ready! (100%)')
+    this.progressBar.width = 400
   }
 
   private createLoadingUI() {
@@ -149,5 +133,12 @@ export default class BootScene extends Phaser.Scene {
         }
       })
     })
+  }
+
+  shutdown(): void {
+    // Clean up camera event listeners
+    // Note: Loader events are automatically cleaned up by Phaser after loading completes,
+    // but we clean up camera events explicitly
+    this.cameras.main.removeAllListeners()
   }
 }

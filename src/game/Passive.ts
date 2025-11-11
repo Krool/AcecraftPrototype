@@ -240,6 +240,9 @@ export interface PlayerStats {
   healthRegen: number // Health regenerated per second
   invulnFrames: number // Invulnerability frames after taking damage (in milliseconds)
   revives: number // Number of times player can revive
+  xpMultiplier?: number // XP gain multiplier (Vulcan, Supernova)
+  unlimitedRerolls?: boolean // Eclipse: Unlimited rerolls
+  autoSelectUpgrades?: boolean // Supernova: Auto-select upgrades
 }
 
 // Ballistics Implementation

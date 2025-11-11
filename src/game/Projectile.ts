@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { DamageType } from './Weapon'
 
 export enum ProjectileType {
   NORMAL = 'NORMAL',
@@ -16,6 +17,7 @@ export class Projectile extends Phaser.GameObjects.Text {
   private pierceCount: number
   private remainingPierces: number
   private projectileType: ProjectileType
+  private damageType: DamageType
   private explosionRadius: number
   private freezeChance: number
   private freezeDuration: number
@@ -33,6 +35,7 @@ export class Projectile extends Phaser.GameObjects.Text {
   private homingSpeed: number = 0
   private currentAngle: number = 0
   private enemyGroupRef: any = null
+  private weaponName: string = ''
   declare body: Phaser.Physics.Arcade.Body
 
   constructor(
@@ -60,6 +63,8 @@ export class Projectile extends Phaser.GameObjects.Text {
       homingTurnRate?: number
       homingSpeed?: number
       fontSize?: string
+      damageType?: DamageType
+      weaponName?: string
     }
   ) {
     const defaultFontSize = pierceCount > 0 ? '22px' : '19px'
@@ -68,7 +73,7 @@ export class Projectile extends Phaser.GameObjects.Text {
     super(scene, x, y, icon, {
       fontFamily: 'Courier New',
       fontSize: fontSize,
-      color: pierceCount > 0 ? '#00ffff' : color,
+      color: color,
     })
 
     this.setOrigin(0.5)
@@ -79,6 +84,7 @@ export class Projectile extends Phaser.GameObjects.Text {
     this.pierceCount = pierceCount
     this.remainingPierces = pierceCount
     this.projectileType = type
+    this.damageType = specialData?.damageType || DamageType.PHYSICAL
     this.explosionRadius = specialData?.explosionRadius || 0
     this.freezeChance = specialData?.freezeChance || 0
     this.freezeDuration = specialData?.freezeDuration || 0
@@ -91,6 +97,7 @@ export class Projectile extends Phaser.GameObjects.Text {
     this.zoneRadius = specialData?.zoneRadius || 0
     this.homingTurnRate = specialData?.homingTurnRate || 0.05 // Radians per frame (slow turning)
     this.homingSpeed = specialData?.homingSpeed || 350
+    this.weaponName = specialData?.weaponName || ''
     this.initialX = x
     this.distanceTraveled = 0
 
@@ -164,6 +171,14 @@ export class Projectile extends Phaser.GameObjects.Text {
     return this.remainingPierces > 0
   }
 
+  getDamageType(): DamageType {
+    return this.damageType
+  }
+
+  getWeaponName(): string {
+    return this.weaponName
+  }
+
   setEnemyGroup(enemyGroup: any): void {
     this.enemyGroupRef = enemyGroup
   }
@@ -186,8 +201,8 @@ export class Projectile extends Phaser.GameObjects.Text {
         trailSize = '8px'
         break
       case ProjectileType.CHAINING:
-        trailChar = '⚡'
-        trailColor = '#ffff00'
+        trailChar = '‡'
+        trailColor = '#00ff00'
         trailSize = '9px'
         break
       case ProjectileType.EARTH_ZONE:
@@ -237,7 +252,7 @@ export class Projectile extends Phaser.GameObjects.Text {
     })
   }
 
-  update() {
+  update(delta?: number) {
     // Trail particles disabled for performance
     // const currentTime = this.scene.time.now
     // if (currentTime - this.lastTrailTime > 150) {
@@ -247,7 +262,9 @@ export class Projectile extends Phaser.GameObjects.Text {
 
     // Apply wave motion for WAVE projectiles
     if (this.projectileType === ProjectileType.WAVE) {
-      this.distanceTraveled += Math.abs(this.body.velocity.y) * (1/60) // Assuming 60 FPS
+      // Use delta time instead of assuming 60 FPS (delta is in milliseconds, convert to seconds)
+      const deltaSeconds = delta ? delta / 1000 : 1 / 60
+      this.distanceTraveled += Math.abs(this.body.velocity.y) * deltaSeconds
       const offset = Math.sin(this.distanceTraveled * this.waveFrequency + this.wavePhase) * this.waveAmplitude
       this.x = this.initialX + offset
     }
@@ -383,6 +400,8 @@ export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
       homingTurnRate?: number
       homingSpeed?: number
       fontSize?: string
+      damageType?: DamageType
+      weaponName?: string
     }
   ): Projectile {
     // Create new projectile
@@ -424,14 +443,14 @@ export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
     spreadAngle: number = 30,
     icon: string = '|',
     color: string = '#ffff00',
-    fontSize?: string
+    fontSize?: string,
+    speed: number = 500
   ) {
     const angleStep = spreadAngle / (count - 1)
     const startAngle = -spreadAngle / 2
 
     for (let i = 0; i < count; i++) {
       const angle = (startAngle + angleStep * i) * (Math.PI / 180)
-      const speed = 500
       const velocityX = Math.sin(angle) * speed
       const velocityY = -Math.cos(angle) * speed
 
@@ -443,11 +462,11 @@ export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
     }
   }
 
-  update() {
+  update(delta?: number) {
     // Update all projectiles
     this.getChildren().forEach((projectile: any) => {
       if (projectile.update) {
-        projectile.update()
+        projectile.update(delta)
       }
     })
   }

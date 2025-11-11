@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { ProjectileGroup } from './Projectile'
 import { soundManager, SoundType } from './SoundManager'
+import { DamageType } from './Weapon'
 
 export enum AllyType {
   WINGMAN = 'WINGMAN',          // Basic shooting ally from WINGMAN_PROTOCOL passive
@@ -16,6 +17,7 @@ export interface AllyConfig {
   health: number
   fireRate: number  // Shots per second
   damage: number
+  damageType: DamageType
   icon: string
   name?: string
 }
@@ -23,41 +25,45 @@ export interface AllyConfig {
 export const ALLY_CONFIGS: Record<AllyType, AllyConfig> = {
   [AllyType.WINGMAN]: {
     symbol: '◈',
-    color: '#00ffff',
+    color: '#ffff00',  // Yellow for PHYSICAL (matches Gun Buddy)
     fontSize: '32px',
     health: 50,
     fireRate: 2,  // 2 shots per second
     damage: 10,
+    damageType: DamageType.PHYSICAL,
     icon: '◈',
     name: 'Wingman',
   },
   [AllyType.RANGED]: {
     symbol: '◇',
-    color: '#ff00ff',
+    color: '#00ff00',  // Green for NATURE (provides variety)
     fontSize: '28px',
     health: 40,
     fireRate: 3,  // 3 shots per second
     damage: 8,
+    damageType: DamageType.NATURE,
     icon: '◇',
     name: 'Ranged Ally',
   },
   [AllyType.WALL]: {
     symbol: '▣',
-    color: '#ffaa00',
+    color: '#ff8800',  // Orange for FIRE (explosion damage)
     fontSize: '24px',
     health: 30,
     fireRate: 0,  // Doesn't shoot
     damage: 25,   // Explosion damage
+    damageType: DamageType.FIRE,
     icon: '▣',
     name: 'Wall Ally',
   },
   [AllyType.REROLL]: {
     symbol: '⟲',
-    color: '#00ff00',
+    color: '#aaaaaa',  // Gray for utility (doesn't deal damage)
     fontSize: '28px',
     health: 35,
     fireRate: 0,  // Doesn't shoot
     damage: 0,
+    damageType: DamageType.CONTROL,
     icon: '⟲',
     name: 'Reroll Ally',
   },
@@ -76,6 +82,8 @@ export class Ally extends Phaser.GameObjects.Text {
   private formationX: number = 0  // Offset from player
   private formationY: number = 0
   private lastRerollTime: number = 0
+  private lastCollisionTime: number = 0  // Track collision cooldown
+  private collisionCooldown: number = 500  // 500ms between collision damage
   declare body: Phaser.Physics.Arcade.Body
 
   constructor(
@@ -154,6 +162,7 @@ export class Ally extends Phaser.GameObjects.Text {
     this.currentHealth = this.maxHealth
     this.lastShotTime = this.scene.time.now
     this.lastRerollTime = this.scene.time.now
+    this.lastCollisionTime = 0  // Reset collision cooldown
 
     // Ensure physics body exists
     if (!this.body) {
@@ -208,6 +217,16 @@ export class Ally extends Phaser.GameObjects.Text {
     }
 
     return false
+  }
+
+  canTakeCollisionDamage(currentTime: number): boolean {
+    // Check if enough time has passed since last collision
+    if (currentTime - this.lastCollisionTime < this.collisionCooldown) {
+      return false
+    }
+    // Update last collision time
+    this.lastCollisionTime = currentTime
+    return true
   }
 
   private die() {
@@ -387,7 +406,12 @@ export class Ally extends Phaser.GameObjects.Text {
       0,   // vx
       -400,  // vy (shoot upward)
       this.config.icon,
-      this.config.color
+      this.config.color,
+      undefined,  // projectileType
+      {
+        damageType: this.config.damageType,
+        weaponName: `Ally - ${this.config.name}`
+      }
     )
 
     // Play sound

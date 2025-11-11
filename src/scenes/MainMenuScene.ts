@@ -370,7 +370,7 @@ export default class MainMenuScene extends Phaser.Scene {
     const buildText = this.add.text(
       this.cameras.main.centerX + 20 * scaleFactor,
       startY + (buttonHeight + buttonSpacing) * 2,
-      'UPGRADES',
+      'RESEARCH',
       {
         fontFamily: 'Courier New',
         fontSize: `${Math.floor(24 * scaleFactor)}px`,

@@ -27,6 +27,9 @@ export default class BuildingMenuScene extends Phaser.Scene {
   private detailContainer!: Phaser.GameObjects.Container
   private tabObjects: Map<TreeType, { bg: Phaser.GameObjects.Rectangle, border: Phaser.GameObjects.Rectangle, text: Phaser.GameObjects.Text, dot: Phaser.GameObjects.Arc }> = new Map()
 
+  // Track interactive objects for cleanup
+  private interactiveObjects: Phaser.GameObjects.GameObject[] = []
+
   // Define all skill trees
   private skillTrees: Record<TreeType, SkillTree> = {
     combat: {
@@ -139,7 +142,7 @@ export default class BuildingMenuScene extends Phaser.Scene {
     this.add.text(
       this.cameras.main.centerX,
       25,
-      'UPGRADES',
+      'RESEARCH',
       {
         fontFamily: 'Courier New',
         fontSize: '36px',
@@ -202,6 +205,9 @@ export default class BuildingMenuScene extends Phaser.Scene {
       })
     })
 
+    // Track for cleanup
+    this.interactiveObjects.push(creditButton)
+
     // Back button
     const backButton = this.add.text(
       20,
@@ -217,6 +223,9 @@ export default class BuildingMenuScene extends Phaser.Scene {
     backButton.on('pointerover', () => backButton.setColor('#00ff00'))
     backButton.on('pointerout', () => backButton.setColor('#00ffff'))
     backButton.on('pointerdown', () => this.scene.start('MainMenuScene'))
+
+    // Track for cleanup
+    this.interactiveObjects.push(backButton)
 
     // Create tree tabs
     this.createTreeTabs()
@@ -299,6 +308,9 @@ export default class BuildingMenuScene extends Phaser.Scene {
           bg.setFillStyle(0x1a1a3a)
         }
       })
+
+      // Track for cleanup
+      this.interactiveObjects.push(bg)
     })
   }
 
@@ -469,6 +481,9 @@ export default class BuildingMenuScene extends Phaser.Scene {
       border.setStrokeStyle(3, borderColor)
     })
     bg.on('pointerdown', () => this.selectNode(type))
+
+    // Track for cleanup
+    this.interactiveObjects.push(bg)
 
     this.treeContainer.add([bg, border, icon, levelText])
 
@@ -657,6 +672,9 @@ export default class BuildingMenuScene extends Phaser.Scene {
       }
 
       buttonBg.on('pointerdown', () => this.upgradeNode())
+
+      // Track for cleanup
+      this.interactiveObjects.push(buttonBg)
 
       this.detailContainer.add([buttonBg, buttonBorder, buttonText, costText])
     } else if (isMaxed) {
@@ -877,5 +895,18 @@ export default class BuildingMenuScene extends Phaser.Scene {
     this.tabObjects.forEach((objects, treeType) => {
       objects.dot.setVisible(this.hasAffordableNodesInTree(treeType))
     })
+  }
+
+  shutdown(): void {
+    // Clean up all event listeners
+    this.interactiveObjects.forEach(obj => {
+      if (obj && obj.active) {
+        obj.removeAllListeners()
+      }
+    })
+    this.interactiveObjects = []
+
+    // Clear containers (they will be destroyed by Phaser)
+    this.tabObjects.clear()
   }
 }
