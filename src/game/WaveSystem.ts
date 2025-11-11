@@ -141,16 +141,54 @@ export class WaveSystem {
 
   private generateLevel1Waves(): LevelWaves {
     // Level 1: Scout Commander (12 waves)
+    // Smooth difficulty curve - gradual increase in enemy count and HP per wave
     const waves: Wave[] = []
-    const enemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.SWARMER]
+    const allEnemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.SWARMER]
 
-    // Waves 1-11: Build up
-    for (let i = 1; i <= 11; i++) {
-      const difficulty = i <= 4 ? 'early' : i <= 8 ? 'mid' : 'late'
-      // Wave 1: Only drones for tutorial
-      const waveEnemies = i === 1 ? [EnemyType.DRONE] : enemies
-      waves.push(this.createStandardWave(i, waveEnemies, difficulty))
-    }
+    // Wave progression: gradually increase enemy count and complexity
+    // Target ~100-120 HP increase per wave for smooth scaling
+    const waveConfigs = [
+      { wave: 1,  min: 6,  max: 8,   enemies: [EnemyType.DRONE], formations: 2 },                    // ~140 HP (tutorial)
+      { wave: 2,  min: 10, max: 12,  enemies: [EnemyType.DRONE, EnemyType.SWARMER], formations: 2 }, // ~220 HP
+      { wave: 3,  min: 14, max: 16,  enemies: allEnemies, formations: 3 },                             // ~330 HP
+      { wave: 4,  min: 18, max: 20,  enemies: allEnemies, formations: 3 },                             // ~440 HP
+      { wave: 5,  min: 22, max: 24,  enemies: allEnemies, formations: 3 },                             // ~550 HP
+      { wave: 6,  min: 26, max: 28,  enemies: allEnemies, formations: 3 },                             // ~660 HP
+      { wave: 7,  min: 30, max: 32,  enemies: allEnemies, formations: 4 },                             // ~770 HP
+      { wave: 8,  min: 34, max: 36,  enemies: allEnemies, formations: 4 },                             // ~880 HP
+      { wave: 9,  min: 38, max: 40,  enemies: allEnemies, formations: 4 },                             // ~990 HP
+      { wave: 10, min: 42, max: 44,  enemies: allEnemies, formations: 5 },                             // ~1100 HP
+      { wave: 11, min: 46, max: 48,  enemies: allEnemies, formations: 5 },                             // ~1210 HP
+    ]
+
+    // Create each wave with custom config
+    waveConfigs.forEach(config => {
+      const formations: WaveFormation[] = [
+        { type: 'line', enemyTypes: config.enemies, spacing: 45 },
+        { type: 'v', enemyTypes: config.enemies, spacing: 50 },
+      ]
+
+      if (config.formations >= 3) {
+        formations.push({ type: 'circle', enemyTypes: config.enemies, spacing: 60 })
+      }
+      if (config.formations >= 4) {
+        formations.push({ type: 'wave', enemyTypes: config.enemies, spacing: 45 })
+      }
+      if (config.formations >= 5) {
+        formations.push({ type: 'single', enemyTypes: config.enemies, count: 8 })
+      }
+
+      waves.push({
+        waveNumber: config.wave,
+        buckets: [{
+          formations,
+          minEnemies: config.min,
+          maxEnemies: config.max,
+        }],
+        isBoss: false,
+        isMiniBoss: false,
+      })
+    })
 
     // Wave 12: Scout Commander Boss
     waves.push({
@@ -158,7 +196,7 @@ export class WaveSystem {
       buckets: [{
         formations: [
           { type: 'single', enemyTypes: [EnemyType.SCOUT_COMMANDER], count: 1 },
-          { type: 'circle', enemyTypes: enemies, spacing: 60 }
+          { type: 'circle', enemyTypes: allEnemies, spacing: 60 }
         ],
         minEnemies: 15,
         maxEnemies: 25,
