@@ -990,8 +990,15 @@ export class Enemy extends Phaser.GameObjects.Text {
   takeDamage(damage: number): boolean {
     if (!this.active) return false
 
+    // Spawn immunity: 200ms grace period after spawning
+    const timeSinceSpawn = this.scene.time.now - this.spawnTime
+    if (timeSinceSpawn < 200) {
+      return false
+    }
+
     // Don't take damage until visible on screen (prevent off-screen kills)
-    if (this.y < 0) {
+    // Use a more generous buffer to account for text height
+    if (this.y < 20) {
       return false
     }
 
