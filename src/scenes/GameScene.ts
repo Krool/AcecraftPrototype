@@ -2140,7 +2140,7 @@ export default class GameScene extends Phaser.Scene {
       // Apply health regeneration
       if (this.playerStats.healthRegen > 0) {
         const regenAmount = (this.playerStats.healthRegen * cappedDelta) / 1000 // Convert to per-second
-        this.health = Math.min(this.maxHealth, this.health + regenAmount)
+        this.health = Math.floor(Math.min(this.maxHealth, this.health + regenAmount))
       }
 
       // Fire all equipped weapons
@@ -2184,13 +2184,13 @@ export default class GameScene extends Phaser.Scene {
         // Wave cleared! Apply wave heal bonus
         const bonuses = this.gameState.getTotalBonuses()
         if (bonuses.waveHeal && bonuses.waveHeal > 0) {
-          this.health = Math.min(this.maxHealth, this.health + bonuses.waveHeal)
+          this.health = Math.floor(Math.min(this.maxHealth, this.health + bonuses.waveHeal))
 
           // Show healing text
           const healText = this.add.text(
             this.player.x,
             this.player.y - 50,
-            `+${bonuses.waveHeal} HP`,
+            `+${Math.floor(bonuses.waveHeal)} HP`,
             {
               fontFamily: 'Courier New',
               fontSize: '20px',
@@ -5309,7 +5309,7 @@ export default class GameScene extends Phaser.Scene {
         const baseHealPercent = 0.2
         const healPercent = baseHealPercent * (1 + (bonuses2.healthPackValue || 0))
         const healAmount = Math.floor(this.maxHealth * healPercent)
-        this.health = Math.min(this.maxHealth, this.health + healAmount)
+        this.health = Math.floor(Math.min(this.maxHealth, this.health + healAmount))
 
         // Visual feedback - flash green
         this.cameras.main.flash(200, 0, 255, 0)
@@ -5496,7 +5496,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.health -= amount
-    this.health = Math.max(0, this.health)
+    this.health = Math.floor(Math.max(0, this.health))
     this.updateHealthDisplay()
 
     // Reset combo when hit
@@ -5530,8 +5530,8 @@ export default class GameScene extends Phaser.Scene {
       this.healthBarFill.setPosition(playerX - 29, playerY + 1) // Center the fill (60/2 - 1 for padding)
       this.healthText.setPosition(playerX, playerY + healthBarHeight / 2) // Center text inside bar
 
-      // Update health text
-      this.healthText.setText(`${this.health}`)
+      // Update health text (always show as integer)
+      this.healthText.setText(`${Math.floor(this.health)}`)
 
       // Update health bar width
       const healthBarMaxWidth = 56 // 60 - 4 for padding
