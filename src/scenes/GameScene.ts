@@ -107,7 +107,6 @@ export default class GameScene extends Phaser.Scene {
   // Active power-ups
   private hasShield: boolean = false
   private shieldEndTime: number = 0
-  private shieldFlashTween?: Phaser.Tweens.Tween
   private hasRapidFirePowerUp: boolean = false
   private rapidFireEndTime: number = 0
   private hasMagnet: boolean = false
@@ -2389,38 +2388,33 @@ export default class GameScene extends Phaser.Scene {
     // Star power invulnerability visual effect
     if (!this.isPaused) {
       const timeSinceHit = time - this.lastHitTime
-      const isInvulnerable = timeSinceHit < this.playerStats.invulnFrames
+      const hasIFrames = timeSinceHit < this.playerStats.invulnFrames
+      const isInvulnerable = hasIFrames || this.hasShield
 
       if (isInvulnerable) {
-        // Currently invulnerable - show star effect (unless shield is active)
-        if (!this.hasShield) {
-          // Create rainbow flash effect like Mario star power
-          // Cycle through colors rapidly (every 50ms)
-          const colorIndex = Math.floor(time / 50) % 7
-          const rainbowColors = [
-            '#ff0000', // Red
-            '#ff7f00', // Orange
-            '#ffff00', // Yellow
-            '#00ff00', // Green
-            '#00ffff', // Cyan
-            '#0000ff', // Blue
-            '#ff00ff', // Magenta
-          ]
-          this.player.setColor(rainbowColors[colorIndex])
+        // Currently invulnerable - show star effect
+        // Create rainbow flash effect like Mario star power
+        // Cycle through colors rapidly (every 50ms)
+        const colorIndex = Math.floor(time / 50) % 7
+        const rainbowColors = [
+          '#ff0000', // Red
+          '#ff7f00', // Orange
+          '#ffff00', // Yellow
+          '#00ff00', // Green
+          '#00ffff', // Cyan
+          '#0000ff', // Blue
+          '#ff00ff', // Magenta
+        ]
+        this.player.setColor(rainbowColors[colorIndex])
 
-          // Add a subtle glow effect by pulsing scale
-          const glowPhase = Math.sin(time / 100) * 0.05 + 1
-          this.player.setScale(glowPhase)
-        }
+        // Add a subtle glow effect by pulsing scale
+        const glowPhase = Math.sin(time / 100) * 0.05 + 1
+        this.player.setScale(glowPhase)
         this.wasInvulnerable = true
       } else if (this.wasInvulnerable) {
         // Just finished being invulnerable - restore color/scale once
         this.wasInvulnerable = false
-
-        // Only restore if no other effects are active
-        if (!this.hasShield) {
-          this.player.setColor(this.characterColor)
-        }
+        this.player.setColor(this.characterColor)
         this.player.setScale(1)
       }
     }
@@ -6057,33 +6051,7 @@ export default class GameScene extends Phaser.Scene {
       case PowerUpType.SHIELD:
         this.hasShield = true
         this.shieldEndTime = this.time.now + config.duration
-
-        // Create flashing shield effect
-        if (this.shieldFlashTween) {
-          this.shieldFlashTween.stop()
-        }
-
-        // Reset scale (in case invulnerability glow was active)
-        this.player.setScale(1)
-
-        // Reset to normal color first
-        this.player.setColor(this.characterColor)
-
-        // Create flashing tween that alternates between normal character color and cyan
-        this.shieldFlashTween = this.tweens.add({
-          targets: this.player,
-          duration: 200,
-          repeat: -1,
-          yoyo: true,
-          onUpdate: (tween) => {
-            const progress = tween.progress
-            if (progress < 0.5) {
-              this.player.setColor('#00ffff') // Cyan shield effect
-            } else {
-              this.player.setColor(this.characterColor) // Character's original color
-            }
-          }
-        })
+        // Star effect will be shown automatically by the update loop
         break
 
       case PowerUpType.RAPID_FIRE:
@@ -6174,19 +6142,7 @@ export default class GameScene extends Phaser.Scene {
     // Check shield
     if (this.hasShield && currentTime >= this.shieldEndTime) {
       this.hasShield = false
-
-      // Stop the flashing tween
-      if (this.shieldFlashTween) {
-        this.shieldFlashTween.stop()
-        this.shieldFlashTween = undefined
-      }
-
-      // Only restore color if not invulnerable (star effect takes priority)
-      const timeSinceHit = currentTime - this.lastHitTime
-      const isInvulnerable = timeSinceHit < this.playerStats.invulnFrames
-      if (!isInvulnerable) {
-        this.player.setColor(this.characterColor)
-      }
+      // Star effect update loop will handle color restoration automatically
       updated = true
     }
 
