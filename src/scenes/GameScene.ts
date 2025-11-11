@@ -2383,6 +2383,34 @@ export default class GameScene extends Phaser.Scene {
 
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body
 
+    // Star power invulnerability visual effect
+    if (!this.isPaused) {
+      const timeSinceHit = time - this.lastHitTime
+      if (timeSinceHit < this.playerStats.invulnFrames) {
+        // Create rainbow flash effect like Mario star power
+        // Cycle through colors rapidly (every 50ms)
+        const colorIndex = Math.floor(time / 50) % 7
+        const rainbowColors = [
+          '#ff0000', // Red
+          '#ff7f00', // Orange
+          '#ffff00', // Yellow
+          '#00ff00', // Green
+          '#00ffff', // Cyan
+          '#0000ff', // Blue
+          '#ff00ff', // Magenta
+        ]
+        this.player.setColor(rainbowColors[colorIndex])
+
+        // Add a subtle glow effect by pulsing scale
+        const glowPhase = Math.sin(time / 100) * 0.05 + 1
+        this.player.setScale(glowPhase)
+      } else {
+        // Not invulnerable, restore normal color and scale
+        this.player.setColor(this.characterColor)
+        this.player.setScale(1)
+      }
+    }
+
     // BASTION: Block movement if fired weapons last frame (turret mode)
     const isBastionFiring = this.character.getConfig().type === 'BASTION' && this.bastionFiredLastFrame
 
@@ -3052,7 +3080,12 @@ export default class GameScene extends Phaser.Scene {
     // RAYCAST laser implementation - no projectiles!
     // Find nearest enemies and draw laser lines to them
 
-    const activeEnemies = this.enemies.getChildren().filter((e: any) => e.active) as any[]
+    const activeEnemies = this.enemies.getChildren().filter((e: any) => {
+      // Filter for active enemies with valid on-screen positions
+      return e.active && e.y > 0 && e.y < this.cameras.main.height &&
+             e.x >= 0 && e.x <= this.cameras.main.width
+    }) as any[]
+
     if (activeEnemies.length === 0) return
 
     // Sort enemies by distance
@@ -3069,8 +3102,8 @@ export default class GameScene extends Phaser.Scene {
       const enemy = activeEnemies[i]
       const distance = Phaser.Math.Distance.Between(data.x, data.y, enemy.x, enemy.y)
 
-      // Only hit enemies within range
-      if (distance <= data.maxRange) {
+      // Only hit enemies within range and with valid positions
+      if (distance <= data.maxRange && enemy.active && enemy.x >= 0 && enemy.y > 0) {
         // Apply damage directly
         enemy.takeDamage(data.damage)
 
@@ -5948,11 +5981,20 @@ export default class GameScene extends Phaser.Scene {
       return
     }
 
+    // Check invulnerability frames
+    const timeSinceHit = this.time.now - this.lastHitTime
+    if (timeSinceHit < this.playerStats.invulnFrames) {
+      return // Still invulnerable
+    }
+
     // Play player hit sound
     soundManager.play(SoundType.PLAYER_HIT)
 
     // Damage player
     this.takeDamage(10)
+
+    // Set last hit time for invulnerability
+    this.lastHitTime = this.time.now
 
     // Contact damage to enemy
     const enemyType = enemy.getType ? enemy.getType() : null
@@ -5968,12 +6010,6 @@ export default class GameScene extends Phaser.Scene {
       // Regular enemies die on contact (original behavior)
       enemy.takeDamage(999)
     }
-
-    // Visual feedback - flash player red briefly
-    this.player.setColor('#ff0000')
-    this.time.delayedCall(100, () => {
-      this.player.setColor(this.characterColor)
-    })
   }
 
   private handlePowerUpCollection(
@@ -6746,11 +6782,20 @@ export default class GameScene extends Phaser.Scene {
 
     if (!projectile.active) return
 
+    // Check invulnerability frames
+    const timeSinceHit = this.time.now - this.lastHitTime
+    if (timeSinceHit < this.playerStats.invulnFrames) {
+      return // Still invulnerable
+    }
+
     // Play player hit sound
     soundManager.play(SoundType.PLAYER_HIT)
 
     // Damage player
     this.takeDamage(projectile.getDamage())
+
+    // Set last hit time for invulnerability
+    this.lastHitTime = this.time.now
 
     // Destroy projectile
     const projectileBody = projectile.body as Phaser.Physics.Arcade.Body

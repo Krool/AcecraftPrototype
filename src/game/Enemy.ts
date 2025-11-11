@@ -1397,8 +1397,36 @@ export class Enemy extends Phaser.GameObjects.Text {
       this.statusEffects.bleedStacks = 0
     }
 
+    // Helper to check if this is a boss enemy
+    const isBossEnemy = this.enemyType === EnemyType.BOSS ||
+                        this.enemyType === EnemyType.MINI_BOSS ||
+                        this.enemyType === EnemyType.SCOUT_COMMANDER ||
+                        this.enemyType === EnemyType.TANK_TWIN ||
+                        this.enemyType === EnemyType.HIVE_QUEEN ||
+                        this.enemyType === EnemyType.ORBITAL_DEVASTATOR ||
+                        this.enemyType === EnemyType.FRACTURED_TITAN ||
+                        this.enemyType === EnemyType.SHIELD_WARDEN ||
+                        this.enemyType === EnemyType.ACE_BOMBER ||
+                        this.enemyType === EnemyType.VOID_NEXUS ||
+                        this.enemyType === EnemyType.SIEGE_ENGINE ||
+                        this.enemyType === EnemyType.MOTHERSHIP_OMEGA
+
     // Update movement patterns
     switch (this.behavior.movementPattern) {
+      case 'straight':
+        // Boss enemies hover at the top instead of descending
+        if (isBossEnemy) {
+          const hoverY = 180
+          if (this.y < hoverY) {
+            this.body.setVelocityY(this.speed)
+          } else {
+            this.body.setVelocityY(0)
+          }
+        } else {
+          this.body.setVelocityY(this.speed)
+        }
+        break
+
       case 'zigzag':
         this.zigzagTime += cappedDelta
         const zigzagFrequency = 500
@@ -1416,7 +1444,7 @@ export class Enemy extends Phaser.GameObjects.Text {
         this.body.setVelocityX((sinOffset - (this.body.x - this.body.prev.x)) * 3)
 
         // Boss enemies hover at the top instead of descending
-        if (this.enemyType === EnemyType.BOSS || this.enemyType === EnemyType.MINI_BOSS) {
+        if (isBossEnemy) {
           // Move to hover position at top of screen (y = 180), then stop descending
           const hoverY = 180
           if (this.y < hoverY) {
