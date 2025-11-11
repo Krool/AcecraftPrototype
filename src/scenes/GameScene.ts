@@ -6008,16 +6008,19 @@ export default class GameScene extends Phaser.Scene {
     // Play player hit sound
     soundManager.play(SoundType.PLAYER_HIT)
 
-    // Damage player
-    this.takeDamage(10)
+    // Check enemy type for boss collision damage multiplier
+    const enemyType = enemy.getType ? enemy.getType() : null
+    const isBoss = this.isBossType(enemyType)
+    const isMiniBoss = this.isMiniBossType(enemyType)
+
+    // Damage player (boss collision deals 3x damage before armor reduction)
+    const collisionDamage = (isBoss || isMiniBoss) ? 30 : 10
+    this.takeDamage(collisionDamage)
 
     // Set last hit time for invulnerability
     this.lastHitTime = this.time.now
 
     // Contact damage to enemy
-    const enemyType = enemy.getType ? enemy.getType() : null
-    const isBoss = this.isBossType(enemyType)
-    const isMiniBoss = this.isMiniBossType(enemyType)
 
     if (isBoss || isMiniBoss) {
       // Bosses/mini-bosses take minor contact damage (5% of max health)
