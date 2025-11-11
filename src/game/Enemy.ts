@@ -991,8 +991,12 @@ export class Enemy extends Phaser.GameObjects.Text {
     if (!this.active) return false
 
     // Don't take damage until visible on screen (prevent off-screen kills)
-    if (this.y < 0) return false
+    if (this.y < 0) {
+      console.log(`[Enemy] Blocked damage while off-screen: type=${this.enemyType}, y=${this.y}, damage=${damage}`)
+      return false
+    }
 
+    console.log(`[Enemy] Taking damage: type=${this.enemyType}, health=${this.currentHealth}/${this.maxHealth}, damage=${damage}, y=${this.y}`)
     this.currentHealth -= damage
 
     // Visual feedback - flash white
@@ -1021,6 +1025,8 @@ export class Enemy extends Phaser.GameObjects.Text {
   }
 
   private die() {
+    console.log(`[Enemy] DIED: type=${this.enemyType}, pos=(${this.x.toFixed(0)}, ${this.y.toFixed(0)}), health=${this.currentHealth}/${this.maxHealth}`)
+
     // Save position before deactivating (for drop spawns)
     const deathX = this.x
     const deathY = this.y
