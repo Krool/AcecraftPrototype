@@ -3870,7 +3870,11 @@ export default class GameScene extends Phaser.Scene {
     )
 
     // Select upgrades, allowing duplicates if item can continue leveling
-    let selectedUpgrades: typeof allUpgrades = []
+    let selectedUpgrades: Array<{
+      upgrade: typeof allUpgrades[0]
+      beforeLevel: number
+      afterLevel: number
+    }> = []
     let creditsEarned = 0
 
     for (let i = 0; i < upgradeCount; i++) {
@@ -6035,10 +6039,11 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private handleAllyRerollGenerated() {
+    // TODO: Implement reroll system
     // Add a reroll charge
-    if (this.rerollsRemaining < this.maxRerolls) {
-      this.rerollsRemaining++
-      this.updateRerollDisplay()
+    // if (this.rerollsRemaining < this.maxRerolls) {
+    //   this.rerollsRemaining++
+    //   this.updateRerollDisplay()
 
       // Show notification
       const text = this.add.text(this.cameras.main.width - 120, 60, '+1 Reroll!', {
@@ -6048,14 +6053,14 @@ export default class GameScene extends Phaser.Scene {
         fontStyle: 'bold'
       }).setDepth(100)
 
-      this.tweens.add({
-        targets: text,
-        y: 40,
-        alpha: { from: 1, to: 0 },
-        duration: 1500,
-        onComplete: () => text.destroy()
-      })
-    }
+    this.tweens.add({
+      targets: text,
+      y: 40,
+      alpha: { from: 1, to: 0 },
+      duration: 1500,
+      onComplete: () => text.destroy()
+    })
+    // }
   }
 
   private handleAllyEnemyProjectileHit(allyObj: Phaser.GameObjects.GameObject, projObj: Phaser.GameObjects.GameObject) {
