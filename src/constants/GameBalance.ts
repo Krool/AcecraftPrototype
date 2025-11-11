@@ -23,7 +23,7 @@ export const PLAYER = {
   DEFAULT_PICKUP_RADIUS: 100,
 
   /** Invulnerability duration after taking damage (milliseconds) */
-  INVULN_FRAMES: 1000,
+  INVULN_FRAMES: 250,
 } as const
 
 // =============================================================================
