@@ -8,7 +8,7 @@ import { CreditDropGroup } from '../game/CreditDrop'
 import { PowerUpGroup, PowerUpType, POWERUP_CONFIGS } from '../game/PowerUp'
 import { Weapon, WeaponType, WeaponFactory, WeaponModifiers, DEFAULT_MODIFIERS, DamageType } from '../game/Weapon'
 import { Passive, PassiveType, PassiveFactory, PlayerStats } from '../game/Passive'
-import { Character, CharacterType, CharacterFactory, CHARACTER_CONFIGS } from '../game/Character'
+import { Character, CharacterType, CharacterFactory, CHARACTER_CONFIGS, BastionCharacter } from '../game/Character'
 import { EvolutionManager, EVOLUTION_RECIPES, EvolvedWeapon, SuperEvolvedWeapon, EvolutionType } from '../game/Evolution'
 import { GameState } from '../game/GameState'
 import { CampaignManager } from '../game/Campaign'
@@ -17,6 +17,7 @@ import { WaveSystem } from '../game/WaveSystem'
 import { gameProgression } from '../game/GameProgression'
 import { MobileDetection } from '../utils/MobileDetection'
 import { RunStatistics } from '../game/RunStatistics'
+import { PLAYER, WAVE_SPAWNING, COMBAT, ALLIES, FROST_HASTE, CHESTS } from '../constants'
 
 // XP requirements for each level (index 0 = level 1→2, index 1 = level 2→3, etc.)
 // Curve accelerates significantly starting at level 6, much steeper in late game
@@ -68,14 +69,14 @@ export default class GameScene extends Phaser.Scene {
   private baseEnemySpawnRate: number = 1500
   private minEnemySpawnRate: number = 400 // Minimum spawn rate (maximum difficulty)
   private allyRespawnTimers: Map<string, number> = new Map() // Track respawn timers for allies
-  private allyRespawnDelay: number = 5000 // 5 seconds to respawn
+  private allyRespawnDelay: number = ALLIES.RESPAWN_DELAY
   private totalXP: number = 0
   private xpText!: Phaser.GameObjects.Text
   private level: number = 1
   private xpToNextLevel: number = 30 // Will be set from XP_REQUIREMENTS table
   private levelText!: Phaser.GameObjects.Text
-  private health: number = 100
-  private maxHealth: number = 100
+  private health: number = PLAYER.DEFAULT_HEALTH
+  private maxHealth: number = PLAYER.DEFAULT_HEALTH
   private healthText!: Phaser.GameObjects.Text
   private healthBarBackground!: Phaser.GameObjects.Rectangle
   private healthBarFill!: Phaser.GameObjects.Rectangle
@@ -151,6 +152,14 @@ export default class GameScene extends Phaser.Scene {
   private healthSpawnedLastSecond: number = 0
   private damageTrackingWindow: { timestamp: number, damage: number }[] = []
   private healthTrackingWindow: { timestamp: number, health: number }[] = []
+
+  // Per-weapon DPS tracking
+  private weaponDamageTracking: Map<string, {
+    totalDamage: number,
+    acquisitionGameTime: number,  // Game time when acquired (excludes pauses)
+    lastDamageTime: number
+  }> = new Map()
+
   private creditsCollectedThisRun: number = 0
   private creditsCollectedText!: Phaser.GameObjects.Text
   private lastEngineTrailTime: number = 0
@@ -159,8 +168,8 @@ export default class GameScene extends Phaser.Scene {
 
   // Guaranteed chest system
   private chestsSpawnedThisRun: number = 0
-  private readonly maxChestsPerRun: number = 4
-  private readonly guaranteedChestMilestones: number[] = [20, 60, 120, 200] // Kill counts for guaranteed chests
+  private readonly maxChestsPerRun: number = 5 // Increased from 4 to allow mini-boss + milestone + occasional random
+  private readonly guaranteedChestMilestones: number[] = [60, 120] // Reduced from 4 to 2 milestones (removed 20 & 200)
   private chestPopupClickState: number = 0 // 0 = showing animation, 1 = showing rewards, 2+ = can close
 
   // New weapon/passive/character system
@@ -168,18 +177,24 @@ export default class GameScene extends Phaser.Scene {
   private passives: Passive[] = []
   private character!: Character
   private characterColor!: string
+  private bastionFiredLastFrame: boolean = false // Track if Bastion fired weapons last frame
+
+  // Performance optimization: Cache values to reduce per-frame calculations
+  private cachedActiveEnemyCount: number = 0
+  private modifiersNeedRecalculation: boolean = true
+  private lastPowerUpDisplayState: string = '' // Track power-up state to avoid unnecessary updates
   private maxWeaponSlots: number = 4
   private maxPassiveSlots: number = 4
   private weaponModifiers: WeaponModifiers = { ...DEFAULT_MODIFIERS }
   private playerStats: PlayerStats = {
-    maxHealth: 100,
-    currentHealth: 100,
-    moveSpeed: 300,
-    pickupRadius: 100,
+    maxHealth: PLAYER.DEFAULT_HEALTH,
+    currentHealth: PLAYER.DEFAULT_HEALTH,
+    moveSpeed: PLAYER.DEFAULT_MOVE_SPEED,
+    pickupRadius: PLAYER.DEFAULT_PICKUP_RADIUS,
     damageReduction: 0,
     dodgeChance: 0,
     healthRegen: 0,
-    invulnFrames: 1000,
+    invulnFrames: PLAYER.INVULN_FRAMES,
     revives: 0,
   }
   private weaponSlotsContainer!: Phaser.GameObjects.Container
@@ -212,10 +227,10 @@ export default class GameScene extends Phaser.Scene {
     this.totalXP = 0
     this.level = 1
     this.xpToNextLevel = XP_REQUIREMENTS[0] // Level 1→2 requires 30 XP
-    this.health = 100
-    this.maxHealth = 100
+    this.health = PLAYER.DEFAULT_HEALTH
+    this.maxHealth = PLAYER.DEFAULT_HEALTH
     this.isPaused = false
-    this.playerSpeed = 300
+    this.playerSpeed = PLAYER.DEFAULT_MOVE_SPEED
     this.enemySpawnRate = 1500
     this.baseEnemySpawnRate = 1500
     this.minEnemySpawnRate = 400
@@ -243,7 +258,18 @@ export default class GameScene extends Phaser.Scene {
     this.starFieldTweens = []
 
     // Clear buff displays map to ensure clean state on restart
+    // IMPORTANT: Destroy visual elements before clearing to prevent memory leak
+    this.buffDisplays.forEach((display) => {
+      display.bg.destroy()
+      display.fill.destroy()
+      display.icon.destroy()
+    })
     this.buffDisplays.clear()
+
+    // Clear tracking arrays to prevent memory leaks
+    this.frostHasteExpireTimes = []
+    this.damageTrackingWindow = []
+    this.healthTrackingWindow = []
 
     // Clear ally respawn timers
     this.allyRespawnTimers.clear()
@@ -766,6 +792,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.weapons.push(startingWeapon)
     this.runStatistics.addWeapon(startingWeaponType)
+    this.initializeWeaponTracking(startingWeapon.getConfig().name)
 
     // Update player stats based on character
     this.playerStats.maxHealth = this.character.getBaseHealth()
@@ -791,10 +818,18 @@ export default class GameScene extends Phaser.Scene {
     this.updateHealthDisplay()
     this.updateSlotsDisplay()
 
+    // Apply character innate ability early to set special flags (Eclipse unlimitedRerolls, etc.)
+    if (this.character) {
+      this.character.applyInnateAbility(this.weaponModifiers, this.playerStats)
+    }
+
     // Initialize reroll system from building bonuses
     if (bonuses.rerollUnlocked) {
       this.maxRerolls = bonuses.rerollCharges || 0
       this.rerollsRemaining = this.maxRerolls
+      this.updateRerollDisplay()
+    } else if (this.playerStats.unlimitedRerolls) {
+      // Eclipse gets rerolls even without building unlock
       this.updateRerollDisplay()
     }
 
@@ -984,6 +1019,47 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  private initializeWeaponTracking(weaponName: string) {
+    if (!this.weaponDamageTracking.has(weaponName)) {
+      // Store game time (excluding pauses) when weapon was acquired
+      const gameTime = this.time.now - this.runStartTime - this.totalPausedTime
+      this.weaponDamageTracking.set(weaponName, {
+        totalDamage: 0,
+        acquisitionGameTime: gameTime,
+        lastDamageTime: 0
+      })
+    }
+  }
+
+  private trackWeaponDamage(weaponName: string, damage: number) {
+    const tracking = this.weaponDamageTracking.get(weaponName)
+    if (tracking) {
+      tracking.totalDamage += damage
+      tracking.lastDamageTime = this.time.now
+    } else {
+      // Initialize if not already tracked
+      this.initializeWeaponTracking(weaponName)
+      this.trackWeaponDamage(weaponName, damage)
+    }
+  }
+
+  private getWeaponDPS(weaponName: string): number {
+    const tracking = this.weaponDamageTracking.get(weaponName)
+    if (!tracking || tracking.totalDamage === 0) {
+      return 0
+    }
+
+    // Calculate active time: current game time - game time when acquired
+    const currentGameTime = this.time.now - this.runStartTime - this.totalPausedTime
+    const activeTime = (currentGameTime - tracking.acquisitionGameTime) / 1000 // Convert to seconds
+
+    if (activeTime <= 0) {
+      return 0
+    }
+
+    return tracking.totalDamage / activeTime
+  }
+
   private calculateModifiers() {
     // Reset modifiers to defaults
     this.weaponModifiers = { ...DEFAULT_MODIFIERS }
@@ -991,11 +1067,11 @@ export default class GameScene extends Phaser.Scene {
     // Reset player stats to base values
     this.playerStats.maxHealth = this.character.getBaseHealth()
     this.playerStats.moveSpeed = this.character.getBaseMoveSpeed()
-    this.playerStats.pickupRadius = 100
+    this.playerStats.pickupRadius = PLAYER.DEFAULT_PICKUP_RADIUS
     this.playerStats.damageReduction = 0
     this.playerStats.dodgeChance = 0
     this.playerStats.healthRegen = 0
-    this.playerStats.invulnFrames = 1000 // Default 1 second invuln
+    this.playerStats.invulnFrames = PLAYER.INVULN_FRAMES
     this.playerStats.revives = 0
 
     // Apply building bonuses from GameState
@@ -1242,6 +1318,8 @@ export default class GameScene extends Phaser.Scene {
           )
           this.weapons.push(evolvedWeapon)
           this.runStatistics.addEvolution(availableEvolution.evolution)
+          this.initializeWeaponTracking(evolvedWeapon.getConfig().name)
+          this.modifiersNeedRecalculation = true
 
           // Mark this evolution recipe as discovered
           const recipeKey = `${availableEvolution.baseWeapon}_${availableEvolution.requiredPassive}`
@@ -1282,6 +1360,7 @@ export default class GameScene extends Phaser.Scene {
           recommended: isNearMaxLevel,
           effect: () => {
             weapon.levelUp()
+            this.modifiersNeedRecalculation = true
           }
         })
       }
@@ -1344,6 +1423,8 @@ export default class GameScene extends Phaser.Scene {
             effect: () => {
               const newWeapon = WeaponFactory.create(this, type, this.projectiles)
               this.weapons.push(newWeapon)
+              this.initializeWeaponTracking(newWeapon.getConfig().name)
+              this.modifiersNeedRecalculation = true
             }
           })
         }
@@ -1374,6 +1455,7 @@ export default class GameScene extends Phaser.Scene {
           recommended: isNearMaxLevel,
           effect: () => {
             passive.levelUp()
+            this.modifiersNeedRecalculation = true
           }
         })
       }
@@ -1435,6 +1517,7 @@ export default class GameScene extends Phaser.Scene {
             effect: () => {
               const newPassive = PassiveFactory.create(this, type)
               this.passives.push(newPassive)
+              this.modifiersNeedRecalculation = true
             }
           })
         }
@@ -1649,6 +1732,12 @@ export default class GameScene extends Phaser.Scene {
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       if (isDragging && !this.isPaused) {
+        // BASTION: Block touch movement if firing (turret mode)
+        const isBastionFiring = this.character && this.character.getConfig().type === 'BASTION' && this.bastionFiredLastFrame
+        if (isBastionFiring) {
+          return // Cannot move while firing
+        }
+
         const playerBody = this.player.body as Phaser.Physics.Arcade.Body
 
         // Directly set player position based on pointer movement
@@ -1789,7 +1878,12 @@ export default class GameScene extends Phaser.Scene {
 
     // Get current wave for health scaling
     const currentWave = this.waveSystem.getCurrentWave()
-    this.enemies.spawnEnemy(x, y, type, currentWave)
+    const enemy = this.enemies.spawnEnemy(x, y, type, currentWave)
+
+    // Update cached active enemy count if spawn was successful (performance optimization)
+    if (enemy) {
+      this.cachedActiveEnemyCount++
+    }
 
     // Track health spawned for debug metrics (use scaled health)
     const baseHealth = ENEMY_CONFIGS[type].health
@@ -1921,8 +2015,9 @@ export default class GameScene extends Phaser.Scene {
 
       // For boss/mini-boss waves, spawn the boss first
       if (waveData.isBoss || waveData.isMiniBoss) {
+        // Find formation containing any boss type
         const bossFormation = bucket.formations.find(f =>
-          f.enemyTypes.includes(EnemyType.BOSS) || f.enemyTypes.includes(EnemyType.MINI_BOSS)
+          f.enemyTypes.some(et => this.isBossType(et) || this.isMiniBossType(et))
         )
         if (bossFormation) {
           const bossType = bossFormation.enemyTypes[0]
@@ -1938,8 +2033,8 @@ export default class GameScene extends Phaser.Scene {
         const formation = bucket.formations[Math.floor(Math.random() * bucket.formations.length)]
         const enemyType = formation.enemyTypes[Math.floor(Math.random() * formation.enemyTypes.length)]
 
-        // Skip boss/mini-boss formations for supporting enemies
-        if (enemyType === EnemyType.BOSS || enemyType === EnemyType.MINI_BOSS) {
+        // Skip boss/mini-boss formations for supporting enemies (they're already spawned)
+        if (this.isBossType(enemyType) || this.isMiniBossType(enemyType)) {
           continue
         }
 
@@ -1993,6 +2088,31 @@ export default class GameScene extends Phaser.Scene {
     this.updateWaveUI()
   }
 
+  // Helper functions to identify boss types
+  private isBossType(type?: EnemyType): boolean {
+    if (!type) return false
+    return type === EnemyType.BOSS ||
+           type === EnemyType.SCOUT_COMMANDER ||
+           type === EnemyType.TANK_TWIN ||
+           type === EnemyType.HIVE_QUEEN ||
+           type === EnemyType.ORBITAL_DEVASTATOR ||
+           type === EnemyType.FRACTURED_TITAN ||
+           type === EnemyType.SHIELD_WARDEN ||
+           type === EnemyType.ACE_BOMBER ||
+           type === EnemyType.VOID_NEXUS ||
+           type === EnemyType.SIEGE_ENGINE ||
+           type === EnemyType.MOTHERSHIP_OMEGA
+  }
+
+  private isMiniBossType(type?: EnemyType): boolean {
+    if (!type) return false
+    return type === EnemyType.MINI_BOSS ||
+           type === EnemyType.PROTOTYPE_BOMBER ||
+           type === EnemyType.VOID_HERALD ||
+           type === EnemyType.ASSAULT_CRUISER ||
+           type === EnemyType.BATTLE_COORDINATOR
+  }
+
   private clampSpawnX(x: number): number {
     // Clamp spawn X position to be within game bounds with padding
     const padding = 20 // Keep enemies at least 20px from edges
@@ -2000,8 +2120,12 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private spawnWaveFormation(formation: any, enemyType: EnemyType): number {
-    const centerX = this.cameras.main.centerX
-    const y = -50 // Spawn above the screen
+    // Add random offsets to prevent multiple formations from spawning at exact same positions
+    const centerXOffset = Phaser.Math.Between(-60, 60) // Random horizontal offset
+    const yOffset = Phaser.Math.Between(-30, 30) // Random vertical offset
+
+    const centerX = this.cameras.main.centerX + centerXOffset
+    const y = -50 + yOffset // Spawn above the screen with variation
     const spacing = formation.spacing || 60
     const currentWave = this.waveSystem.getCurrentWave()
     let spawnedCount = 0
@@ -2009,19 +2133,31 @@ export default class GameScene extends Phaser.Scene {
     switch (formation.type) {
       case 'single':
         const count = formation.count || 1
+        const spawnedEnemies: Enemy[] = []
+
         for (let i = 0; i < count; i++) {
           const offsetX = (i - (count - 1) / 2) * 100
           const spawnX = this.clampSpawnX(centerX + offsetX)
           const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
-          if (enemy) spawnedCount++
+          if (enemy) {
+            spawnedCount++
+            spawnedEnemies.push(enemy)
+            this.cachedActiveEnemyCount++
+          }
         }
+
+        // Handle boss-specific spawning logic
+        this.handleBossSpawn(enemyType, spawnedEnemies, centerX, y)
         break
 
       case 'line':
         for (let i = -4; i <= 4; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
           const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
-          if (enemy) spawnedCount++
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
         }
         break
 
@@ -2029,22 +2165,34 @@ export default class GameScene extends Phaser.Scene {
         for (let i = -2; i <= 2; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
           const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
-          if (enemy) spawnedCount++
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
         }
         for (let i = -3; i <= 3; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
           const enemy = this.enemies.spawnEnemy(spawnX, y - 40, enemyType, currentWave)
-          if (enemy) spawnedCount++
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
         }
         for (let i = -2; i <= 2; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
           const enemy = this.enemies.spawnEnemy(spawnX, y - 80, enemyType, currentWave)
-          if (enemy) spawnedCount++
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
         }
         for (let i = -1; i <= 1; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
           const enemy = this.enemies.spawnEnemy(spawnX, y - 120, enemyType, currentWave)
-          if (enemy) spawnedCount++
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
         }
         break
 
@@ -2055,7 +2203,10 @@ export default class GameScene extends Phaser.Scene {
           const offsetY = Math.sin(angle) * 40
           const spawnX = this.clampSpawnX(centerX + offsetX)
           const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
-          if (enemy) spawnedCount++
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
         }
         break
 
@@ -2064,7 +2215,10 @@ export default class GameScene extends Phaser.Scene {
           const waveOffset = Math.sin((i / 5) * Math.PI) * 30
           const spawnX = this.clampSpawnX(centerX + i * spacing)
           const enemy = this.enemies.spawnEnemy(spawnX, y + waveOffset, enemyType, currentWave)
-          if (enemy) spawnedCount++
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
         }
         break
     }
@@ -2086,6 +2240,76 @@ export default class GameScene extends Phaser.Scene {
         return 11 // -5 to 5
       default:
         return 1
+    }
+  }
+
+  // Boss-specific spawn handlers
+  private handleBossSpawn(enemyType: EnemyType, spawnedEnemies: Enemy[], centerX: number, y: number) {
+    const currentWave = this.waveSystem.getCurrentWave()
+
+    switch (enemyType) {
+      case EnemyType.TANK_TWIN:
+        // Link Tank Twins together - requires exactly 2 twins
+        if (spawnedEnemies.length === 2 && spawnedEnemies[0] && spawnedEnemies[1]) {
+          spawnedEnemies[0].setLinkedBoss(spawnedEnemies[1])
+          spawnedEnemies[1].setLinkedBoss(spawnedEnemies[0])
+        }
+        break
+
+      case EnemyType.HIVE_QUEEN:
+        if (spawnedEnemies.length >= 1 && spawnedEnemies[0]) {
+          const queen = spawnedEnemies[0]
+          const eggPos = [{ x: -60, y: -40 }, { x: 60, y: -40 }, { x: -60, y: 40 }, { x: 60, y: 40 }]
+          eggPos.forEach(pos => {
+            const egg = this.enemies.spawnEnemy(this.clampSpawnX(centerX + pos.x), y + pos.y, EnemyType.HIVE_EGG, currentWave)
+            if (egg) {
+              queen.addChildEnemy(egg)
+              this.cachedActiveEnemyCount++
+            }
+          })
+        }
+        break
+
+      case EnemyType.ORBITAL_DEVASTATOR:
+        if (spawnedEnemies.length >= 1 && spawnedEnemies[0]) {
+          const boss = spawnedEnemies[0]
+          for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2
+            const shield = this.enemies.spawnEnemy(this.clampSpawnX(centerX + Math.cos(angle) * 80), y + Math.sin(angle) * 80, EnemyType.ORBITAL_SHIELD, currentWave)
+            if (shield) {
+              boss.addOrbitalShield(shield)
+              this.cachedActiveEnemyCount++
+            }
+          }
+        }
+        break
+
+      case EnemyType.SIEGE_ENGINE:
+        if (spawnedEnemies.length >= 1 && spawnedEnemies[0]) {
+          const boss = spawnedEnemies[0]
+          ;[-100, 0, 100].forEach(offsetX => {
+            const turret = this.enemies.spawnEnemy(this.clampSpawnX(centerX + offsetX), y + 60, EnemyType.SIEGE_TURRET, currentWave)
+            if (turret) {
+              boss.addChildEnemy(turret)
+              this.cachedActiveEnemyCount++
+            }
+          })
+        }
+        break
+
+      case EnemyType.MOTHERSHIP_OMEGA:
+        if (spawnedEnemies.length >= 1 && spawnedEnemies[0]) {
+          const boss = spawnedEnemies[0]
+          for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2
+            const port = this.enemies.spawnEnemy(this.clampSpawnX(centerX + Math.cos(angle) * 100), y + Math.sin(angle) * 100, EnemyType.WEAPON_PORT, currentWave)
+            if (port) {
+              boss.addChildEnemy(port)
+              this.cachedActiveEnemyCount++
+            }
+          }
+        }
+        break
     }
   }
 
@@ -2114,10 +2338,11 @@ export default class GameScene extends Phaser.Scene {
       this.bossHealthBar.setVisible(true)
       this.bossHealthText.setVisible(true)
 
-      // Find boss enemy
+      // Find boss enemy (includes all custom boss types)
       const boss = this.enemies.getChildren().find((e: any) => {
         const enemy = e as Enemy
-        return enemy.active && (enemy.getType() === EnemyType.BOSS || enemy.getType() === EnemyType.MINI_BOSS)
+        const enemyType = enemy.getType ? enemy.getType() : null
+        return enemy.active && (this.isBossType(enemyType) || this.isMiniBossType(enemyType))
       }) as Enemy | undefined
 
       if (boss) {
@@ -2152,8 +2377,11 @@ export default class GameScene extends Phaser.Scene {
 
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body
 
-    // Only allow player movement if not paused
-    if (!this.isPaused) {
+    // BASTION: Block movement if fired weapons last frame (turret mode)
+    const isBastionFiring = this.character.getConfig().type === 'BASTION' && this.bastionFiredLastFrame
+
+    // Only allow player movement if not paused and not Bastion firing
+    if (!this.isPaused && !isBastionFiring) {
       // Keyboard controls
       if (this.cursors.left.isDown) {
         playerBody.setVelocityX(-this.playerSpeed)
@@ -2171,7 +2399,7 @@ export default class GameScene extends Phaser.Scene {
         playerBody.setVelocityY(0)
       }
     } else {
-      // Stop player movement when paused
+      // Stop player movement when paused or Bastion firing
       playerBody.setVelocityX(0)
       playerBody.setVelocityY(0)
     }
@@ -2184,8 +2412,11 @@ export default class GameScene extends Phaser.Scene {
 
     // Auto-fire weapons (only if not paused)
     if (!this.isPaused) {
-      // Calculate modifiers from passives and character
-      this.calculateModifiers()
+      // Calculate modifiers from passives and character (only when needed for performance)
+      if (this.modifiersNeedRecalculation) {
+        this.calculateModifiers()
+        this.modifiersNeedRecalculation = false
+      }
 
       // Expire old FROST_HASTE stacks
       if (this.frostHasteStacks > 0) {
@@ -2193,6 +2424,7 @@ export default class GameScene extends Phaser.Scene {
         if (expiredStacks > 0) {
           this.frostHasteExpireTimes = this.frostHasteExpireTimes.filter(expireTime => time < expireTime)
           this.frostHasteStacks = Math.max(0, this.frostHasteStacks - expiredStacks)
+          this.modifiersNeedRecalculation = true // Attack speed changed
         }
       }
 
@@ -2203,20 +2435,38 @@ export default class GameScene extends Phaser.Scene {
       }
 
       // Fire all equipped weapons
+      this.bastionFiredLastFrame = false // Reset Bastion firing tracker
       this.weapons.forEach(weapon => {
         // Apply character-specific modifiers per weapon
         const weaponModifiers = { ...this.weaponModifiers }
 
-        // Glacier: +25% attack speed for Cold weapons
-        if (this.character.getConfig().type === 'GLACIER' && weapon.getConfig().damageType === 'COLD') {
-          weaponModifiers.fireRateMultiplier *= 1.25
+        // NOTE: Glacier bonus is now applied in GlacierCharacter.applyInnateAbility(), not here
+
+        // Havoc: Minigun never stops firing (near-instant fire rate)
+        if (this.character.getConfig().type === 'HAVOC' && weapon.getConfig().type === 'MINIGUN') {
+          weaponModifiers.fireRateMultiplier *= 0.01 // 99% faster = continuous fire
         }
 
         if (weapon.canFire(time, weaponModifiers)) {
           weapon.fire(this.player.x, this.player.y - 30, weaponModifiers)
           weapon.setLastFireTime(time)
+
+          // Track for Bastion turret mode
+          if (this.character.getConfig().type === 'BASTION') {
+            this.bastionFiredLastFrame = true
+            if (this.character instanceof BastionCharacter) {
+              this.character.setFiring(true)
+            }
+          }
         }
       })
+
+      // Update Bastion firing state if didn't fire
+      if (!this.bastionFiredLastFrame && this.character.getConfig().type === 'BASTION') {
+        if (this.character instanceof BastionCharacter) {
+          this.character.setFiring(false)
+        }
+      }
     }
 
     // Wave-based spawning (only if not paused)
@@ -2225,10 +2475,15 @@ export default class GameScene extends Phaser.Scene {
       if (time - this.lastPoolLogTime > 10000) {
         const poolStatus = this.enemies.getPoolStatus()
         console.log(`[Pool Health Check] Active: ${poolStatus.active}/${this.enemies.getChildren().length}, Inactive: ${poolStatus.inactive}, Body Disabled: ${poolStatus.bodyDisabled}`)
+
+        // Periodic sync of cached count to prevent drift (performance optimization)
+        this.cachedActiveEnemyCount = poolStatus.active
+
         this.lastPoolLogTime = time
       }
 
-      const activeEnemyCount = this.enemies.getChildren().filter((e: any) => e.active).length
+      // Use cached active enemy count instead of filtering entire pool every frame (performance optimization)
+      const activeEnemyCount = this.cachedActiveEnemyCount
 
       // Start first wave if not started yet
       if (this.waveSystem.getCurrentWave() === 0 && !this.waveInProgress && !this.waveStartPending) {
@@ -2269,6 +2524,11 @@ export default class GameScene extends Phaser.Scene {
               healText.destroy()
             }
           })
+        }
+
+        // Track wave clear for Vulcan character
+        if (this.character && 'onWaveCleared' in this.character) {
+          (this.character as any).onWaveCleared()
         }
 
         // Start next wave immediately
@@ -2398,9 +2658,20 @@ export default class GameScene extends Phaser.Scene {
       // Update power-up timers
       this.updatePowerUpTimers(time)
 
-      // Update buff display every frame for smooth depletion animation
-      if (this.buffDisplays.size > 0) {
+      // Update buff display only when power-up state changes (performance optimization)
+      const currentPowerUpState = `${this.hasShield}-${this.hasRapidFirePowerUp}-${this.hasMagnet}-${this.hasOverdrive}`
+      if (currentPowerUpState !== this.lastPowerUpDisplayState) {
         this.updatePowerUpDisplay()
+        this.lastPowerUpDisplayState = currentPowerUpState
+      } else if (this.buffDisplays.size > 0) {
+        // Still update fill bars for smooth depletion
+        const currentTime = this.time.now
+        this.buffDisplays.forEach((display) => {
+          const elapsed = currentTime - display.startTime
+          const remaining = Math.max(0, display.duration - elapsed)
+          const fillPercent = remaining / display.duration
+          display.fill.width = (40 - 4) * fillPercent
+        })
       }
 
       // Update survival timer (excluding paused time) - no display, just tracking for stats
@@ -2412,6 +2683,9 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private handleEnemyDied(data: { x: number; y: number; xpValue: number; reachedBottom?: boolean; type?: EnemyType }) {
+    // Update cached active enemy count for performance
+    this.cachedActiveEnemyCount = Math.max(0, this.cachedActiveEnemyCount - 1)
+
     // If enemy reached bottom naturally, don't play sounds or spawn drops
     if (data.reachedBottom) {
       return
@@ -2451,9 +2725,9 @@ export default class GameScene extends Phaser.Scene {
       this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
     }
 
-    // Check if this is a boss or mini-boss
-    const isBoss = data.type === EnemyType.BOSS
-    const isMiniBoss = data.type === EnemyType.MINI_BOSS
+    // Check if this is a boss or mini-boss (includes all custom bosses)
+    const isBoss = this.isBossType(data.type)
+    const isMiniBoss = this.isMiniBossType(data.type)
 
     if (isBoss || isMiniBoss) {
       // Boss/Mini-boss drops: spawn lots of XP, credits, and guaranteed health pack
@@ -2481,6 +2755,14 @@ export default class GameScene extends Phaser.Scene {
 
       // Always spawn health pack at boss center
       this.powerUps.spawnPowerUp(data.x, data.y, PowerUpType.HEALTH)
+
+      // Mini-bosses always drop a treasure chest (slightly offset from center)
+      if (isMiniBoss) {
+        const chestOffsetX = Phaser.Math.Between(-20, 20)
+        const chestOffsetY = Phaser.Math.Between(-20, 20)
+        this.powerUps.spawnPowerUp(data.x + chestOffsetX, data.y + chestOffsetY, PowerUpType.CHEST)
+        this.chestsSpawnedThisRun++
+      }
     } else {
       // Normal enemy drops: spawn single XP drop at enemy position
       this.xpDrops.spawnXP(data.x, data.y, multipliedXP)
@@ -2576,8 +2858,60 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
+    // Boss-specific death mechanics
+    this.handleBossDeath(data)
+
     // Create particle explosion effect
     this.createExplosionEffect(data.x, data.y)
+  }
+
+  // Boss death mechanics
+  private handleBossDeath(data: { x: number; y: number; type?: EnemyType }) {
+    if (!data.type) return
+    const currentWave = this.waveSystem.getCurrentWave()
+
+    switch (data.type) {
+      case EnemyType.FRACTURED_TITAN:
+        for (let i = 0; i < 2; i++) {
+          const offsetX = (i === 0 ? -40 : 40)
+          const spawned = this.enemies.spawnEnemy(this.clampSpawnX(data.x + offsetX), data.y, EnemyType.FRACTURED_MEDIUM, currentWave)
+          if (spawned) this.cachedActiveEnemyCount++
+        }
+        break
+
+      case EnemyType.FRACTURED_MEDIUM:
+        for (let i = 0; i < 2; i++) {
+          const offsetX = (i === 0 ? -30 : 30)
+          const spawned = this.enemies.spawnEnemy(this.clampSpawnX(data.x + offsetX), data.y, EnemyType.FRACTURED_SMALL, currentWave)
+          if (spawned) this.cachedActiveEnemyCount++
+        }
+        break
+
+      case EnemyType.PROTOTYPE_BOMBER:
+      case EnemyType.ACE_BOMBER:
+      case EnemyType.ESCORT_BOMBER:
+        this.createExplosiveTrail(data.x, data.y, 3)
+        break
+    }
+  }
+
+  private createExplosiveTrail(x: number, y: number, count: number) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2
+      const distance = 40 + Math.random() * 60
+      const offsetX = Math.cos(angle) * distance
+      const offsetY = Math.sin(angle) * distance
+      const marker = this.add.circle(x + offsetX, y + offsetY, 20, 0xff6600, 0.6).setDepth(5)
+
+      this.time.delayedCall(500 + i * 200, () => {
+        if (marker.active) {
+          const distToPlayer = Phaser.Math.Distance.Between(marker.x, marker.y, this.player.x, this.player.y)
+          if (distToPlayer < 40) this.takeDamage(15)
+          this.createExplosionEffect(marker.x, marker.y)
+          marker.destroy()
+        }
+      })
+    }
   }
 
   private updateCombo() {
@@ -2667,6 +3001,11 @@ export default class GameScene extends Phaser.Scene {
       this.overdriveEndTime = this.time.now + duration
     }
 
+    // Apply character XP multiplier (Vulcan, Supernova)
+    if (this.playerStats.xpMultiplier && this.playerStats.xpMultiplier > 1) {
+      xpValue = Math.floor(xpValue * this.playerStats.xpMultiplier)
+    }
+
     // Update total XP
     this.totalXP += xpValue
     this.updateXPDisplay()
@@ -2703,7 +3042,7 @@ export default class GameScene extends Phaser.Scene {
     this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
   }
 
-  private handleLaserFire(data: { x: number; y: number; damage: number; beamCount: number; maxRange: number; color: string }) {
+  private handleLaserFire(data: { x: number; y: number; damage: number; beamCount: number; maxRange: number; color: string; weaponName?: string }) {
     // RAYCAST laser implementation - no projectiles!
     // Find nearest enemies and draw laser lines to them
 
@@ -2728,6 +3067,13 @@ export default class GameScene extends Phaser.Scene {
       if (distance <= data.maxRange) {
         // Apply damage directly
         enemy.takeDamage(data.damage)
+
+        // Track damage dealt
+        this.totalDamageDealt += data.damage
+        this.damageTrackingWindow.push({ timestamp: this.time.now, damage: data.damage })
+        if (data.weaponName) {
+          this.trackWeaponDamage(data.weaponName, data.damage)
+        }
 
         // Draw visual laser line from player to enemy
         // Set line position to player, then draw from (0,0) to relative enemy position
@@ -3525,6 +3871,26 @@ export default class GameScene extends Phaser.Scene {
     const shuffled = Phaser.Utils.Array.Shuffle([...upgrades])
     const selectedUpgrades = shuffled.slice(0, Math.min(upgradeCount, upgrades.length))
 
+    // SUPERNOVA: Auto-select upgrades without showing UI
+    if (this.playerStats.autoSelectUpgrades) {
+      // Apply all selected upgrades automatically
+      selectedUpgrades.forEach(upgrade => {
+        upgrade.effect()
+      })
+
+      // Update slots display
+      this.updateSlotsDisplay()
+
+      // Clean up UI
+      overlay.destroy()
+      title.destroy()
+      subtitle.destroy()
+
+      // Resume game immediately
+      this.resumeGame()
+      return
+    }
+
     // Create upgrade buttons (adjusted for 4 skills + reroll/skip buttons)
     const buttonHeight = 120  // Reduced from 140 to fit more content
     const buttonWidth = 460  // Reduced to fit 540px screen with proper margins
@@ -3741,8 +4107,9 @@ export default class GameScene extends Phaser.Scene {
       if (synergyPlus) buttons.push(synergyPlus)
     })
 
-    // Add Reroll button (only if unlocked and have charges)
-    const rerollUnlocked = bonuses.rerollUnlocked && this.rerollsRemaining > 0
+    // Add Reroll button (only if unlocked and have charges, OR Eclipse with unlimited rerolls)
+    const hasUnlimitedRerolls = this.playerStats.unlimitedRerolls === true
+    const rerollUnlocked = hasUnlimitedRerolls || (bonuses.rerollUnlocked && this.rerollsRemaining > 0)
     if (rerollUnlocked) {
       const rerollButtonY = startY + (buttonHeight + buttonSpacing) * selectedUpgrades.length + 20
       const rerollButton = this.add.rectangle(
@@ -3753,14 +4120,16 @@ export default class GameScene extends Phaser.Scene {
         0x1a1a3e
       ).setDepth(101).setInteractive({ useHandCursor: true })
 
+      // Eclipse: Show "FREE" if unlimited rerolls, otherwise show count
+      const rerollButtonText = hasUnlimitedRerolls ? '↻ Reroll (∞)' : `↻ Reroll (${this.rerollsRemaining})`
       const rerollText = this.add.text(
         this.cameras.main.centerX - 120,
         rerollButtonY,
-        `↻ Reroll (${this.rerollsRemaining})`,
+        rerollButtonText,
         {
           fontFamily: 'Courier New',
           fontSize: '18px',
-          color: '#00ffff',
+          color: hasUnlimitedRerolls ? '#ff00ff' : '#00ffff', // Purple for Eclipse unlimited
         }
       ).setOrigin(0.5).setDepth(102)
 
@@ -3775,9 +4144,11 @@ export default class GameScene extends Phaser.Scene {
       rerollButton.on('pointerdown', () => {
         soundManager.play(SoundType.UPGRADE_SELECT)
 
-        // Deduct reroll charge
-        this.rerollsRemaining--
-        this.updateRerollDisplay()
+        // Deduct reroll charge (only if not unlimited)
+        if (!hasUnlimitedRerolls) {
+          this.rerollsRemaining--
+          this.updateRerollDisplay()
+        }
 
         // Remove all upgrade UI elements
         buttons.forEach(obj => obj.destroy())
@@ -4604,7 +4975,8 @@ export default class GameScene extends Phaser.Scene {
         const config = weapon.getConfig()
         const damage = weapon.getDamage() * this.weaponModifiers.damageMultiplier
         const fireRate = weapon.getFireRate(this.weaponModifiers)
-        const dps = Math.round((damage / (fireRate / 1000)) * 10) / 10
+        const theoreticalDps = Math.round((damage / (fireRate / 1000)) * 10) / 10
+        const actualDps = Math.round(this.getWeaponDPS(config.name) * 10) / 10
 
         const weaponIcon = this.add.text(
           80,
@@ -4633,7 +5005,7 @@ export default class GameScene extends Phaser.Scene {
         const statsText = this.add.text(
           110,
           yOffset + 8,
-          `DMG: ${Math.round(damage)} | DPS: ${dps} | Fire Rate: ${Math.round(fireRate)}ms`,
+          `DMG: ${Math.round(damage)} | Fire Rate: ${Math.round(fireRate)}ms`,
           {
             fontFamily: 'Courier New',
             fontSize: '12px',
@@ -4642,7 +5014,19 @@ export default class GameScene extends Phaser.Scene {
         ).setOrigin(0, 0).setDepth(201)
         uiElements.push(statsText)
 
-        yOffset += 40
+        const dpsText = this.add.text(
+          110,
+          yOffset + 22,
+          `Theoretical DPS: ${theoreticalDps} | Actual DPS: ${actualDps === 0 ? 'N/A' : actualDps}`,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '12px',
+            color: actualDps > 0 ? '#00ff00' : '#888888',
+          }
+        ).setOrigin(0, 0).setDepth(201)
+        uiElements.push(dpsText)
+
+        yOffset += 50
       })
     }
 
@@ -4716,7 +5100,29 @@ export default class GameScene extends Phaser.Scene {
         ).setOrigin(0, 0).setDepth(201)
         uiElements.push(benefitText)
 
-        yOffset += 40
+        // Check if this passive has associated damage (e.g., allies)
+        let allyDpsName: string | null = null
+        if (config.type === PassiveType.WINGMAN_PROTOCOL) {
+          allyDpsName = 'Ally - Wingman'
+        }
+
+        if (allyDpsName) {
+          const allyDps = Math.round(this.getWeaponDPS(allyDpsName) * 10) / 10
+          const allyDpsText = this.add.text(
+            110,
+            yOffset + 22,
+            `Ally DPS: ${allyDps === 0 ? 'N/A' : allyDps}`,
+            {
+              fontFamily: 'Courier New',
+              fontSize: '12px',
+              color: allyDps > 0 ? '#00ff00' : '#888888',
+            }
+          ).setOrigin(0, 0).setDepth(201)
+          uiElements.push(allyDpsText)
+          yOffset += 50
+        } else {
+          yOffset += 40
+        }
       })
     }
 
@@ -5074,6 +5480,7 @@ export default class GameScene extends Phaser.Scene {
       decrementBounce: () => boolean
       getZoneDuration: () => number
       getZoneRadius: () => number
+      getWeaponName: () => string
       active: boolean
       body: Phaser.Physics.Arcade.Body
     }
@@ -5131,6 +5538,12 @@ export default class GameScene extends Phaser.Scene {
     // Track damage dealt
     this.totalDamageDealt += damage
     this.damageTrackingWindow.push({ timestamp: this.time.now, damage })
+
+    // Track damage per weapon
+    const weaponName = projectile.getWeaponName()
+    if (weaponName) {
+      this.trackWeaponDamage(weaponName, damage)
+    }
 
     // VAMPIRIC_FIRE: Heal player for % of fire damage dealt
     if (projectile.getDamageType() === DamageType.FIRE) {
@@ -5211,6 +5624,18 @@ export default class GameScene extends Phaser.Scene {
     const enemyX = enemy.x
     const enemyY = enemy.y
 
+    // REAPER: Execute enemies under 15% HP instantly
+    if (this.character.getConfig().type === 'REAPER' && 'getHealth' in enemy && 'getMaxHealth' in enemy) {
+      const enemyHealth = (enemy as any).getHealth()
+      const enemyMaxHealth = (enemy as any).getMaxHealth()
+      const healthPercent = enemyHealth / enemyMaxHealth
+
+      if (healthPercent < 0.15 && healthPercent > 0) {
+        // Execute! Deal massive damage to instantly kill
+        damage = enemyHealth + 1000 // Ensure death
+      }
+    }
+
     // Apply damage to enemy
     const enemyDied = enemy.takeDamage(damage)
 
@@ -5269,6 +5694,9 @@ export default class GameScene extends Phaser.Scene {
               nearbyEnemy.takeDamage(aoeDamage)
               this.totalDamageDealt += aoeDamage
               this.damageTrackingWindow.push({ timestamp: this.time.now, damage: aoeDamage })
+              if (weaponName) {
+                this.trackWeaponDamage(weaponName, aoeDamage)
+              }
               this.showDamageNumber(nearbyEnemy.x, nearbyEnemy.y, aoeDamage)
 
               // Apply burn status to AOE targets too
@@ -5338,6 +5766,9 @@ export default class GameScene extends Phaser.Scene {
         chainedEnemy.takeDamage(chainDamage)
         this.totalDamageDealt += chainDamage
         this.damageTrackingWindow.push({ timestamp: this.time.now, damage: chainDamage })
+        if (weaponName) {
+          this.trackWeaponDamage(weaponName, chainDamage)
+        }
         this.showDamageNumber(chainedEnemy.x, chainedEnemy.y, chainDamage)
 
         // Visual: Draw lightning arc from primary target to chained enemy
@@ -5504,7 +5935,7 @@ export default class GameScene extends Phaser.Scene {
     playerObj: Phaser.GameObjects.GameObject,
     enemyObj: Phaser.GameObjects.GameObject
   ) {
-    const enemy = enemyObj as Phaser.GameObjects.Text & { active: boolean, takeDamage: (damage: number) => boolean }
+    const enemy = enemyObj as any
 
     // Check if enemy is still active
     if (!enemy.active) {
@@ -5517,8 +5948,20 @@ export default class GameScene extends Phaser.Scene {
     // Damage player
     this.takeDamage(10)
 
-    // Destroy the enemy
-    enemy.takeDamage(999) // Kill enemy instantly
+    // Contact damage to enemy
+    const enemyType = enemy.getType ? enemy.getType() : null
+    const isBoss = this.isBossType(enemyType)
+    const isMiniBoss = this.isMiniBossType(enemyType)
+
+    if (isBoss || isMiniBoss) {
+      // Bosses/mini-bosses take minor contact damage (5% of max health)
+      const maxHealth = enemy.getMaxHealth ? enemy.getMaxHealth() : 100
+      const contactDamage = Math.max(10, Math.floor(maxHealth * 0.05))
+      enemy.takeDamage(contactDamage)
+    } else {
+      // Regular enemies die on contact (original behavior)
+      enemy.takeDamage(999)
+    }
 
     // Visual feedback - flash player red briefly
     this.player.setColor('#ff0000')
@@ -5584,8 +6027,17 @@ export default class GameScene extends Phaser.Scene {
         this.enemies.getChildren().forEach((enemy: any) => {
           if (enemy.active) {
             const enemyType = enemy.getType()
-            // Don't instantly kill bosses or mini-bosses
-            if (enemyType !== 'BOSS' && enemyType !== 'MINI_BOSS') {
+            // Don't instantly kill bosses or mini-bosses - damage them for 25% of max health instead
+            const isBoss = this.isBossType(enemyType)
+            const isMiniBoss = this.isMiniBossType(enemyType)
+
+            if (isBoss || isMiniBoss) {
+              // Bosses take 25% max health damage from nuke (still significant but not instant kill)
+              const maxHealth = enemy.getMaxHealth()
+              const nukeDamage = Math.floor(maxHealth * 0.25)
+              enemy.takeDamage(nukeDamage)
+            } else {
+              // Regular enemies die instantly
               enemy.takeDamage(9999)
             }
           }
@@ -6327,6 +6779,7 @@ export default class GameScene extends Phaser.Scene {
       if (enemy) {
         this.healthTrackingWindow.push({ timestamp: this.time.now, health: swarmerHealth })
         actuallySpawned++
+        this.cachedActiveEnemyCount++
       }
     }
 
@@ -6463,14 +6916,11 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private handleAllyExplosion(data: { x: number; y: number; radius: number; damage: number }) {
-    // Damage all enemies within explosion radius
-    const activeEnemies = this.enemies.getChildren().filter((e: any) => e.active) as any[]
+    // Damage all enemies within explosion radius (use getNearbyEnemies for better performance)
+    const nearbyEnemies = this.enemies.getNearbyEnemies(data.x, data.y, data.radius)
 
-    activeEnemies.forEach((enemy: any) => {
-      const distance = Phaser.Math.Distance.Between(data.x, data.y, enemy.x, enemy.y)
-      if (distance <= data.radius) {
-        enemy.takeDamage(data.damage)
-      }
+    nearbyEnemies.forEach((enemy: any) => {
+      enemy.takeDamage(data.damage)
     })
 
     // Visual shockwave
@@ -6513,8 +6963,16 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private updateRerollDisplay() {
-    this.rerollText.setText(`↻${this.rerollsRemaining}`)
-    this.rerollText.setVisible(this.rerollsRemaining > 0 || this.maxRerolls > 0)
+    // Eclipse: Show infinity symbol if unlimited rerolls
+    if (this.playerStats.unlimitedRerolls) {
+      this.rerollText.setText(`↻∞`)
+      this.rerollText.setColor('#ff00ff') // Purple for Eclipse
+      this.rerollText.setVisible(true)
+    } else {
+      this.rerollText.setText(`↻${this.rerollsRemaining}`)
+      this.rerollText.setColor('#00ffff') // Cyan for normal rerolls
+      this.rerollText.setVisible(this.rerollsRemaining > 0 || this.maxRerolls > 0)
+    }
   }
 
   private handleAllyEnemyProjectileHit(allyObj: Phaser.GameObjects.GameObject, projObj: Phaser.GameObjects.GameObject) {
@@ -6544,13 +7002,25 @@ export default class GameScene extends Phaser.Scene {
       // Wall ally dies instantly on contact with enemy, triggering explosion
       ally.takeDamage(999)
       // Also damage the enemy
-      enemy.takeDamage(50)
+      const wallDamage = 50
+      enemy.takeDamage(wallDamage)
+
+      // Track damage dealt
+      this.totalDamageDealt += wallDamage
+      this.damageTrackingWindow.push({ timestamp: this.time.now, damage: wallDamage })
+      this.trackWeaponDamage('Ally - Wall', wallDamage)
     } else if (allyType === AllyType.WINGMAN || allyType === AllyType.RANGED) {
       // Combat allies take damage from collision (with cooldown to prevent frame-by-frame damage)
       if (ally.canTakeCollisionDamage && ally.canTakeCollisionDamage(this.time.now)) {
         ally.takeDamage(20)
         // Also damage the enemy a small amount
-        enemy.takeDamage(10)
+        const allyDamage = 10
+        enemy.takeDamage(allyDamage)
+
+        // Track damage dealt
+        this.totalDamageDealt += allyDamage
+        this.damageTrackingWindow.push({ timestamp: this.time.now, damage: allyDamage })
+        this.trackWeaponDamage('Ally - Wingman', allyDamage)
       }
     }
   }
@@ -6952,6 +7422,21 @@ export default class GameScene extends Phaser.Scene {
     // Clear arrays
     this.weapons = []
     this.passives = []
+    this.frostHasteExpireTimes = []
+    this.damageTrackingWindow = []
+    this.healthTrackingWindow = []
+    this.gameOverUI = []
+
+    // Clear buff displays and destroy visual elements
+    this.buffDisplays.forEach((display) => {
+      display.bg.destroy()
+      display.fill.destroy()
+      display.icon.destroy()
+    })
+    this.buffDisplays.clear()
+
+    // Clear discovered evolutions
+    this.discoveredEvolutions.clear()
 
     // Destroy groups (will clean up all children)
     if (this.projectiles) {
