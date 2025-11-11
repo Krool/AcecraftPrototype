@@ -147,7 +147,9 @@ export class WaveSystem {
     // Waves 1-11: Build up
     for (let i = 1; i <= 11; i++) {
       const difficulty = i <= 4 ? 'early' : i <= 8 ? 'mid' : 'late'
-      waves.push(this.createStandardWave(i, enemies, difficulty))
+      // Wave 1: Only drones for tutorial
+      const waveEnemies = i === 1 ? [EnemyType.DRONE] : enemies
+      waves.push(this.createStandardWave(i, waveEnemies, difficulty))
     }
 
     // Wave 12: Scout Commander Boss
@@ -608,9 +610,11 @@ export class WaveSystem {
 
     let config = configs[difficulty]
 
-    // Gradual ramp for early waves (2-5)
+    // Gradual ramp for early waves (1-5)
     if (difficulty === 'early') {
-      if (waveNum === 2) {
+      if (waveNum === 1) {
+        config = { min: 5, max: 8, formations: 2 }   // Wave 1: ~6 enemies (tutorial wave)
+      } else if (waveNum === 2) {
         config = { min: 8, max: 10, formations: 2 }  // Wave 2: ~8 enemies
       } else if (waveNum === 3) {
         config = { min: 10, max: 15, formations: 3 }  // Wave 3: ~12 enemies
