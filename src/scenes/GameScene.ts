@@ -2,7 +2,7 @@ import Phaser from 'phaser'
 import { ProjectileGroup, ProjectileType, Projectile } from '../game/Projectile'
 import { EnemyGroup, EnemyType, ENEMY_CONFIGS, Enemy } from '../game/Enemy'
 import { EnemyProjectileGroup } from '../game/EnemyProjectile'
-import { AllyGroup, AllyType } from '../game/Ally'
+import { AllyGroup, AllyType, ALLY_CONFIGS } from '../game/Ally'
 import { XPDropGroup } from '../game/XPDrop'
 import { CreditDropGroup } from '../game/CreditDrop'
 import { PowerUpGroup, PowerUpType, POWERUP_CONFIGS } from '../game/PowerUp'
@@ -17,7 +17,7 @@ import { WaveSystem } from '../game/WaveSystem'
 import { gameProgression } from '../game/GameProgression'
 import { MobileDetection } from '../utils/MobileDetection'
 import { RunStatistics } from '../game/RunStatistics'
-import { PLAYER, WAVE_SPAWNING, COMBAT, ALLIES, FROST_HASTE, CHESTS } from '../constants'
+import { PLAYER, WAVE_SPAWNING, COMBAT, ALLIES, FROST_HASTE, CHESTS, LAYOUT } from '../constants'
 
 // XP requirements for each level (index 0 = level 1→2, index 1 = level 2→3, etc.)
 // Curve accelerates significantly starting at level 6, much steeper in late game
@@ -320,7 +320,7 @@ export default class GameScene extends Phaser.Scene {
     ).setOrigin(0, 0).setDepth(10)
 
     // Bottom container (semi-transparent dark)
-    const bottomContainerHeight = 80
+    const bottomContainerHeight = LAYOUT.BOTTOM_BAR
     this.add.rectangle(
       0,
       this.cameras.main.height - bottomContainerHeight,
@@ -1745,8 +1745,8 @@ export default class GameScene extends Phaser.Scene {
         const newY = lastPlayerY + pointer.y - pointer.downY
 
         // Clamp to world bounds, excluding UI areas
-        const topUIHeight = 100 // Top UI area (health, timer, etc.)
-        const bottomUIHeight = 80 // Bottom UI area (weapon/passive slots, buffs)
+        const topUIHeight = LAYOUT.TOP_BAR // Top UI area (health, timer, etc.)
+        const bottomUIHeight = LAYOUT.BOTTOM_BAR // Bottom UI area (weapon/passive slots, buffs)
 
         const clampedX = Phaser.Math.Clamp(newX, 0, this.cameras.main.width)
         const clampedY = Phaser.Math.Clamp(newY, topUIHeight, this.cameras.main.height - bottomUIHeight)
@@ -5103,7 +5103,7 @@ export default class GameScene extends Phaser.Scene {
         // Check if this passive has associated damage (e.g., allies)
         let allyDpsName: string | null = null
         if (config.type === PassiveType.WINGMAN_PROTOCOL) {
-          allyDpsName = 'Ally - Wingman'
+          allyDpsName = `Ally - ${ALLY_CONFIGS[AllyType.WINGMAN].name}`
         }
 
         if (allyDpsName) {
@@ -6998,6 +6998,10 @@ export default class GameScene extends Phaser.Scene {
 
     const allyType = ally.getType()
 
+    // Get ally config for tracking name
+    const allyConfig = ALLY_CONFIGS[allyType]
+    const allyTrackingName = `Ally - ${allyConfig.name}`
+
     if (allyType === AllyType.WALL) {
       // Wall ally dies instantly on contact with enemy, triggering explosion
       ally.takeDamage(999)
@@ -7008,7 +7012,7 @@ export default class GameScene extends Phaser.Scene {
       // Track damage dealt
       this.totalDamageDealt += wallDamage
       this.damageTrackingWindow.push({ timestamp: this.time.now, damage: wallDamage })
-      this.trackWeaponDamage('Ally - Wall', wallDamage)
+      this.trackWeaponDamage(allyTrackingName, wallDamage)
     } else if (allyType === AllyType.WINGMAN || allyType === AllyType.RANGED) {
       // Combat allies take damage from collision (with cooldown to prevent frame-by-frame damage)
       if (ally.canTakeCollisionDamage && ally.canTakeCollisionDamage(this.time.now)) {
@@ -7020,7 +7024,7 @@ export default class GameScene extends Phaser.Scene {
         // Track damage dealt
         this.totalDamageDealt += allyDamage
         this.damageTrackingWindow.push({ timestamp: this.time.now, damage: allyDamage })
-        this.trackWeaponDamage('Ally - Wingman', allyDamage)
+        this.trackWeaponDamage(allyTrackingName, allyDamage)
       }
     }
   }
