@@ -680,7 +680,7 @@ export default class GameScene extends Phaser.Scene {
       this
     )
 
-    // Allies collision with enemies (for wall allies)
+    // Allies collision with enemies
     this.physics.add.overlap(
       this.allies,
       this.enemies,
@@ -688,8 +688,10 @@ export default class GameScene extends Phaser.Scene {
       (allyObj, enemObj) => {
         const ally = allyObj as any
         const enemy = enemObj as any
-        // Only wall allies collide with enemies
-        return ally.active && ally.getType && ally.getType() === AllyType.WALL &&
+        // All combat allies (wingman, ranged, wall) collide with enemies, but not utility allies (reroll)
+        const allyType = ally.getType ? ally.getType() : null
+        const isCombatAlly = allyType === AllyType.WINGMAN || allyType === AllyType.RANGED || allyType === AllyType.WALL
+        return ally.active && isCombatAlly &&
                enemy.body && enemy.body.enable && enemy.active
       },
       this
@@ -744,6 +746,14 @@ export default class GameScene extends Phaser.Scene {
 
     // Create and add starting weapon
     const startingWeapon = WeaponFactory.create(this, startingWeaponType, this.projectiles)
+
+    // Apply starting weapon level bonus from buildings
+    if (bonuses.startingWeaponLevel && bonuses.startingWeaponLevel > 0) {
+      for (let i = 0; i < bonuses.startingWeaponLevel; i++) {
+        startingWeapon.levelUp()
+      }
+    }
+
     this.weapons.push(startingWeapon)
     this.runStatistics.addWeapon(startingWeaponType)
 
@@ -6215,13 +6225,22 @@ export default class GameScene extends Phaser.Scene {
     const ally = allyObj as any
     const enemy = enemObj as any
 
-    // Wall ally dies on contact with enemy, triggering explosion
-    if (ally.active && enemy.active && ally.getType && ally.getType() === AllyType.WALL) {
-      // Kill the ally (which triggers explosion)
-      ally.takeDamage(999)
+    if (!ally.active || !enemy.active || !ally.getType) return
 
+    const allyType = ally.getType()
+
+    if (allyType === AllyType.WALL) {
+      // Wall ally dies instantly on contact with enemy, triggering explosion
+      ally.takeDamage(999)
       // Also damage the enemy
       enemy.takeDamage(50)
+    } else if (allyType === AllyType.WINGMAN || allyType === AllyType.RANGED) {
+      // Combat allies take damage from collision (with cooldown to prevent frame-by-frame damage)
+      if (ally.canTakeCollisionDamage && ally.canTakeCollisionDamage(this.time.now)) {
+        ally.takeDamage(20)
+        // Also damage the enemy a small amount
+        enemy.takeDamage(10)
+      }
     }
   }
 
