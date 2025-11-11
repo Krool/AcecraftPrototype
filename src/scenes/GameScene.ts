@@ -85,6 +85,11 @@ export default class GameScene extends Phaser.Scene {
   private upgradeContainer!: Phaser.GameObjects.Container
   private pendingLevelUps: number = 0 // Queue of pending level ups to show
 
+  // Reroll system
+  private rerollsRemaining: number = 0
+  private maxRerolls: number = 0
+  private rerollText!: Phaser.GameObjects.Text
+
   // Combo system
   private comboCount: number = 0
   private comboTimer: number = 0
@@ -386,6 +391,19 @@ export default class GameScene extends Phaser.Scene {
         align: 'left'
       }
     ).setOrigin(0, 0).setDepth(11)
+
+    // Add reroll counter (to the right of credits, below score)
+    this.rerollText = this.add.text(
+      this.cameras.main.centerX + 140,
+      30,
+      '↻0',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '14px',
+        color: '#00ffff',
+        align: 'left'
+      }
+    ).setOrigin(0, 0).setDepth(11).setVisible(false)
 
     // Add menu button (top center)
     const menuButton = this.add.rectangle(
@@ -753,6 +771,13 @@ export default class GameScene extends Phaser.Scene {
     this.updateHealthDisplay()
     this.updateSlotsDisplay()
 
+    // Initialize reroll system from building bonuses
+    if (bonuses.rerollUnlocked) {
+      this.maxRerolls = bonuses.rerollCharges || 0
+      this.rerollsRemaining = this.maxRerolls
+      this.updateRerollDisplay()
+    }
+
     // Initialize allies based on passives and building upgrades
     this.updateAllies()
   }
@@ -1013,7 +1038,7 @@ export default class GameScene extends Phaser.Scene {
       this.weaponModifiers.projectileSpeedMultiplier *= (1 + bonuses.projectileSpeed)
     }
     if (bonuses.projectileCount) {
-      this.weaponModifiers.pierceCount += bonuses.projectileCount
+      this.weaponModifiers.projectileCount = (this.weaponModifiers.projectileCount || 0) + bonuses.projectileCount
     }
 
     // Critical hits
@@ -3372,9 +3397,13 @@ export default class GameScene extends Phaser.Scene {
       return
     }
 
-    // Randomly select 3 upgrades
+    // Determine number of upgrade options (3 base, +1 per upgradeOptions bonus)
+    const bonuses = this.gameState.getTotalBonuses()
+    const upgradeCount = 3 + (bonuses.upgradeOptions || 0)
+
+    // Randomly select upgrades based on available options
     const shuffled = Phaser.Utils.Array.Shuffle([...upgrades])
-    const selectedUpgrades = shuffled.slice(0, 3)
+    const selectedUpgrades = shuffled.slice(0, Math.min(upgradeCount, upgrades.length))
 
     // Create upgrade buttons
     const buttonHeight = 140
@@ -3591,6 +3620,106 @@ export default class GameScene extends Phaser.Scene {
       if (synergyIcon) buttons.push(synergyIcon)
       if (synergyPlus) buttons.push(synergyPlus)
     })
+
+    // Add Reroll button (only if unlocked and have charges)
+    const rerollUnlocked = bonuses.rerollUnlocked && this.rerollsRemaining > 0
+    if (rerollUnlocked) {
+      const rerollButtonY = startY + (buttonHeight + buttonSpacing) * selectedUpgrades.length + 20
+      const rerollButton = this.add.rectangle(
+        this.cameras.main.centerX - 120,
+        rerollButtonY,
+        180,
+        50,
+        0x1a1a3e
+      ).setDepth(101).setInteractive({ useHandCursor: true })
+
+      const rerollText = this.add.text(
+        this.cameras.main.centerX - 120,
+        rerollButtonY,
+        `↻ Reroll (${this.rerollsRemaining})`,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '18px',
+          color: '#00ffff',
+        }
+      ).setOrigin(0.5).setDepth(102)
+
+      rerollButton.on('pointerover', () => {
+        rerollButton.setFillStyle(0x2a2a4e)
+      })
+
+      rerollButton.on('pointerout', () => {
+        rerollButton.setFillStyle(0x1a1a3e)
+      })
+
+      rerollButton.on('pointerdown', () => {
+        soundManager.play(SoundType.UPGRADE_SELECT)
+
+        // Deduct reroll charge
+        this.rerollsRemaining--
+        this.updateRerollDisplay()
+
+        // Remove all upgrade UI elements
+        buttons.forEach(obj => obj.destroy())
+        rerollButton.destroy()
+        rerollText.destroy()
+        if (skipButton) skipButton.destroy()
+        if (skipText) skipText.destroy()
+
+        // Show level up screen again with new options
+        this.showUpgradeOptions()
+      })
+
+      buttons.push(rerollButton, rerollText)
+    }
+
+    // Add Skip button (always visible)
+    let skipButton: Phaser.GameObjects.Rectangle | null = null
+    let skipText: Phaser.GameObjects.Text | null = null
+
+    const skipButtonY = startY + (buttonHeight + buttonSpacing) * selectedUpgrades.length + 20
+    const skipButtonX = rerollUnlocked ? this.cameras.main.centerX + 120 : this.cameras.main.centerX
+
+    skipButton = this.add.rectangle(
+      skipButtonX,
+      skipButtonY,
+      180,
+      50,
+      0x3a1a1a
+    ).setDepth(101).setInteractive({ useHandCursor: true })
+
+    skipText = this.add.text(
+      skipButtonX,
+      skipButtonY,
+      'Skip',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '18px',
+        color: '#ff8888',
+      }
+    ).setOrigin(0.5).setDepth(102)
+
+    skipButton.on('pointerover', () => {
+      skipButton!.setFillStyle(0x4a2a2a)
+    })
+
+    skipButton.on('pointerout', () => {
+      skipButton!.setFillStyle(0x3a1a1a)
+    })
+
+    skipButton.on('pointerdown', () => {
+      soundManager.play(SoundType.BUTTON_CLICK)
+
+      // Remove all upgrade UI elements
+      buttons.forEach(obj => obj.destroy())
+      if (skipButton) skipButton.destroy()
+      if (skipText) skipText.destroy()
+
+      // Resume game without selecting anything
+      this.resumeGame()
+    })
+
+    buttons.push(skipButton, skipText)
 
     // Store container reference for cleanup if needed
     this.upgradeContainer = this.add.container(0, 0)
@@ -6039,11 +6168,10 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private handleAllyRerollGenerated() {
-    // TODO: Implement reroll system
     // Add a reroll charge
-    // if (this.rerollsRemaining < this.maxRerolls) {
-    //   this.rerollsRemaining++
-    //   this.updateRerollDisplay()
+    if (this.rerollsRemaining < this.maxRerolls) {
+      this.rerollsRemaining++
+      this.updateRerollDisplay()
 
       // Show notification
       const text = this.add.text(this.cameras.main.width - 120, 60, '+1 Reroll!', {
@@ -6053,14 +6181,19 @@ export default class GameScene extends Phaser.Scene {
         fontStyle: 'bold'
       }).setDepth(100)
 
-    this.tweens.add({
-      targets: text,
-      y: 40,
-      alpha: { from: 1, to: 0 },
-      duration: 1500,
-      onComplete: () => text.destroy()
-    })
-    // }
+      this.tweens.add({
+        targets: text,
+        y: 40,
+        alpha: { from: 1, to: 0 },
+        duration: 1500,
+        onComplete: () => text.destroy()
+      })
+    }
+  }
+
+  private updateRerollDisplay() {
+    this.rerollText.setText(`↻${this.rerollsRemaining}`)
+    this.rerollText.setVisible(this.rerollsRemaining > 0 || this.maxRerolls > 0)
   }
 
   private handleAllyEnemyProjectileHit(allyObj: Phaser.GameObjects.GameObject, projObj: Phaser.GameObjects.GameObject) {
