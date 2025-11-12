@@ -20,20 +20,35 @@
             const canvas = document.getElementById(canvasId);
             const ctx = canvas.getContext('2d');
 
-            // Background
-            ctx.fillStyle = '#1a1a3a';
+            // Background - dark space
+            ctx.fillStyle = '#0a0a1e';
             ctx.fillRect(0, 0, size, size);
 
-            // Draw "R" in ASCII style
-            ctx.fillStyle = '#00ffff';
-            ctx.font = `bold ${size * 0.6}px "Courier New", monospace`;
+            // Add subtle stars
+            ctx.fillStyle = '#ffffff';
+            for (let i = 0; i < 20; i++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const starSize = Math.random() * 2 + 1;
+                ctx.fillRect(x, y, starSize, starSize);
+            }
+
+            // Draw ASCII ship /█\
+            ctx.fillStyle = '#ffff00'; // Yellow like the starter ship
+            ctx.font = `bold ${size * 0.35}px "Courier New", monospace`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('R', size / 2, size / 2);
+            ctx.fillText('/█\\', size / 2, size / 2);
+
+            // Add glow effect
+            ctx.shadowBlur = size * 0.05;
+            ctx.shadowColor = '#ffff00';
+            ctx.fillText('/█\\', size / 2, size / 2);
+            ctx.shadowBlur = 0;
 
             // Border
-            ctx.strokeStyle = '#00ffff';
-            ctx.lineWidth = size * 0.02;
+            ctx.strokeStyle = '#4a4a6a';
+            ctx.lineWidth = size * 0.015;
             ctx.strokeRect(0, 0, size, size);
         }
 
