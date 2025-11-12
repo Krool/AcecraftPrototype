@@ -177,11 +177,15 @@ export class XPDrop extends Phaser.GameObjects.Text {
 
     // Deactivate if off bottom of screen
     if (this.y > this.scene.cameras.main.height + 50) {
+      // Kill tweens to prevent memory leak when reusing pooled object
+      this.scene.tweens.killTweensOf(this)
       this.cleanupSparkles()
       this.setActive(false)
       this.setVisible(false)
       this.body.setVelocity(0, 0)
       this.setPosition(-1000, -1000)
+      this.setScale(1)
+      this.setAlpha(1)
     }
   }
 
