@@ -457,6 +457,26 @@ export default class StatsScene extends Phaser.Scene {
         timesUsed = stats.timesAchieved
         wins = stats.wins
         winRate = timesUsed > 0 ? (wins / timesUsed) * 100 : 0
+
+        // Calculate average DPS for evolutions from recent runs
+        const recentRuns = this.runStats.getRecentRuns()
+          .filter((run: any) => run.evolutions?.includes(evolutionType) && run.weaponDPS)
+
+        if (recentRuns.length > 0) {
+          let totalDPS = 0
+          let dpsCount = 0
+          recentRuns.forEach((run: any) => {
+            const evolutionConfig = EVOLUTION_CONFIGS[evolutionType]
+            const evolutionDPSData = run.weaponDPS?.find((w: any) => w.weaponName === evolutionConfig.name)
+            if (evolutionDPSData) {
+              totalDPS += evolutionDPSData.dps
+              dpsCount++
+            }
+          })
+          if (dpsCount > 0) {
+            avgDPS = (totalDPS / dpsCount).toFixed(1)
+          }
+        }
       }
     } else if (this.currentTab === 'ships') {
       const characterType = this.selectedItem.type
