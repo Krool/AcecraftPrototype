@@ -1496,6 +1496,27 @@ export class Enemy extends Phaser.GameObjects.Text {
         this.body.setVelocityX(this.speed * this.patrolDirection)
         this.body.setVelocityY(this.speed * 0.5) // Slow descent
         break
+
+      case 'stationary':
+        // Stationary enemies still need to move down to be visible/hittable
+        if (isBossEnemy) {
+          // Boss enemies hover at the top (y = 180)
+          const hoverY = 180
+          if (this.y < hoverY) {
+            this.body.setVelocityY(50) // Slow descent to hover position
+          } else {
+            this.body.setVelocityY(0)
+          }
+        } else {
+          // Non-boss stationary enemies (turrets, shields) move to mid-screen
+          const hoverY = 150
+          if (this.y < hoverY) {
+            this.body.setVelocityY(30) // Slow descent
+          } else {
+            this.body.setVelocityY(0)
+          }
+        }
+        break
     }
 
     // Update shield position
