@@ -1420,7 +1420,12 @@ export class Enemy extends Phaser.GameObjects.Text {
       case 'straight':
         // Boss enemies hover at the top instead of descending
         if (isBossEnemy) {
-          const hoverY = 180
+          // Mini bosses hover higher, full bosses at y=180
+          let hoverY = 180
+          if (this.enemyType === EnemyType.MINI_BOSS) {
+            hoverY = 140 // Mini bosses stop higher up
+          }
+
           if (this.y < hoverY) {
             this.body.setVelocityY(this.speed)
           } else {
@@ -1449,8 +1454,12 @@ export class Enemy extends Phaser.GameObjects.Text {
 
         // Boss enemies hover at the top instead of descending
         if (isBossEnemy) {
-          // Move to hover position at top of screen (y = 180), then stop descending
-          const hoverY = 180
+          // Mini bosses and smaller bosses hover higher, full bosses at y=180
+          let hoverY = 180
+          if (this.enemyType === EnemyType.MINI_BOSS) {
+            hoverY = 140 // Mini bosses stop higher up
+          }
+
           if (this.y < hoverY) {
             this.body.setVelocityY(this.speed)
           } else {
