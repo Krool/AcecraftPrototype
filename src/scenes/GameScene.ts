@@ -16,7 +16,7 @@ import { soundManager, SoundType } from '../game/SoundManager'
 import { WaveSystem } from '../game/WaveSystem'
 import { gameProgression } from '../game/GameProgression'
 import { MobileDetection } from '../utils/MobileDetection'
-import { RunStatistics } from '../game/RunStatistics'
+import { RunStatistics, WeaponDPSData } from '../game/RunStatistics'
 import { PLAYER, WAVE_SPAWNING, COMBAT, ALLIES, FROST_HASTE, CHESTS, LAYOUT } from '../constants'
 
 // XP requirements for each level (index 0 = level 1→2, index 1 = level 2→3, etc.)
@@ -1085,6 +1085,22 @@ export default class GameScene extends Phaser.Scene {
     }
 
     return tracking.totalDamage / activeTime
+  }
+
+  private trySpawnStaticFortuneCredit(x: number, y: number, damageType: DamageType) {
+    // STATIC_FORTUNE: Chance to drop credits on nature damage
+    if (damageType === DamageType.NATURE) {
+      const staticFortunePassive = this.passives.find(p => p.getConfig().type === PassiveType.STATIC_FORTUNE)
+      if (staticFortunePassive) {
+        const level = staticFortunePassive.getLevel()
+        const dropChance = 10 * level // 10%, 20%, or 30%
+        if (Math.random() * 100 < dropChance) {
+          // Spawn a small credit drop (1-2 credits)
+          const creditAmount = 1 + Math.floor(Math.random() * 2)
+          this.creditDrops.spawnCredit(x, y, creditAmount)
+        }
+      }
+    }
   }
 
   private calculateModifiers() {
@@ -2350,7 +2366,9 @@ export default class GameScene extends Phaser.Scene {
     // Update progress bar based on remaining enemies
     if (this.currentWaveEnemyCount > 0) {
       const activeEnemyCount = this.enemies.getChildren().filter((e: any) => e.active).length
-      const progress = 1 - (activeEnemyCount / this.currentWaveEnemyCount)
+      const progress = this.currentWaveEnemyCount > 0
+        ? 1 - (activeEnemyCount / this.currentWaveEnemyCount)
+        : 0
       const progressBarWidth = 200
       this.waveProgressBar.width = progressBarWidth * Math.max(0, Math.min(1, progress))
     } else {
@@ -2372,10 +2390,10 @@ export default class GameScene extends Phaser.Scene {
         return enemy.active && (this.isBossType(enemyType) || this.isMiniBossType(enemyType))
       }) as Enemy | undefined
 
-      if (boss) {
-        const bossHealth = boss.getHealth()
-        const bossMaxHealth = boss.getMaxHealth()
-        const healthPercent = bossHealth / bossMaxHealth
+      if (boss && boss.getHealth && boss.getMaxHealth) {
+        const bossHealth = boss.getHealth() ?? 0
+        const bossMaxHealth = boss.getMaxHealth() ?? 1
+        const healthPercent = Math.max(0, bossHealth / bossMaxHealth)
         const bossBarWidth = 400
         this.bossHealthBar.width = bossBarWidth * healthPercent
         const bossName = boss.getName() || (waveData.isBoss ? 'BOSS' : 'MINI-BOSS')
@@ -3139,7 +3157,7 @@ export default class GameScene extends Phaser.Scene {
     this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
   }
 
-  private handleLaserFire(data: { x: number; y: number; damage: number; beamCount: number; maxRange: number; color: string; weaponName?: string }) {
+  private handleLaserFire(data: { x: number; y: number; damage: number; beamCount: number; maxRange: number; color: string; weaponName?: string; damageType?: DamageType }) {
     // RAYCAST laser implementation - no projectiles!
     // Find nearest enemies and draw laser lines to them
 
@@ -3175,6 +3193,11 @@ export default class GameScene extends Phaser.Scene {
         this.damageTrackingWindow.push({ timestamp: this.time.now, damage: data.damage })
         if (data.weaponName) {
           this.trackWeaponDamage(data.weaponName, data.damage)
+        }
+
+        // STATIC_FORTUNE: Chance to drop credits on nature damage
+        if (data.damageType) {
+          this.trySpawnStaticFortuneCredit(enemy.x, enemy.y, data.damageType)
         }
 
         // Draw visual laser line from player to enemy
@@ -3521,7 +3544,7 @@ export default class GameScene extends Phaser.Scene {
     return 40 + (newlyUnlockedShips.length * 60)
   }
 
-  private createWeaponPassiveDisplay(baseY: number): Phaser.GameObjects.GameObject[] {
+  private createWeaponPassiveDisplay(baseY: number, weaponDPSData?: WeaponDPSData[]): Phaser.GameObjects.GameObject[] {
     // Create interactive weapon and passive displays with icons and pips
     const elements: Phaser.GameObjects.GameObject[] = []
     const centerX = this.cameras.main.centerX
@@ -3579,6 +3602,24 @@ export default class GameScene extends Phaser.Scene {
         const pip = this.add.circle(pipX, pipsY, pipSize / 2, i < level ? 0x00ffaa : 0x333333)
           .setDepth(202)
         elements.push(pip)
+      }
+
+      // DPS display (if available)
+      if (weaponDPSData) {
+        const weaponDPS = weaponDPSData.find(d => d.weaponName === config.name)
+        if (weaponDPS && weaponDPS.dps > 0) {
+          const dpsText = this.add.text(
+            x,
+            pipsY + 12,
+            `${Math.round(weaponDPS.dps)}`,
+            {
+              fontFamily: 'Courier New',
+              fontSize: '12px',
+              color: '#aaaaaa',
+            }
+          ).setOrigin(0.5).setDepth(202)
+          elements.push(dpsText)
+        }
       }
 
       // Hover effects
@@ -5104,9 +5145,22 @@ export default class GameScene extends Phaser.Scene {
         ).setOrigin(0, 0).setDepth(201)
         uiElements.push(weaponText)
 
-        const statsText = this.add.text(
+        const descText = this.add.text(
           110,
           yOffset + 8,
+          config.description || '',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '11px',
+            color: '#888888',
+            wordWrap: { width: this.cameras.main.width - 120 }
+          }
+        ).setOrigin(0, 0).setDepth(201)
+        uiElements.push(descText)
+
+        const statsText = this.add.text(
+          110,
+          yOffset + 22,
           `DMG: ${Math.round(damage)} | Fire Rate: ${Math.round(fireRate)}ms`,
           {
             fontFamily: 'Courier New',
@@ -5118,7 +5172,7 @@ export default class GameScene extends Phaser.Scene {
 
         const dpsText = this.add.text(
           110,
-          yOffset + 22,
+          yOffset + 36,
           `Theoretical DPS: ${theoreticalDps} | Actual DPS: ${actualDps === 0 ? 'N/A' : actualDps}`,
           {
             fontFamily: 'Courier New',
@@ -5128,7 +5182,7 @@ export default class GameScene extends Phaser.Scene {
         ).setOrigin(0, 0).setDepth(201)
         uiElements.push(dpsText)
 
-        yOffset += 50
+        yOffset += 64
       })
     }
 
@@ -5190,9 +5244,22 @@ export default class GameScene extends Phaser.Scene {
         ).setOrigin(0, 0).setDepth(201)
         uiElements.push(passiveText)
 
-        const benefitText = this.add.text(
+        const descText = this.add.text(
           110,
           yOffset + 8,
+          config.description || '',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '11px',
+            color: '#888888',
+            wordWrap: { width: this.cameras.main.width - 120 }
+          }
+        ).setOrigin(0, 0).setDepth(201)
+        uiElements.push(descText)
+
+        const benefitText = this.add.text(
+          110,
+          yOffset + 22,
           benefit,
           {
             fontFamily: 'Courier New',
@@ -5212,7 +5279,7 @@ export default class GameScene extends Phaser.Scene {
           const allyDps = Math.round(this.getWeaponDPS(allyDpsName) * 10) / 10
           const allyDpsText = this.add.text(
             110,
-            yOffset + 22,
+            yOffset + 36,
             `Ally DPS: ${allyDps === 0 ? 'N/A' : allyDps}`,
             {
               fontFamily: 'Courier New',
@@ -5221,9 +5288,9 @@ export default class GameScene extends Phaser.Scene {
             }
           ).setOrigin(0, 0).setDepth(201)
           uiElements.push(allyDpsText)
-          yOffset += 50
+          yOffset += 64
         } else {
-          yOffset += 40
+          yOffset += 54
         }
       })
     }
@@ -5703,21 +5770,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // STATIC_FORTUNE: Chance to drop credits on nature damage
-    if (projectile.getDamageType() === DamageType.NATURE) {
-      const staticFortunePassive = this.passives.find(p => p.getConfig().type === PassiveType.STATIC_FORTUNE)
-      if (staticFortunePassive) {
-        const level = staticFortunePassive.getLevel()
-        const dropChance = 10 * level // 10%, 20%, or 30%
-        if (Math.random() * 100 < dropChance) {
-          // Save enemy position for credit drop
-          const creditX = enemy.x
-          const creditY = enemy.y
-          // Spawn a small credit drop (1-2 credits)
-          const creditAmount = 1 + Math.floor(Math.random() * 2)
-          this.creditDrops.spawnCredit(creditX, creditY, creditAmount)
-        }
-      }
-    }
+    this.trySpawnStaticFortuneCredit(enemy.x, enemy.y, projectile.getDamageType())
 
     // Show damage number
     this.showDamageNumber(enemy.x, enemy.y, damage, isCritical)
@@ -5801,6 +5854,9 @@ export default class GameScene extends Phaser.Scene {
               }
               this.showDamageNumber(nearbyEnemy.x, nearbyEnemy.y, aoeDamage)
 
+              // STATIC_FORTUNE: Chance to drop credits on nature damage
+              this.trySpawnStaticFortuneCredit(nearbyEnemy.x, nearbyEnemy.y, projectile.getDamageType())
+
               // Apply burn status to AOE targets too
               if ('applyBurn' in nearbyEnemy) {
                 (nearbyEnemy as any).applyBurn(burnDuration)
@@ -5882,6 +5938,9 @@ export default class GameScene extends Phaser.Scene {
           this.trackWeaponDamage(weaponName, chainDamage)
         }
         this.showDamageNumber(chainedEnemy.x, chainedEnemy.y, chainDamage)
+
+        // STATIC_FORTUNE: Chance to drop credits on nature damage
+        this.trySpawnStaticFortuneCredit(chainedEnemy.x, chainedEnemy.y, projectile.getDamageType())
 
         // Visual: Draw lightning arc from primary target to chained enemy
         const lightning = this.add.line(
@@ -6488,6 +6547,32 @@ export default class GameScene extends Phaser.Scene {
       this.highScore = this.score
     }
 
+    // Collect weapon DPS data for logging
+    const weaponDPSData: WeaponDPSData[] = []
+    const currentGameTime = this.time.now - this.runStartTime - this.totalPausedTime
+    this.weaponDamageTracking.forEach((tracking, weaponName) => {
+      if (tracking.totalDamage > 0) {
+        const activeTime = (currentGameTime - tracking.acquisitionGameTime) / 1000 // Convert to seconds
+        const dps = activeTime > 0 ? tracking.totalDamage / activeTime : 0
+        weaponDPSData.push({
+          weaponName,
+          totalDamage: tracking.totalDamage,
+          activeTime,
+          dps
+        })
+      }
+    })
+
+    // End run and log weapon DPS statistics
+    this.runStatistics.endRun(
+      false, // won (always false since player died)
+      this.survivalTime,
+      this.totalDamageDealt,
+      enemyKills,
+      this.level,
+      weaponDPSData
+    )
+
     // Clear any existing game over UI
     this.gameOverUI.forEach(obj => obj.destroy())
     this.gameOverUI = []
@@ -6539,8 +6624,8 @@ export default class GameScene extends Phaser.Scene {
     ).setOrigin(0.5).setDepth(201)
     this.gameOverUI.push(statsText)
 
-    // Interactive Weapons and Passives display with icons and pips
-    const weaponPassiveElements = this.createWeaponPassiveDisplay(this.cameras.main.centerY - 50)
+    // Interactive Weapons and Passives display with icons and pips (with DPS data)
+    const weaponPassiveElements = this.createWeaponPassiveDisplay(this.cameras.main.centerY - 50, weaponDPSData)
     this.gameOverUI.push(...weaponPassiveElements)
 
     // Revive button - positioned after weapons/passives display
@@ -6745,6 +6830,32 @@ export default class GameScene extends Phaser.Scene {
       this.killCount
     )
 
+    // Collect weapon DPS data for logging
+    const weaponDPSData: WeaponDPSData[] = []
+    const currentGameTime = this.time.now - this.runStartTime - this.totalPausedTime
+    this.weaponDamageTracking.forEach((tracking, weaponName) => {
+      if (tracking.totalDamage > 0) {
+        const activeTime = (currentGameTime - tracking.acquisitionGameTime) / 1000
+        const dps = activeTime > 0 ? tracking.totalDamage / activeTime : 0
+        weaponDPSData.push({
+          weaponName,
+          totalDamage: tracking.totalDamage,
+          activeTime,
+          dps
+        })
+      }
+    })
+
+    // End run and log weapon DPS statistics
+    this.runStatistics.endRun(
+      true, // won
+      this.survivalTime,
+      this.totalDamageDealt,
+      this.killCount,
+      this.level,
+      weaponDPSData
+    )
+
     // Save high score for this level if beaten
     const currentLevelIndex = this.campaignManager.getCurrentLevelIndex()
     this.gameState.setLevelHighScore(currentLevelIndex, this.score)
@@ -6804,8 +6915,24 @@ export default class GameScene extends Phaser.Scene {
       }
     ).setOrigin(0.5).setDepth(201)
 
+    // Collect weapon DPS data
+    const weaponDPSData: WeaponDPSData[] = []
+    const currentGameTime = this.time.now - this.runStartTime - this.totalPausedTime
+    this.weaponDamageTracking.forEach((tracking, weaponName) => {
+      if (tracking.totalDamage > 0) {
+        const activeTime = (currentGameTime - tracking.acquisitionGameTime) / 1000
+        const dps = activeTime > 0 ? tracking.totalDamage / activeTime : 0
+        weaponDPSData.push({
+          weaponName,
+          totalDamage: tracking.totalDamage,
+          activeTime,
+          dps
+        })
+      }
+    })
+
     // Interactive Weapons and Passives display with icons and pips - closer to stats
-    this.createWeaponPassiveDisplay(165)
+    this.createWeaponPassiveDisplay(165, weaponDPSData)
 
     // Credits earned display - moved up
     const creditsText = this.add.text(
@@ -7064,12 +7191,22 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
-  private handleAllyExplosion(data: { x: number; y: number; radius: number; damage: number }) {
+  private handleAllyExplosion(data: { x: number; y: number; radius: number; damage: number; damageType?: DamageType }) {
     // Damage all enemies within explosion radius (use getNearbyEnemies for better performance)
     const nearbyEnemies = this.enemies.getNearbyEnemies(data.x, data.y, data.radius)
 
     nearbyEnemies.forEach((enemy: any) => {
       enemy.takeDamage(data.damage)
+
+      // Track damage dealt
+      this.totalDamageDealt += data.damage
+      this.damageTrackingWindow.push({ timestamp: this.time.now, damage: data.damage })
+      this.trackWeaponDamage('Ally - Wall Ally', data.damage)
+
+      // STATIC_FORTUNE: Chance to drop credits on nature damage
+      if (data.damageType) {
+        this.trySpawnStaticFortuneCredit(enemy.x, enemy.y, data.damageType)
+      }
     })
 
     // Visual shockwave
@@ -7162,6 +7299,9 @@ export default class GameScene extends Phaser.Scene {
       this.totalDamageDealt += wallDamage
       this.damageTrackingWindow.push({ timestamp: this.time.now, damage: wallDamage })
       this.trackWeaponDamage(allyTrackingName, wallDamage)
+
+      // STATIC_FORTUNE: Chance to drop credits on nature damage
+      this.trySpawnStaticFortuneCredit(enemy.x, enemy.y, allyConfig.damageType)
     } else if (allyType === AllyType.WINGMAN || allyType === AllyType.RANGED) {
       // Combat allies take damage from collision (with cooldown to prevent frame-by-frame damage)
       if (ally.canTakeCollisionDamage && ally.canTakeCollisionDamage(this.time.now)) {
@@ -7174,6 +7314,9 @@ export default class GameScene extends Phaser.Scene {
         this.totalDamageDealt += allyDamage
         this.damageTrackingWindow.push({ timestamp: this.time.now, damage: allyDamage })
         this.trackWeaponDamage(allyTrackingName, allyDamage)
+
+        // STATIC_FORTUNE: Chance to drop credits on nature damage
+        this.trySpawnStaticFortuneCredit(enemy.x, enemy.y, allyConfig.damageType)
       }
     }
   }

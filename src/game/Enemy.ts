@@ -997,8 +997,8 @@ export class Enemy extends Phaser.GameObjects.Text {
     }
 
     // Don't take damage until visible on screen (prevent off-screen kills)
-    // Use a more generous buffer to account for text height
-    if (this.y < 20) {
+    // Max 1 second immunity to prevent permanent invulnerability for stationary bosses
+    if (this.y < 20 && timeSinceSpawn < 1000) {
       return false
     }
 
