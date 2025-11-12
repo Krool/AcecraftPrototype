@@ -2391,12 +2391,27 @@ export default class GameScene extends Phaser.Scene {
       this.runStartTime = time
     }
 
-    // Prune health tracking window every 5 seconds to prevent unbounded growth
+    // Prune tracking windows every 5 seconds to prevent unbounded growth
     if (Math.floor(time / 5000) !== Math.floor((time - delta) / 5000)) {
       const fiveSecondsAgo = time - 5000
+
+      // Prune old entries from health tracking
       this.healthTrackingWindow = this.healthTrackingWindow.filter(
         entry => entry.timestamp > fiveSecondsAgo
       )
+
+      // Prune old entries from damage tracking
+      this.damageTrackingWindow = this.damageTrackingWindow.filter(
+        entry => entry.timestamp > fiveSecondsAgo
+      )
+
+      // Hard cap: if still over 1000 entries, keep only newest 1000
+      if (this.healthTrackingWindow.length > 1000) {
+        this.healthTrackingWindow = this.healthTrackingWindow.slice(-1000)
+      }
+      if (this.damageTrackingWindow.length > 1000) {
+        this.damageTrackingWindow = this.damageTrackingWindow.slice(-1000)
+      }
     }
 
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body
@@ -7497,16 +7512,25 @@ export default class GameScene extends Phaser.Scene {
     // Clear ally respawn timers
     this.allyRespawnTimers.clear()
 
+    // Clear weapon damage tracking map to prevent memory leak
+    this.weaponDamageTracking.clear()
+
     // Remove all pending delayed calls to prevent callbacks after shutdown
     this.time.removeAllEvents()
 
-    // Stop all tweens
+    // Kill ALL tweens in scene (safety measure for any missed tweens)
+    this.tweens.killAll()
+
+    // Stop specific star field tweens
     this.starFieldTweens.forEach(tween => {
       if (tween && !tween.isDestroyed()) {
         tween.stop()
       }
     })
     this.starFieldTweens = []
+
+    // Remove all input event listeners
+    this.input.removeAllListeners()
 
     // Clear arrays
     this.weapons = []
