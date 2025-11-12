@@ -1094,7 +1094,7 @@ export class Enemy extends Phaser.GameObjects.Text {
     // Color variations based on enemy type
     const explosionColors = [this.config.color, '#ff6600', '#ffaa00', '#ffdd00']
 
-    // Create expanding particle ring
+    // Create expanding particle ring with staggered timing (reduces instant spike)
     for (let i = 0; i < particleCount; i++) {
       const angle = (i / particleCount) * Math.PI * 2
       const speed = 100 * explosionScale
@@ -1105,22 +1105,25 @@ export class Enemy extends Phaser.GameObjects.Text {
       const symbol = Phaser.Utils.Array.GetRandom(particleSymbols)
       const color = Phaser.Utils.Array.GetRandom(explosionColors)
 
-      const particle = this.scene.add.text(x, y, symbol, {
-        fontFamily: 'Courier New',
-        fontSize: `${Math.floor(14 * explosionScale)}px`,
-        color: color,
-      }).setOrigin(0.5).setDepth(45) // Above enemies
+      // Stagger particle creation (5ms delay per particle)
+      this.scene.time.delayedCall(i * 5, () => {
+        const particle = this.scene.add.text(x, y, symbol, {
+          fontFamily: 'Courier New',
+          fontSize: `${Math.floor(14 * explosionScale)}px`,
+          color: color,
+        }).setOrigin(0.5).setDepth(45) // Above enemies
 
-      // Animate particle outward
-      this.scene.tweens.add({
-        targets: particle,
-        x: x + Math.cos(angle) * maxDistance,
-        y: y + Math.sin(angle) * maxDistance,
-        alpha: { from: 1, to: 0 },
-        scale: { from: 1.5, to: 0.3 },
-        duration: 400 + Math.random() * 200,
-        ease: 'Cubic.easeOut',
-        onComplete: () => particle.destroy(),
+        // Animate particle outward
+        this.scene.tweens.add({
+          targets: particle,
+          x: x + Math.cos(angle) * maxDistance,
+          y: y + Math.sin(angle) * maxDistance,
+          alpha: { from: 1, to: 0 },
+          scale: { from: 1.5, to: 0.3 },
+          duration: 400 + Math.random() * 200,
+          ease: 'Cubic.easeOut',
+          onComplete: () => particle.destroy(),
+        })
       })
     }
 

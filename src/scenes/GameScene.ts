@@ -2856,8 +2856,13 @@ export default class GameScene extends Phaser.Scene {
         this.chestsSpawnedThisRun++
       }
     } else {
-      // Normal enemy drops: spawn single XP drop at enemy position
-      this.xpDrops.spawnXP(data.x, data.y, multipliedXP)
+      // Normal enemy drops: 60% chance to drop XP (performance optimization)
+      // When it drops, XP value is increased to compensate (1.67x)
+      const dropChance = 0.6
+      if (Math.random() < dropChance) {
+        const compensatedXP = Math.floor(multipliedXP * (1 / dropChance))
+        this.xpDrops.spawnXP(data.x, data.y, compensatedXP)
+      }
     }
 
     // Golden enemy special drops: lots of credits in a circle
