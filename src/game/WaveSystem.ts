@@ -153,7 +153,7 @@ export class WaveSystem {
       { wave: 3,  min: 14, max: 16,  enemies: allEnemies, formations: 3 },                             // ~330 HP
       { wave: 4,  min: 18, max: 20,  enemies: allEnemies, formations: 3 },                             // ~440 HP
       { wave: 5,  min: 22, max: 24,  enemies: allEnemies, formations: 3 },                             // ~550 HP
-      { wave: 6,  min: 26, max: 28,  enemies: allEnemies, formations: 3 },                             // ~660 HP
+      // Wave 6 is mini-boss (added separately below)
       { wave: 7,  min: 30, max: 32,  enemies: allEnemies, formations: 4 },                             // ~770 HP
       { wave: 8,  min: 34, max: 36,  enemies: allEnemies, formations: 4 },                             // ~880 HP
       { wave: 9,  min: 38, max: 40,  enemies: allEnemies, formations: 4 },                             // ~990 HP
@@ -190,6 +190,22 @@ export class WaveSystem {
       })
     })
 
+    // Wave 6: Mini-Boss (midpoint)
+    waves.splice(5, 0, {
+      waveNumber: 6,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.PROTOTYPE_BOMBER], count: 1 },
+          { type: 'line', enemyTypes: allEnemies, spacing: 50 }
+        ],
+        minEnemies: 15,
+        maxEnemies: 20,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Prototype Bomber',
+    })
+
     // Wave 12: Scout Commander Boss
     waves.push({
       waveNumber: 12,
@@ -214,9 +230,31 @@ export class WaveSystem {
     const waves: Wave[] = []
     const enemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.SWARMER, EnemyType.TANK, EnemyType.SNIPER, EnemyType.HUNTER]
 
-    // Waves 1-9: Build up
-    for (let i = 1; i <= 9; i++) {
-      const difficulty = i <= 3 ? 'early' : i <= 6 ? 'mid' : 'late'
+    // Waves 1-4: Build up
+    for (let i = 1; i <= 4; i++) {
+      const difficulty = 'early'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 5: Mini-Boss (midpoint)
+    waves.push({
+      waveNumber: 5,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.VOID_HERALD], count: 1 },
+          { type: 'wave', enemyTypes: enemies, spacing: 50 }
+        ],
+        minEnemies: 15,
+        maxEnemies: 25,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Void Herald',
+    })
+
+    // Waves 6-9: Continue escalation
+    for (let i = 6; i <= 9; i++) {
+      const difficulty = i <= 7 ? 'mid' : 'late'
       waves.push(this.createStandardWave(i, enemies, difficulty))
     }
 
@@ -244,9 +282,31 @@ export class WaveSystem {
     const waves: Wave[] = []
     const enemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.SWARMER, EnemyType.TANK, EnemyType.SNIPER, EnemyType.HUNTER, EnemyType.PATROLLER, EnemyType.TURRET, EnemyType.BOMBER]
 
-    // Waves 1-12: Build up
-    for (let i = 1; i <= 12; i++) {
-      const difficulty = i <= 4 ? 'early' : i <= 8 ? 'mid' : 'late'
+    // Waves 1-5: Build up
+    for (let i = 1; i <= 5; i++) {
+      const difficulty = 'early'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 6: Mini-Boss (midpoint)
+    waves.push({
+      waveNumber: 6,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.ASSAULT_CRUISER], count: 1 },
+          { type: 'circle', enemyTypes: enemies, spacing: 60 }
+        ],
+        minEnemies: 18,
+        maxEnemies: 28,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Assault Cruiser',
+    })
+
+    // Waves 7-12: Continue escalation
+    for (let i = 7; i <= 12; i++) {
+      const difficulty = i <= 9 ? 'mid' : 'late'
       waves.push(this.createStandardWave(i, enemies, difficulty))
     }
 
@@ -274,9 +334,31 @@ export class WaveSystem {
     const waves: Wave[] = []
     const enemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.TANK, EnemyType.SNIPER, EnemyType.HUNTER, EnemyType.PATROLLER, EnemyType.TURRET, EnemyType.BOMBER, EnemyType.ORBITER, EnemyType.CHARGER, EnemyType.SPIRAL_SHOOTER]
 
-    // Waves 1-10: Build up
-    for (let i = 1; i <= 10; i++) {
-      const difficulty = i <= 3 ? 'early' : i <= 7 ? 'mid' : 'late'
+    // Waves 1-4: Build up
+    for (let i = 1; i <= 4; i++) {
+      const difficulty = 'early'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 5: Mini-Boss (midpoint)
+    waves.push({
+      waveNumber: 5,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.BATTLE_COORDINATOR], count: 1 },
+          { type: 'v', enemyTypes: enemies, spacing: 55 }
+        ],
+        minEnemies: 20,
+        maxEnemies: 30,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Battle Coordinator',
+    })
+
+    // Waves 6-10: Continue escalation
+    for (let i = 6; i <= 10; i++) {
+      const difficulty = i <= 8 ? 'mid' : 'late'
       waves.push(this.createStandardWave(i, enemies, difficulty))
     }
 
@@ -304,9 +386,31 @@ export class WaveSystem {
     const waves: Wave[] = []
     const enemies = [EnemyType.WASP, EnemyType.TANK, EnemyType.SNIPER, EnemyType.HUNTER, EnemyType.PATROLLER, EnemyType.BOMBER, EnemyType.CHARGER, EnemyType.SPLITTER, EnemyType.SPAWNER, EnemyType.HEALER]
 
-    // Waves 1-13: Build up
-    for (let i = 1; i <= 13; i++) {
-      const difficulty = i <= 4 ? 'early' : i <= 9 ? 'mid' : 'late'
+    // Waves 1-6: Build up
+    for (let i = 1; i <= 6; i++) {
+      const difficulty = i <= 4 ? 'early' : 'mid'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 7: Mini-Boss (midpoint)
+    waves.push({
+      waveNumber: 7,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.PROTOTYPE_BOMBER], count: 1 },
+          { type: 'line', enemyTypes: enemies, spacing: 50 }
+        ],
+        minEnemies: 22,
+        maxEnemies: 32,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Prototype Bomber',
+    })
+
+    // Waves 8-13: Continue escalation
+    for (let i = 8; i <= 13; i++) {
+      const difficulty = i <= 10 ? 'mid' : 'late'
       waves.push(this.createStandardWave(i, enemies, difficulty))
     }
 
@@ -334,9 +438,31 @@ export class WaveSystem {
     const waves: Wave[] = []
     const enemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.TANK, EnemyType.HUNTER, EnemyType.BOMBER, EnemyType.SPLITTER, EnemyType.SPAWNER, EnemyType.HEALER, EnemyType.SHIELDED, EnemyType.EXPLODER]
 
-    // Waves 1-9: Build up
-    for (let i = 1; i <= 9; i++) {
-      const difficulty = i <= 3 ? 'early' : i <= 6 ? 'mid' : 'late'
+    // Waves 1-4: Build up
+    for (let i = 1; i <= 4; i++) {
+      const difficulty = 'early'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 5: Mini-Boss (midpoint)
+    waves.push({
+      waveNumber: 5,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.VOID_HERALD], count: 1 },
+          { type: 'circle', enemyTypes: enemies, spacing: 65 }
+        ],
+        minEnemies: 20,
+        maxEnemies: 30,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Void Herald',
+    })
+
+    // Waves 6-9: Continue escalation
+    for (let i = 6; i <= 9; i++) {
+      const difficulty = i <= 7 ? 'mid' : 'late'
       waves.push(this.createStandardWave(i, enemies, difficulty))
     }
 
@@ -488,9 +614,53 @@ export class WaveSystem {
     const waves: Wave[] = []
     const enemies = [EnemyType.CHARGER, EnemyType.SHIELDED, EnemyType.EXPLODER, EnemyType.TANK, EnemyType.TURRET, EnemyType.SPAWNER, EnemyType.HEALER]
 
-    // Waves 1-17: Prolonged battle
-    for (let i = 1; i <= 17; i++) {
-      const difficulty = i <= 6 ? 'early' : i <= 12 ? 'mid' : 'late'
+    // Waves 1-5: Build up
+    for (let i = 1; i <= 5; i++) {
+      const difficulty = 'early'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 6: First Mini-Boss
+    waves.push({
+      waveNumber: 6,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.ASSAULT_CRUISER], count: 1 },
+          { type: 'v', enemyTypes: enemies, spacing: 55 }
+        ],
+        minEnemies: 25,
+        maxEnemies: 35,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Assault Cruiser',
+    })
+
+    // Waves 7-11: Continue escalation
+    for (let i = 7; i <= 11; i++) {
+      const difficulty = 'mid'
+      waves.push(this.createStandardWave(i, enemies, difficulty))
+    }
+
+    // Wave 12: Second Mini-Boss
+    waves.push({
+      waveNumber: 12,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.BATTLE_COORDINATOR], count: 1 },
+          { type: 'circle', enemyTypes: enemies, spacing: 65 }
+        ],
+        minEnemies: 30,
+        maxEnemies: 40,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Battle Coordinator',
+    })
+
+    // Waves 13-17: Final escalation
+    for (let i = 13; i <= 17; i++) {
+      const difficulty = 'late'
       waves.push(this.createStandardWave(i, enemies, difficulty))
     }
 
@@ -519,13 +689,35 @@ export class WaveSystem {
     const waves: Wave[] = []
     const allEnemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.TANK, EnemyType.SNIPER, EnemyType.HUNTER, EnemyType.BOMBER, EnemyType.CHARGER, EnemyType.SHIELDED, EnemyType.EXPLODER, EnemyType.SPAWNER, EnemyType.HEALER]
 
-    // Waves 1-9: Build up to first mini-boss
-    for (let i = 1; i <= 9; i++) {
-      const difficulty = i <= 3 ? 'early' : 'mid'
+    // Waves 1-4: Build up
+    for (let i = 1; i <= 4; i++) {
+      const difficulty = 'early'
       waves.push(this.createStandardWave(i, allEnemies, difficulty))
     }
 
-    // Wave 10: Assault Cruiser Mini-Boss
+    // Wave 5: First Mini-Boss
+    waves.push({
+      waveNumber: 5,
+      buckets: [{
+        formations: [
+          { type: 'single', enemyTypes: [EnemyType.PROTOTYPE_BOMBER], count: 1 },
+          { type: 'line', enemyTypes: allEnemies, spacing: 50 }
+        ],
+        minEnemies: 25,
+        maxEnemies: 35,
+      }],
+      isBoss: false,
+      isMiniBoss: true,
+      description: 'Prototype Bomber',
+    })
+
+    // Waves 6-9: Continue escalation
+    for (let i = 6; i <= 9; i++) {
+      const difficulty = 'mid'
+      waves.push(this.createStandardWave(i, allEnemies, difficulty))
+    }
+
+    // Wave 10: Second Mini-Boss (Assault Cruiser)
     waves.push({
       waveNumber: 10,
       buckets: [{
@@ -546,7 +738,7 @@ export class WaveSystem {
       waves.push(this.createStandardWave(i, allEnemies, 'mid'))
     }
 
-    // Wave 15: Battle Coordinator Mini-Boss
+    // Wave 15: Third Mini-Boss (Battle Coordinator)
     waves.push({
       waveNumber: 15,
       buckets: [{
