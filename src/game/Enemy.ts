@@ -1559,14 +1559,15 @@ export class Enemy extends Phaser.GameObjects.Text {
     }
 
     // Deactivate if off screen - treat as death to avoid stuck waves
+    // Give top much more grace (400px) since enemies spawn from above
     const cam = this.scene.cameras.main
-    if (this.y > cam.height + 50 || this.y < -100 || this.x < -100 || this.x > cam.width + 100) {
+    if (this.y > cam.height + 50 || this.y < -400 || this.x < -100 || this.x > cam.width + 100) {
       // Save position before deactivating
       const deathX = this.x
       const deathY = this.y
 
-      // Determine if this is a "natural" death (reached bottom) vs killed by player
-      const reachedBottom = this.y > cam.height + 50
+      // Determine if this is a "natural" off-screen exit (any edge) vs killed by player
+      const reachedBottom = true // All off-screen exits count as natural death (no drops)
 
       // Destroy shield if present
       if (this.shield) {
