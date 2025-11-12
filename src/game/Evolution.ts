@@ -566,8 +566,19 @@ export class EvolutionManager {
     // Get max level passives
     const maxLevelPassives = passives.filter(p => p.isMaxLevel())
 
+    // Get list of already obtained evolutions
+    const obtainedEvolutions = weapons
+      .filter(w => w instanceof EvolvedWeapon || w instanceof SuperEvolvedWeapon)
+      .map(w => (w as any).evolutionConfig?.evolutionType)
+      .filter(type => type !== undefined)
+
     // Check each recipe
     for (const recipe of EVOLUTION_RECIPES) {
+      // Skip if we already have this evolution
+      if (obtainedEvolutions.includes(recipe.evolution)) {
+        continue
+      }
+
       const hasWeapon = maxLevelWeapons.some(w => w.getConfig().type === recipe.baseWeapon)
       const hasPassive = maxLevelPassives.some(p => p.getConfig().type === recipe.requiredPassive)
 

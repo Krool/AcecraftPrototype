@@ -745,10 +745,13 @@ export class LaserBeamWeapon extends Weapon {
       }
     }
 
-    // Apply passive cooling when not firing (and not overheated)
-    if (!this.isOverheated && currentTime >= this.lastCooldownTime + 100) {
-      this.heat = Math.max(0, this.heat - this.cooldownRate)
-      this.lastCooldownTime = currentTime
+    // Apply passive cooling only when weapon has been idle for 1 second
+    const idleTime = 1000 // 1 second of not firing before cooling starts
+    if (!this.isOverheated && currentTime >= this.lastFireTime + idleTime) {
+      if (currentTime >= this.lastCooldownTime + 100) {
+        this.heat = Math.max(0, this.heat - this.cooldownRate)
+        this.lastCooldownTime = currentTime
+      }
     }
 
     return super.canFire(currentTime, modifiers)
@@ -780,7 +783,7 @@ export class LaserBeamWeapon extends Weapon {
     this.heat += this.heatPerShot
     if (this.heat >= this.maxHeat && !this.isOverheated) {
       this.isOverheated = true
-      this.overheatStartTime = this.lastFireTime // Use last fire time as overheat start
+      this.overheatStartTime = this.scene.time.now // Use current time as overheat start
     }
   }
 
