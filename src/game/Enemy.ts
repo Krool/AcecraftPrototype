@@ -1087,8 +1087,9 @@ export class Enemy extends Phaser.GameObjects.Text {
     const sizeScale = parseInt(this.config.fontSize) / 36 // Base 36px = scale 1
     const explosionScale = Math.max(0.5, Math.min(3, (healthScale + sizeScale) / 2))
 
-    // Fixed particle count for performance (reduced from 8-24 to 4)
-    const particleCount = 4
+    // Reduced particle count for performance: 2 for normal enemies, 4 for bosses
+    const isBoss = this.maxHealth > 100
+    const particleCount = isBoss ? 4 : 2
 
     // Color variations based on enemy type
     const explosionColors = [this.config.color, '#ff6600', '#ffaa00', '#ffdd00']

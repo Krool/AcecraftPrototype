@@ -6113,27 +6113,54 @@ export default class GameScene extends Phaser.Scene {
         break
 
       case PowerUpType.NUKE:
-        // Kill all enemies on screen (except bosses and mini-bosses)
+        // Kill enemies in batches over multiple frames to prevent jittering
+        // Collect all active enemies first
+        const enemiesToNuke: any[] = []
         this.enemies.getChildren().forEach((enemy: any) => {
           if (enemy.active) {
-            const enemyType = enemy.getType()
-            // Don't instantly kill bosses or mini-bosses - damage them for 25% of max health instead
-            const isBoss = this.isBossType(enemyType)
-            const isMiniBoss = this.isMiniBossType(enemyType)
-
-            if (isBoss || isMiniBoss) {
-              // Bosses take 25% max health damage from nuke (still significant but not instant kill)
-              const maxHealth = enemy.getMaxHealth()
-              const nukeDamage = Math.floor(maxHealth * 0.25)
-              enemy.takeDamage(nukeDamage)
-            } else {
-              // Regular enemies die instantly
-              enemy.takeDamage(9999)
-            }
+            enemiesToNuke.push(enemy)
           }
         })
+
         // Screen flash
         this.cameras.main.flash(300, 255, 255, 0)
+
+        // Kill enemies in batches (10 per frame to reduce lag spikes)
+        const ENEMIES_PER_FRAME = 10
+        let nukeIndex = 0
+
+        const killNextBatch = () => {
+          const batchEnd = Math.min(nukeIndex + ENEMIES_PER_FRAME, enemiesToNuke.length)
+
+          for (let i = nukeIndex; i < batchEnd; i++) {
+            const enemy = enemiesToNuke[i]
+            if (enemy.active) {
+              const enemyType = enemy.getType()
+              const isBoss = this.isBossType(enemyType)
+              const isMiniBoss = this.isMiniBossType(enemyType)
+
+              if (isBoss || isMiniBoss) {
+                // Bosses take 25% max health damage
+                const maxHealth = enemy.getMaxHealth()
+                const nukeDamage = Math.floor(maxHealth * 0.25)
+                enemy.takeDamage(nukeDamage)
+              } else {
+                // Regular enemies die instantly
+                enemy.takeDamage(9999)
+              }
+            }
+          }
+
+          nukeIndex = batchEnd
+
+          // Continue to next batch if more enemies remain
+          if (nukeIndex < enemiesToNuke.length) {
+            this.time.delayedCall(16, killNextBatch) // ~1 frame delay (16ms)
+          }
+        }
+
+        // Start killing batches
+        killNextBatch()
         break
 
       case PowerUpType.MAGNET:
