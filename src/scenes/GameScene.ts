@@ -171,6 +171,17 @@ export default class GameScene extends Phaser.Scene {
   private readonly guaranteedChestMilestones: number[] = [60, 120] // Reduced from 4 to 2 milestones (removed 20 & 200)
   private chestPopupClickState: number = 0 // 0 = showing animation, 1 = showing rewards, 2+ = can close
 
+  // Star effect rainbow colors (constant to avoid GC pressure from array literal in update loop)
+  private readonly RAINBOW_COLORS = [
+    '#ff0000', // Red
+    '#ff7f00', // Orange
+    '#ffff00', // Yellow
+    '#00ff00', // Green
+    '#00ffff', // Cyan
+    '#0000ff', // Blue
+    '#ff00ff', // Magenta
+  ] as const
+
   // New weapon/passive/character system
   private weapons: Weapon[] = []
   private passives: Passive[] = []
@@ -2392,25 +2403,32 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Prune tracking windows every 5 seconds to prevent unbounded growth
+    // Using in-place splice() instead of filter() to reduce GC pressure
     if (Math.floor(time / 5000) !== Math.floor((time - delta) / 5000)) {
       const fiveSecondsAgo = time - 5000
 
-      // Prune old entries from health tracking
-      this.healthTrackingWindow = this.healthTrackingWindow.filter(
-        entry => entry.timestamp > fiveSecondsAgo
-      )
-
-      // Prune old entries from damage tracking
-      this.damageTrackingWindow = this.damageTrackingWindow.filter(
-        entry => entry.timestamp > fiveSecondsAgo
-      )
-
-      // Hard cap: if still over 1000 entries, keep only newest 1000
-      if (this.healthTrackingWindow.length > 1000) {
-        this.healthTrackingWindow = this.healthTrackingWindow.slice(-1000)
+      // Prune old entries using backwards iteration + splice
+      for (let i = this.healthTrackingWindow.length - 1; i >= 0; i--) {
+        if (this.healthTrackingWindow[i].timestamp <= fiveSecondsAgo) {
+          this.healthTrackingWindow.splice(i, 1)
+        }
       }
-      if (this.damageTrackingWindow.length > 1000) {
-        this.damageTrackingWindow = this.damageTrackingWindow.slice(-1000)
+
+      for (let i = this.damageTrackingWindow.length - 1; i >= 0; i--) {
+        if (this.damageTrackingWindow[i].timestamp <= fiveSecondsAgo) {
+          this.damageTrackingWindow.splice(i, 1)
+        }
+      }
+
+      // Hard cap: if still over 1000 entries, remove oldest
+      const healthOverflow = this.healthTrackingWindow.length - 1000
+      if (healthOverflow > 0) {
+        this.healthTrackingWindow.splice(0, healthOverflow)
+      }
+
+      const damageOverflow = this.damageTrackingWindow.length - 1000
+      if (damageOverflow > 0) {
+        this.damageTrackingWindow.splice(0, damageOverflow)
       }
     }
 
@@ -2427,16 +2445,7 @@ export default class GameScene extends Phaser.Scene {
         // Create rainbow flash effect like Mario star power
         // Cycle through colors rapidly (every 50ms)
         const colorIndex = Math.floor(time / 50) % 7
-        const rainbowColors = [
-          '#ff0000', // Red
-          '#ff7f00', // Orange
-          '#ffff00', // Yellow
-          '#00ff00', // Green
-          '#00ffff', // Cyan
-          '#0000ff', // Blue
-          '#ff00ff', // Magenta
-        ]
-        this.player.setColor(rainbowColors[colorIndex])
+        this.player.setColor(this.RAINBOW_COLORS[colorIndex])
 
         // Add a subtle glow effect by pulsing scale
         const glowPhase = Math.sin(time / 100) * 0.05 + 1
@@ -2491,12 +2500,17 @@ export default class GameScene extends Phaser.Scene {
         this.modifiersNeedRecalculation = false
       }
 
-      // Expire old FROST_HASTE stacks
+      // Expire old FROST_HASTE stacks (use backwards iteration to avoid filter() GC pressure)
       if (this.frostHasteStacks > 0) {
-        const expiredStacks = this.frostHasteExpireTimes.filter(expireTime => time >= expireTime).length
-        if (expiredStacks > 0) {
-          this.frostHasteExpireTimes = this.frostHasteExpireTimes.filter(expireTime => time < expireTime)
-          this.frostHasteStacks = Math.max(0, this.frostHasteStacks - expiredStacks)
+        let expiredCount = 0
+        for (let i = this.frostHasteExpireTimes.length - 1; i >= 0; i--) {
+          if (time >= this.frostHasteExpireTimes[i]) {
+            this.frostHasteExpireTimes.splice(i, 1)
+            expiredCount++
+          }
+        }
+        if (expiredCount > 0) {
+          this.frostHasteStacks = Math.max(0, this.frostHasteStacks - expiredCount)
           this.modifiersNeedRecalculation = true // Attack speed changed
         }
       }
@@ -2509,14 +2523,18 @@ export default class GameScene extends Phaser.Scene {
 
       // Fire all equipped weapons
       this.bastionFiredLastFrame = false // Reset Bastion firing tracker
-      this.weapons.forEach(weapon => {
-        // Apply character-specific modifiers per weapon
-        const weaponModifiers = { ...this.weaponModifiers }
 
-        // NOTE: Glacier bonus is now applied in GlacierCharacter.applyInnateAbility(), not here
+      // Cache character type to avoid repeated getConfig() calls
+      const isHavoc = this.character.getConfig().type === 'HAVOC'
+
+      this.weapons.forEach(weapon => {
+        // Only create modified weaponModifiers if needed (avoid object spread GC pressure)
+        let weaponModifiers = this.weaponModifiers
 
         // Havoc: Minigun never stops firing (near-instant fire rate)
-        if (this.character.getConfig().type === 'HAVOC' && weapon.getConfig().type === 'MINIGUN') {
+        if (isHavoc && weapon.getConfig().type === 'MINIGUN') {
+          // Only create spread when modification is needed
+          weaponModifiers = { ...this.weaponModifiers }
           weaponModifiers.fireRateMultiplier *= 0.01 // 99% faster = continuous fire
         }
 
