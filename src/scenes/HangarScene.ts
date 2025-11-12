@@ -1005,5 +1005,8 @@ export default class HangarScene extends Phaser.Scene {
       }
     })
     this.inputListeners = []
+
+    // Extra safety: remove all scene event listeners to prevent leaks
+    this.events.removeAllListeners()
   }
 }

@@ -846,6 +846,14 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private updateSlotsDisplay() {
+    // Kill all tweens on children before clearing to prevent memory leak
+    this.weaponSlotsContainer.getAll().forEach(child => {
+      this.tweens.killTweensOf(child)
+    })
+    this.passiveSlotsContainer.getAll().forEach(child => {
+      this.tweens.killTweensOf(child)
+    })
+
     // Clear existing containers
     this.weaponSlotsContainer.removeAll(true)
     this.passiveSlotsContainer.removeAll(true)
@@ -7475,6 +7483,7 @@ export default class GameScene extends Phaser.Scene {
     this.events.off('allyExplosion', this.handleAllyExplosion, this)
     this.events.off('allyRerollGenerated', this.handleAllyRerollGenerated, this)
     this.events.off('allyDied', this.handleAllyDied, this)
+    this.events.off('laserFire', this.handleLaserFire, this)
 
     // Clear ally respawn timers
     this.allyRespawnTimers.clear()
