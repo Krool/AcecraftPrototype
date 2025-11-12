@@ -54,7 +54,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 7,
     baseFireRate: 350, // Balanced for ~48 DPS at level 3
     description: 'Basic pellets fired upward',
-    detailedDescription: 'Your starter weapon that fires straightforward kinetic projectiles. Reliable and consistent damage with balanced fire rate. Level 1: 1 projectile. Level 2: 2 projectiles. Level 3: 3 projectiles. Pairs perfectly with Ballistics passive for increased damage, evolving into Railstorm Gatling at max level.',
+    detailedDescription: 'Your starter weapon that fires straightforward kinetic projectiles. Reliable and consistent damage with balanced fire rate. Level 1: 1 projectile, 7 damage. Level 2: 1 projectile, 12 damage. Level 3: 2 projectiles, 7 damage each (14 total). Pairs perfectly with Ballistics passive for increased damage, evolving into Railstorm Gatling at max level.',
     maxLevel: 3,
     icon: '|',
     color: '#ffff00', // Yellow for PHYSICAL
@@ -66,7 +66,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 5,
     baseFireRate: 488, // Reduced by 25% from 650 (faster fire rate)
     description: 'Wide spread, slow fire rate',
-    detailedDescription: 'Fires a wide arc of pellets covering approximately one-third of the screen. Lower individual projectile damage but excellent area coverage. Level 1: 5 pellets. Level 2: 7 pellets. Level 3: 9 pellets. Evolves with Weapon Speed Up into Auto Scatter for continuous full-screen coverage.',
+    detailedDescription: 'Fires a wide arc of pellets covering approximately one-third of the screen. Lower individual projectile damage but excellent area coverage. Level 1: 3 pellets, 60° spread. Level 2: 4 pellets, 50° spread. Level 3: 5 pellets, 40° spread. Evolves with Weapon Speed Up into Auto Scatter for continuous full-screen coverage.',
     maxLevel: 3,
     icon: '╪',
     color: '#ffff00', // Yellow for PHYSICAL
@@ -78,7 +78,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 5,
     baseFireRate: 450, // Balanced for ~71 DPS at level 3 (with 6 chains)
     description: 'Chain lightning between enemies',
-    detailedDescription: 'Arcing electricity jumps between nearby enemies, dealing damage to multiple targets per shot. Effectiveness scales with enemy density. Level 1: Chains 3 times. Level 2: Chains 4 times. Level 3: Chains 6 times. Evolves with Critical Systems into Storm Nexus for infinite chaining and critical storm reactions.',
+    detailedDescription: 'Arcing electricity jumps between nearby enemies, dealing damage to multiple targets per shot. Effectiveness scales with enemy density. Level 1: Chains 2 times (hits 3 enemies). Level 2: Chains 4 times (hits 5 enemies). Level 3: Chains 6 times (hits 7 enemies). Evolves with Critical Systems into Storm Nexus for infinite chaining and critical storm reactions.',
     maxLevel: 3,
     icon: '‡',
     color: '#00ff00', // Green for NATURE
@@ -114,7 +114,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 10,
     baseFireRate: 341, // Reduced by 25% from 455 (faster fire rate)
     description: 'Freezes and slows enemies',
-    detailedDescription: 'Fires cryogenic projectiles that slow enemy movement and have a chance to freeze targets solid. Frozen enemies are vulnerable to shatter effects. Shards fragment outward on impact. Level 1: 2 shards. Level 2: 3 shards. Level 3: 4 shards. Pair with Thruster Mod to create Cryo Lancer with high-velocity piercing lances.',
+    detailedDescription: 'Fires cryogenic lances that pierce through enemies and have a chance to freeze targets solid. Frozen enemies are vulnerable to shatter effects. Level 1: 1 lance, 1 pierce, 30% freeze chance. Level 2: 1 lance, 2 pierce, 40% freeze chance. Level 3: 2 lances, 3 pierce, 50% freeze chance. Pair with Thruster Mod to create Cryo Lancer with high-velocity piercing lances.',
     maxLevel: 3,
     icon: '❄',
     color: '#00aaff', // Blue for COLD
@@ -231,7 +231,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     name: 'Blizzard',
     type: WeaponType.VORTEX_BLADE,
     damageType: DamageType.COLD,
-    baseDamage: 12,
+    baseDamage: 15, // Increased by 25% from 12
     baseFireRate: 488, // Reduced by 25% from 650 (faster fire rate)
     description: 'Spiraling ice projectiles expand outward',
     detailedDescription: 'Fires spiraling ice blades that expand outward in circular patterns, covering a wide radius around your ship. Each blade freezes on contact. More blades spawn at higher levels. Combine with Frost Haste to create Spiral Tempest, where frozen enemies trigger exponential fire rate scaling.',
@@ -697,11 +697,11 @@ export class DarkWeapon extends Weapon {
 export class LaserBeamWeapon extends Weapon {
   private heat: number = 0
   private maxHeat: number = 100
-  private heatPerShot: number = 3 // Heat gained per shot (balances to ~5 seconds of firing)
-  private cooldownRate: number = 2 // Heat lost per 100ms when not firing
+  private heatPerShot: number = 5 // Heat gained per shot (overheats after ~3 seconds of continuous fire)
+  private cooldownRate: number = 3 // Heat lost per 100ms when not firing
   private lastCooldownTime: number = 0
   private isOverheated: boolean = false
-  private overheatCooldownDuration: number = 5000 // 5 seconds cooldown when overheated
+  private overheatCooldownDuration: number = 2000 // 2 seconds cooldown when overheated
   private overheatStartTime: number = 0
 
   canFire(currentTime: number, modifiers: WeaponModifiers = DEFAULT_MODIFIERS): boolean {
@@ -960,28 +960,28 @@ export class VortexBladeWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount
 
-    // Modest blade count increase with level, plus building/character bonuses
-    const bladeCount = 2 + Math.floor((this.level - 1) * 0.5) + (modifiers.projectileCount || 0)
+    // More blades with level, plus building/character bonuses
+    const bladeCount = 3 + this.level + (modifiers.projectileCount || 0)
     const angleStep = (Math.PI * 2) / bladeCount
 
-    // Apply projectile speed multiplier
-    const speed = 400 * modifiers.projectileSpeedMultiplier
+    // Apply projectile speed multiplier - pure outward spiral
+    const speed = 350 * modifiers.projectileSpeedMultiplier
 
     for (let i = 0; i < bladeCount; i++) {
       const angle = this.spiralAngle + (angleStep * i)
       const velocityX = Math.cos(angle) * speed
-      const velocityY = Math.sin(angle) * speed - 200 // Bias upward
+      const velocityY = Math.sin(angle) * speed // Pure radial movement, no upward bias
 
       this.projectileGroup.fireProjectile(
         x, y, damage, pierce, velocityX, velocityY,
         this.config.icon, this.config.color,
-        undefined,
+        ProjectileType.FREEZING,
         { weaponName: this.config.name }
       )
     }
 
-    // Increment spiral for next fire
-    this.spiralAngle += 0.5
+    // Increment spiral for next fire - creates rotating spiral effect
+    this.spiralAngle += 0.4
   }
 }
 

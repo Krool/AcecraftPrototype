@@ -146,7 +146,7 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
     name: 'Frost Haste',
     type: PassiveType.FROST_HASTE,
     description: 'Cold damage increases attack speed (stacking)',
-    detailedDescription: 'Cryogenic feedback loop converts Cold damage dealt into stacking attack speed buffs. Level 1: +2% per stack. Level 2: +4% per stack. Level 3: +6% per stack. Ramp up to incredible fire rates with Cold-heavy arsenals.',
+    detailedDescription: 'Cryogenic feedback loop converts Cold damage dealt into stacking attack speed buffs. Level 1: +5% per stack. Level 2: +10% per stack. Level 3: +15% per stack. Stacks last 5 seconds. Ramp up to incredible fire rates with Cold-heavy arsenals.',
     maxLevel: 3,
     icon: '↯',
     color: '#00aaff',
