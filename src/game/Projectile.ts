@@ -275,21 +275,22 @@ export class Projectile extends Phaser.GameObjects.Text {
         const screenWidth = this.scene.cameras.main.width
         const screenHeight = this.scene.cameras.main.height
         let bounced = false
+        const speedIncrease = 1.1 // 10% speed increase per bounce
 
         // Bounce off left/right edges
         if (this.x < 10 && this.body.velocity.x < 0) {
-          this.body.setVelocityX(-this.body.velocity.x)
+          this.body.setVelocityX(-this.body.velocity.x * speedIncrease)
           this.x = 10
           bounced = true
         } else if (this.x > screenWidth - 10 && this.body.velocity.x > 0) {
-          this.body.setVelocityX(-this.body.velocity.x)
+          this.body.setVelocityX(-this.body.velocity.x * speedIncrease)
           this.x = screenWidth - 10
           bounced = true
         }
 
         // Bounce off bottom edge
         if (this.y > screenHeight - 10 && this.body.velocity.y > 0) {
-          this.body.setVelocityY(-this.body.velocity.y)
+          this.body.setVelocityY(-this.body.velocity.y * speedIncrease)
           this.y = screenHeight - 10
           bounced = true
         }

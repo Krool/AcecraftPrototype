@@ -227,7 +227,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.ORBITAL_STRIKE,
     damageType: DamageType.FIRE,
     baseDamage: 8,
-    baseFireRate: 400, // Balanced for ~24 DPS at level 3 (multi-hit)
+    baseFireRate: 1200, // Reduced frequency to 1/3rd (was 400ms)
     description: 'Row of explosions across screen top',
     maxLevel: 3,
     icon: '▼',
@@ -260,7 +260,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.SNIPER_RIFLE,
     damageType: DamageType.PHYSICAL,
     baseDamage: 50,
-    baseFireRate: 1950, // Reduced by 25% from 2600 (faster fire rate)
+    baseFireRate: 2925, // Reduced fire rate to 2/3rds (was 1950ms)
     description: 'High damage shots at nearest enemy',
     maxLevel: 3,
     icon: '═',
@@ -368,6 +368,15 @@ export const DEFAULT_MODIFIERS: WeaponModifiers = {
 
 // Cannon Implementation
 export class CannonWeapon extends Weapon {
+  // Custom damage scaling for balanced DPS progression
+  getDamage(): number {
+    // Level 1: 7 damage (20 DPS)
+    // Level 2: 12 damage (36 DPS, +80%)
+    // Level 3: 7 damage per projectile x2 = 14 total (44 DPS, +120%)
+    const damageByLevel = [7, 12, 7]
+    return damageByLevel[this.level - 1] || 7
+  }
+
   fire(x: number, y: number, modifiers: WeaponModifiers): void {
     soundManager.playWeaponSound(this.config.name)
     const damage = this.getDamage() * modifiers.damageMultiplier
@@ -400,8 +409,8 @@ export class ShotgunWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount
 
-    // Modest pellet increase and tighter spread at higher levels, plus building/character bonuses
-    const pelletCount = 3 + Math.floor((this.level - 1) * 0.5) + (modifiers.projectileCount || 0)
+    // Pellet count increases per level: 3 -> 4 -> 5, plus building/character bonuses
+    const pelletCount = 3 + (this.level - 1) + (modifiers.projectileCount || 0)
     const spreadAngle = 60 - (this.level - 1) * 10 // Tighter spread at higher levels
 
     // Apply projectile speed multiplier
@@ -463,17 +472,20 @@ export class FireWeapon extends Weapon {
     // Apply projectile speed multiplier
     const speed = -400 * modifiers.projectileSpeedMultiplier
 
-    // Explosion radius increases modestly with level
-    const explosionRadius = (60 + (this.level - 1) * 10) * modifiers.explosionRadiusMultiplier
+    // Explosion radius increases significantly with level (60 -> 80 -> 100)
+    const explosionRadius = (60 + (this.level - 1) * 20) * modifiers.explosionRadiusMultiplier
 
-    // Add 1 extra projectile only at max level, plus building/character bonuses
-    const count = (this.level === 3 ? 2 : 1) + (modifiers.projectileCount || 0)
+    // Visual size scales with explosion radius
+    const fontSize = (27 + (this.level - 1) * 5) + 'px' // 27px -> 32px -> 37px
+
+    // No extra projectiles from leveling, only building/character bonuses
+    const count = 1 + (modifiers.projectileCount || 0)
     if (count === 1) {
       this.projectileGroup.fireProjectile(
         x, y, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         ProjectileType.EXPLOSIVE,
-        { explosionRadius, fontSize: '27px', weaponName: this.config.name }
+        { explosionRadius, fontSize, weaponName: this.config.name }
       )
     } else {
       const spacing = 20
@@ -485,7 +497,7 @@ export class FireWeapon extends Weapon {
           startX + i * spacing, y, damage, pierce, 0, speed,
           this.config.icon, this.config.color,
           ProjectileType.EXPLOSIVE,
-          { explosionRadius, fontSize: '27px', weaponName: this.config.name }
+          { explosionRadius, fontSize, weaponName: this.config.name }
         )
       }
     }
@@ -710,7 +722,8 @@ export class LaserBeamWeapon extends Weapon {
       beamCount,
       maxRange,
       color: this.config.color,
-      weaponName: this.config.name
+      weaponName: this.config.name,
+      damageType: this.config.damageType
     })
 
     // Increase heat
