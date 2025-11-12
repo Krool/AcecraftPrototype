@@ -183,12 +183,25 @@ export class CreditDrop extends Phaser.GameObjects.Text {
   }
 
   private cleanupSparkles() {
+    // Check if scene still exists before cleanup (prevents crash on scene destroy)
+    if (!this.scene || !this.scene.sys) {
+      this.sparkleParticles = []
+      return
+    }
+
     // Destroy all sparkle particles
     this.sparkleParticles.forEach(sparkle => {
-      this.scene.tweens.killTweensOf(sparkle)
-      sparkle.destroy()
+      if (sparkle && sparkle.scene) {
+        this.scene.tweens.killTweensOf(sparkle)
+        sparkle.destroy()
+      }
     })
     this.sparkleParticles = []
+  }
+
+  preDestroy() {
+    // Clean up sparkles when CreditDrop itself is destroyed
+    this.cleanupSparkles()
   }
 
   private collect() {

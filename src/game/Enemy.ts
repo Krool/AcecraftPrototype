@@ -1915,10 +1915,38 @@ export class Enemy extends Phaser.GameObjects.Text {
       this.colorResetTimer = null
     }
 
-    // Clean up boss-specific references
-    this.linkedBoss = null
-    this.orbitalShields = []
-    this.childEnemies = []
+    // Break circular references with linked boss to prevent memory leak
+    if (this.linkedBoss) {
+      // Remove reverse reference from linked boss
+      if (this.linkedBoss.linkedBoss === this) {
+        this.linkedBoss.linkedBoss = null
+      }
+      this.linkedBoss = null
+    }
+
+    // Properly unlink orbital shields
+    if (this.orbitalShields.length > 0) {
+      this.orbitalShields.forEach(shield => {
+        if (shield && shield.active) {
+          // Break the reverse reference
+          shield.clearOrbitalShields()
+        }
+      })
+      this.orbitalShields = []
+    }
+
+    // Properly unlink child enemies to break circular references
+    if (this.childEnemies.length > 0) {
+      this.childEnemies.forEach(child => {
+        if (child && child.active) {
+          // If child has a parent reference, clear it
+          if (child.linkedBoss === this) {
+            child.linkedBoss = null
+          }
+        }
+      })
+      this.childEnemies = []
+    }
   }
 }
 

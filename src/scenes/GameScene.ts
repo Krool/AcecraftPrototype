@@ -2391,6 +2391,14 @@ export default class GameScene extends Phaser.Scene {
       this.runStartTime = time
     }
 
+    // Prune health tracking window every 5 seconds to prevent unbounded growth
+    if (Math.floor(time / 5000) !== Math.floor((time - delta) / 5000)) {
+      const fiveSecondsAgo = time - 5000
+      this.healthTrackingWindow = this.healthTrackingWindow.filter(
+        entry => entry.timestamp > fiveSecondsAgo
+      )
+    }
+
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body
 
     // Star power invulnerability visual effect
@@ -2688,14 +2696,15 @@ export default class GameScene extends Phaser.Scene {
 
       this.powerUps.update()
 
-      // Update damage zones
-      this.damageZones = this.damageZones.filter(zone => {
+      // Update damage zones (use in-place removal to reduce GC pressure)
+      for (let i = this.damageZones.length - 1; i >= 0; i--) {
+        const zone = this.damageZones[i]
         const isActive = zone.update(time, this.enemies)
         if (!isActive) {
           zone.destroy()
+          this.damageZones.splice(i, 1)
         }
-        return isActive
-      })
+      }
 
       // Update combo timer
       if (this.comboCount > 0) {
