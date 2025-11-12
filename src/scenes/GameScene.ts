@@ -3197,6 +3197,11 @@ export default class GameScene extends Phaser.Scene {
           this.trackWeaponDamage(data.weaponName, data.damage)
         }
 
+        // VAMPIRIC_FIRE: Heal player for % of fire damage dealt
+        if (data.damageType) {
+          this.applyVampiricFireHealing(data.damage, data.damageType)
+        }
+
         // STATIC_FORTUNE: Chance to drop credits on nature damage
         if (data.damageType) {
           this.trySpawnStaticFortuneCredit(enemy.x, enemy.y, data.damageType)
@@ -5749,34 +5754,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // VAMPIRIC_FIRE: Heal player for % of fire damage dealt
-    if (projectile.getDamageType() === DamageType.FIRE) {
-      const vampiricFirePassive = this.passives.find(p => p.getConfig().type === PassiveType.VAMPIRIC_FIRE)
-      if (vampiricFirePassive) {
-        const level = vampiricFirePassive.getLevel()
-        const healPercent = (1 + level) / 100 // 2%, 3%, or 4%
-        const healAmount = Math.floor(damage * healPercent)
-        if (healAmount > 0) {
-          this.health = Math.floor(Math.min(this.maxHealth, this.health + healAmount))
-          this.updateHealthDisplay()
-
-          // Show healing visual effect
-          const healText = this.add.text(this.player.x, this.player.y - 20, `+${healAmount}`, {
-            fontFamily: 'Courier New',
-            fontSize: '14px',
-            color: '#00ff00',
-            fontStyle: 'bold'
-          }).setOrigin(0.5).setDepth(50)
-
-          this.tweens.add({
-            targets: healText,
-            y: this.player.y - 40,
-            alpha: { from: 1, to: 0 },
-            duration: 800,
-            onComplete: () => healText.destroy()
-          })
-        }
-      }
-    }
+    this.applyVampiricFireHealing(damage, projectile.getDamageType())
 
     // FROST_HASTE: Gain attack speed stack on cold damage hit
     if (projectile.getDamageType() === DamageType.COLD) {
@@ -5888,6 +5866,9 @@ export default class GameScene extends Phaser.Scene {
               }
               this.showDamageNumber(nearbyEnemy.x, nearbyEnemy.y, aoeDamage)
 
+              // VAMPIRIC_FIRE: Heal player for % of fire damage dealt
+              this.applyVampiricFireHealing(aoeDamage, projectile.getDamageType())
+
               // STATIC_FORTUNE: Chance to drop credits on nature damage
               this.trySpawnStaticFortuneCredit(nearbyEnemy.x, nearbyEnemy.y, projectile.getDamageType())
 
@@ -5972,6 +5953,9 @@ export default class GameScene extends Phaser.Scene {
           this.trackWeaponDamage(weaponName, chainDamage)
         }
         this.showDamageNumber(chainedEnemy.x, chainedEnemy.y, chainDamage)
+
+        // VAMPIRIC_FIRE: Heal player for % of fire damage dealt
+        this.applyVampiricFireHealing(chainDamage, projectile.getDamageType())
 
         // STATIC_FORTUNE: Chance to drop credits on nature damage
         this.trySpawnStaticFortuneCredit(chainedEnemy.x, chainedEnemy.y, projectile.getDamageType())
@@ -6065,7 +6049,9 @@ export default class GameScene extends Phaser.Scene {
           damage * 0.3, // Zone does 30% of weapon damage per tick
           zoneDuration,
           500, // Damage tick every 500ms
-          (x, y, dmg) => this.showDamageNumber(x, y, dmg) // Callback to show damage numbers
+          (x, y, dmg) => this.showDamageNumber(x, y, dmg), // Callback to show damage numbers
+          projectile.getDamageType(), // Pass damage type
+          (dmg, type) => this.applyVampiricFireHealing(dmg, type) // Callback for vampiric fire healing
         )
         this.damageZones.push(zone)
       }
@@ -6134,6 +6120,38 @@ export default class GameScene extends Phaser.Scene {
         statusText.destroy()
       }
     })
+  }
+
+  private applyVampiricFireHealing(damage: number, damageType: DamageType) {
+    // Only heal on fire damage
+    if (damageType !== DamageType.FIRE) return
+
+    const vampiricFirePassive = this.passives.find(p => p.getConfig().type === PassiveType.VAMPIRIC_FIRE)
+    if (vampiricFirePassive) {
+      const level = vampiricFirePassive.getLevel()
+      const healPercent = (1 + level) / 100 // 2%, 3%, or 4%
+      const healAmount = Math.floor(damage * healPercent)
+      if (healAmount > 0) {
+        this.health = Math.floor(Math.min(this.maxHealth, this.health + healAmount))
+        this.updateHealthDisplay()
+
+        // Show healing visual effect
+        const healText = this.add.text(this.player.x, this.player.y - 20, `+${healAmount}`, {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: '#00ff00',
+          fontStyle: 'bold'
+        }).setOrigin(0.5).setDepth(50)
+
+        this.tweens.add({
+          targets: healText,
+          y: this.player.y - 40,
+          alpha: { from: 1, to: 0 },
+          duration: 800,
+          onComplete: () => healText.destroy()
+        })
+      }
+    }
   }
 
   private handlePlayerEnemyCollision(
@@ -7821,8 +7839,10 @@ class DamageZone {
   private visual: Phaser.GameObjects.Arc
   private pulseAnim?: Phaser.Tweens.Tween
   private onDamageCallback?: (x: number, y: number, damage: number) => void
+  private damageType?: DamageType
+  private onHealCallback?: (damage: number, damageType: DamageType) => void
 
-  constructor(scene: Phaser.Scene, x: number, y: number, radius: number, damage: number, duration: number, tickRate: number = 500, onDamageCallback?: (x: number, y: number, damage: number) => void) {
+  constructor(scene: Phaser.Scene, x: number, y: number, radius: number, damage: number, duration: number, tickRate: number = 500, onDamageCallback?: (x: number, y: number, damage: number) => void, damageType?: DamageType, onHealCallback?: (damage: number, damageType: DamageType) => void) {
     this.scene = scene
     this.x = x
     this.y = y
@@ -7833,6 +7853,8 @@ class DamageZone {
     this.creationTime = scene.time.now
     this.lastTickTime = scene.time.now
     this.onDamageCallback = onDamageCallback
+    this.damageType = damageType
+    this.onHealCallback = onHealCallback
 
     // Create visual effect - pulsing circle
     this.visual = scene.add.circle(x, y, radius, 0x88ff88, 0.4)
@@ -7874,6 +7896,10 @@ class DamageZone {
           // Show damage number if callback is provided
           if (this.onDamageCallback) {
             this.onDamageCallback(enemy.x, enemy.y, this.damage)
+          }
+          // Apply healing if callback is provided
+          if (this.onHealCallback && this.damageType) {
+            this.onHealCallback(this.damage, this.damageType)
           }
         }
       }

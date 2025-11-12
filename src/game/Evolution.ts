@@ -51,7 +51,8 @@ export interface SuperEvolutionRecipe {
 
 export interface EvolutionConfig extends WeaponConfig {
   evolutionType: EvolutionType
-  description: string
+  description: string // Brief description for level-up popup
+  detailedDescription: string // Full description for info pages
 }
 
 // Evolution recipes - defines which weapon + passive combos create evolutions
@@ -215,8 +216,8 @@ export const SUPER_EVOLUTION_CONFIGS: Record<SuperEvolutionType, SuperEvolutionC
     name: 'Omega Destroyer',
     type: WeaponType.CANNON,
     damageType: DamageType.PHYSICAL,
-    baseDamage: 90,
-    baseFireRate: 200, // Balanced for ~450 DPS
+    baseDamage: 45,  // Reduced by 50%
+    baseFireRate: 200,
     description: 'Reality-breaking physical carnage',
     maxLevel: 1,
     icon: '╬╬╬',
@@ -227,7 +228,7 @@ export const SUPER_EVOLUTION_CONFIGS: Record<SuperEvolutionType, SuperEvolutionC
     name: 'Inferno Titan',
     type: WeaponType.FIRE,
     damageType: DamageType.FIRE,
-    baseDamage: 90,
+    baseDamage: 45,  // Reduced by 50%
     baseFireRate: 225,
     description: 'Apocalyptic inferno that consumes all',
     maxLevel: 1,
@@ -239,7 +240,7 @@ export const SUPER_EVOLUTION_CONFIGS: Record<SuperEvolutionType, SuperEvolutionC
     name: 'Frozen Apocalypse',
     type: WeaponType.ICE,
     damageType: DamageType.COLD,
-    baseDamage: 80,
+    baseDamage: 40,  // Reduced by 50%
     baseFireRate: 180,
     description: 'Eternal winter freezes time itself',
     maxLevel: 1,
@@ -251,7 +252,7 @@ export const SUPER_EVOLUTION_CONFIGS: Record<SuperEvolutionType, SuperEvolutionC
     name: 'Storm God',
     type: WeaponType.LIGHTNING,
     damageType: DamageType.NATURE,
-    baseDamage: 85,
+    baseDamage: 43,  // Reduced by ~50% (85 → 43)
     baseFireRate: 150,
     description: 'Wrath of nature unleashed',
     maxLevel: 1,
@@ -263,7 +264,7 @@ export const SUPER_EVOLUTION_CONFIGS: Record<SuperEvolutionType, SuperEvolutionC
     name: 'Void Nexus',
     type: WeaponType.DARK,
     damageType: DamageType.CONTROL,
-    baseDamage: 125,
+    baseDamage: 63,  // Reduced by ~50% (125 → 63)
     baseFireRate: 300,
     description: 'Harness the void between dimensions',
     maxLevel: 1,
@@ -275,8 +276,8 @@ export const SUPER_EVOLUTION_CONFIGS: Record<SuperEvolutionType, SuperEvolutionC
     name: 'Prismatic Annihilator',
     type: WeaponType.LASER_BEAM,
     damageType: DamageType.FIRE,
-    baseDamage: 40,
-    baseFireRate: 83, // Balanced for ~482 DPS
+    baseDamage: 20,  // Reduced by 50%
+    baseFireRate: 83,
     description: 'Pure concentrated energy obliteration',
     maxLevel: 1,
     icon: '━━━',
@@ -291,9 +292,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Railstorm Gatling',
     type: WeaponType.CANNON,
     damageType: DamageType.PHYSICAL,
-    baseDamage: 10,
-    baseFireRate: 300, // Balanced for ~100 DPS (3 barrels)
+    baseDamage: 5,  // Reduced by 50%
+    baseFireRate: 300,
     description: 'Rapid triple-barrel cannon with shockwaves',
+    detailedDescription: 'Cannon + Ballistics Evolution: Triple-barrel rotary cannon fires electromagnetic projectiles at blistering speed. Each shot creates kinetic shockwaves that stagger enemies. Transforms your basic cannon into a bullet hell generator capable of suppressing entire enemy formations.',
     maxLevel: 1,
     icon: '⦿⦿⦿',
     color: '#ffff00',
@@ -303,9 +305,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Auto Scatter',
     type: WeaponType.SHOTGUN,
     damageType: DamageType.PHYSICAL,
-    baseDamage: 6,
-    baseFireRate: 750, // Balanced for ~120 DPS (15 pellets)
+    baseDamage: 3,  // Reduced by 50%
+    baseFireRate: 750,
     description: 'Wide-arc auto-fire filling half screen',
+    detailedDescription: 'Shotgun + Weapon Speed Up Evolution: Fully automatic shotgun with expanded pellet spread covers half the screen. Continuous fire mode creates an impenetrable wall of projectiles. Perfect for clearing dense enemy swarms and maintaining area control during chaotic encounters.',
     maxLevel: 1,
     icon: '✺✺✺',
     color: '#ff8800',
@@ -315,9 +318,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Drone Swarm',
     type: WeaponType.GUN_BUDDY,
     damageType: DamageType.PHYSICAL,
-    baseDamage: 7,
-    baseFireRate: 350, // Balanced for ~100 DPS (5 drones)
+    baseDamage: 4,  // Reduced by ~50% (7 → 4)
+    baseFireRate: 350,
     description: 'Five orbiting drones firing volleys',
+    detailedDescription: 'Gun Buddy + Drone Bay Expansion Evolution: Summons a squadron of five advanced combat drones that orbit your ship in synchronized formation. Each drone fires coordinated volleys at nearby threats. The swarm adapts to your position and provides 360-degree coverage.',
     maxLevel: 1,
     icon: '⚙◉⚙',
     color: '#88ff00',
@@ -327,9 +331,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Storm Nexus',
     type: WeaponType.LIGHTNING,
     damageType: DamageType.NATURE,
-    baseDamage: 15,
+    baseDamage: 8,  // Reduced by ~50% (15 → 8)
     baseFireRate: 300,
     description: 'Arc lightning chaining indefinitely',
+    detailedDescription: 'Lightning + Critical Systems Evolution: Supercharged arc lightning chains indefinitely between enemies, creating cascading electrical storms. Critical hits trigger additional chain reactions. Each bolt can strike the same target multiple times as it bounces through enemy formations.',
     maxLevel: 1,
     icon: '‡⟡‡',
     color: '#00ffff',
@@ -339,9 +344,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Cryo Lancer',
     type: WeaponType.ICE,
     damageType: DamageType.COLD,
-    baseDamage: 14,
+    baseDamage: 7,  // Reduced by 50%
     baseFireRate: 270,
     description: 'Piercing ice lances shatter into shards',
+    detailedDescription: 'Ice + Thruster Mod Evolution: High-velocity cryogenic lances pierce through multiple enemies before shattering into freezing shrapnel. Increased projectile speed ensures deep penetration into enemy ranks. Secondary ice shards spread cold damage across wide areas.',
     maxLevel: 1,
     icon: '❅━❅',
     color: '#aaffff',
@@ -351,9 +357,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Combustion Core',
     type: WeaponType.FIRE,
     damageType: DamageType.FIRE,
-    baseDamage: 18,
+    baseDamage: 9,  // Reduced by 50%
     baseFireRate: 450,
-    description: 'Explosions trigger chain reactions',
+    description: 'Explosive fireballs trigger chain reactions',
+    detailedDescription: 'Fire + Critical Systems Evolution: Unstable fireballs detonate on impact, triggering chain reaction explosions that spread to nearby enemies. Critical hits guarantee secondary detonations. Each explosion can ignite other targets, creating cascading infernos across the battlefield.',
     maxLevel: 1,
     icon: '✹※✹',
     color: '#ff4400',
@@ -363,9 +370,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Tidal Surge',
     type: WeaponType.WATER,
     damageType: DamageType.COLD,
-    baseDamage: 16,
+    baseDamage: 8,  // Reduced by 50%
     baseFireRate: 375,
-    description: 'Giant wave rippling across screen',
+    description: 'Screen-wide wave pulls enemies and XP',
+    detailedDescription: 'Water + Pickup Radius Evolution: Massive oscillating tidal wave sweeps across the entire screen, pulling enemies and XP gems toward you. Enhanced magnetic field combines offensive power with resource collection. Wave amplitude and wavelength create unpredictable damage patterns.',
     maxLevel: 1,
     icon: '≋≋≋',
     color: '#00aaff',
@@ -375,9 +383,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Tectonic Bloom',
     type: WeaponType.EARTH,
     damageType: DamageType.NATURE,
-    baseDamage: 20,
+    baseDamage: 10,  // Reduced by 50%
     baseFireRate: 600,
-    description: 'Pulsing ground cracks spread fractally',
+    description: 'Expanding fractal zones with armor synergy',
+    detailedDescription: 'Earth + Ship Armor Evolution: Ground-based damage zones expand fractally outward in branching patterns, creating persistent fields of crushing gravitational force. Enhanced with defensive resonance from ship armor. Zones spread organically to cover maximum area while you tank through enemy fire.',
     maxLevel: 1,
     icon: '✤▓✤',
     color: '#884400',
@@ -387,9 +396,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Shadow Legion',
     type: WeaponType.DARK,
     damageType: DamageType.CONTROL,
-    baseDamage: 21,
-    baseFireRate: 300, // Balanced for ~70 DPS (converts enemies as bonus)
-    description: 'Converts enemies into permanent allies',
+    baseDamage: 11,  // Reduced by ~50% (21 → 11)
+    baseFireRate: 300,
+    description: 'Convert enemies into permanent allies',
+    detailedDescription: 'Dark + Evasion Drive Evolution: Corrupted void energy converts defeated enemies into shadowy allies that fight for you permanently. Phased projectiles ignore enemy shots while dominating enemy minds. Build an army of controlled minions that overwhelm through numbers.',
     maxLevel: 1,
     icon: '◐◑◐',
     color: '#8800ff',
@@ -399,9 +409,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Solar Lance',
     type: WeaponType.LASER_BEAM,
     damageType: DamageType.FIRE,
-    baseDamage: 5,
-    baseFireRate: 45, // Balanced for ~111 DPS (wide beam)
-    description: 'Beam widens into screenwide burn',
+    baseDamage: 3,  // Reduced by ~50% (5 → 3)
+    baseFireRate: 45,
+    description: 'Screen-wide solar beam of annihilation',
+    detailedDescription: 'Laser Beam + Energy Core Evolution: Concentrated solar beam expands into screen-wide ray of annihilation. Amplified energy core prevents overheating while maximizing beam width and burn intensity. Continuous fire creates a moving wall of fusion energy that incinerates everything in its path.',
     maxLevel: 1,
     icon: '☀━☀',
     color: '#ff0000',
@@ -411,9 +422,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Pinball Vortex',
     type: WeaponType.RICOCHET_DISK,
     damageType: DamageType.PHYSICAL,
-    baseDamage: 19,
+    baseDamage: 10,  // Reduced by ~50% (19 → 10)
     baseFireRate: 300,
-    description: 'Multiplying bouncing disks create chaos',
+    description: 'Disks multiply on each bounce infinitely',
+    detailedDescription: 'Ricochet Disk + Ballistics Evolution: Enhanced kinetic disks multiply on each bounce, rapidly filling the screen with chaotic projectiles. Ballistic calculations optimize bounce angles for maximum coverage. Creates true pinball machine chaos as disks ricochet infinitely between enemies and walls.',
     maxLevel: 1,
     icon: '◊◇◈',
     color: '#ffaa00',
@@ -423,9 +435,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Nova Barrage',
     type: WeaponType.MISSILE_POD,
     damageType: DamageType.FIRE,
-    baseDamage: 25,
+    baseDamage: 13,  // Reduced by ~50% (25 → 13)
     baseFireRate: 750,
-    description: 'Splitting missiles blanket screen',
+    description: 'Cluster missiles carpet bomb with currency drops',
+    detailedDescription: 'Missile Pod + Salvage Unit Evolution: Cluster missiles split into sub-munitions mid-flight, creating carpet bombing effect. Enhanced with salvage targeting systems for resource drops. Each missile wave blankets the entire screen with explosive projectiles and currency opportunities.',
     maxLevel: 1,
     icon: '▲▼▲',
     color: '#ff6600',
@@ -435,9 +448,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Infernal Crown',
     type: WeaponType.FIREBALL_RING,
     damageType: DamageType.FIRE,
-    baseDamage: 19,
+    baseDamage: 10,  // Reduced by ~50% (19 → 10)
     baseFireRate: 375,
-    description: 'Massive orbiting fireballs ignite everything',
+    description: 'Massive orbiting fireballs devastate burning enemies',
+    detailedDescription: 'Fireball Ring + Pyromaniac Evolution: Massive superheated fireballs orbit at incredible size, dealing devastating damage to burning enemies. Pyromaniac protocols amplify burn effects multiplicatively. The orbiting ring of destruction incinerates everything that dares approach your ship.',
     maxLevel: 1,
     icon: '✹◉✹',
     color: '#ff2200',
@@ -447,9 +461,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Crimson Reaper',
     type: WeaponType.BLOOD_LANCE,
     damageType: DamageType.PHYSICAL,
-    baseDamage: 14,
+    baseDamage: 7,  // Reduced by 50%
     baseFireRate: 300,
-    description: 'Endless bouncing lances spread hemorrhage',
+    description: 'Bouncing lances spread stacking bleeds',
+    detailedDescription: 'Blood Lance (Quill) + Hemorrhage Evolution: Bio-engineered lances bounce endlessly while spreading catastrophic hemorrhage debuffs. Each ricochet applies stacking bleed effects. Enemies bleed out rapidly as lances create a web of bouncing doom across the entire battlefield.',
     maxLevel: 1,
     icon: '✠╬✠',
     color: '#aa0000',
@@ -459,9 +474,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Supernova Ring',
     type: WeaponType.PLASMA_AURA,
     damageType: DamageType.FIRE,
-    baseDamage: 8,
+    baseDamage: 4,  // Reduced by 50%
     baseFireRate: 90,
-    description: 'Pulsing waves heal as they annihilate',
+    description: 'Pulsing plasma rings heal and annihilate',
+    detailedDescription: 'Plasma Aura + Vampiric Fire Evolution: Pulsing waves of superheated plasma radiate outward continuously, healing you for massive amounts while annihilating enemies. Each pulse creates expanding rings of destruction that restore life force. Ultimate sustain weapon for aggressive playstyles.',
     maxLevel: 1,
     icon: '⊛✧⊛',
     color: '#ff00aa',
@@ -471,9 +487,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Spiral Tempest',
     type: WeaponType.VORTEX_BLADE,
     damageType: DamageType.PHYSICAL,
-    baseDamage: 18,
+    baseDamage: 9,  // Reduced by 50%
     baseFireRate: 525,
-    description: 'Accelerating spiral blades freeze on contact',
+    description: 'Spiraling ice blades with exponential speed scaling',
+    detailedDescription: 'Vortex Blade (Blizzard) + Frost Haste Evolution: Spiraling ice blades accelerate outward while freezing everything in their path. Each freeze triggers Frost Haste, creating exponential fire rate scaling. The accelerating tempest reaches incredible speeds as frozen enemies multiply attack speed stacks.',
     maxLevel: 1,
     icon: '◈✦◈',
     color: '#00ffee',
@@ -482,22 +499,24 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
   [EvolutionType.APOCALYPSE_RAY]: {
     name: 'Apocalypse Ray',
     type: WeaponType.ORBITAL_STRIKE,
-    damageType: DamageType.FIRE,
-    baseDamage: 18,
-    baseFireRate: 300, // Balanced for ~60 DPS (spawns credits as bonus)
-    description: 'Cascading orbital beams rain credits',
+    damageType: DamageType.NATURE,  // Changed from FIRE to NATURE so Static Fortune works
+    baseDamage: 9,  // Reduced by 50%
+    baseFireRate: 300,
+    description: 'Cascading orbital strikes rain credits from above',
+    detailedDescription: 'Orbital Strike + Static Fortune Evolution: Cascading orbital beam strikes rain down from above, ionizing credits from every enemy hit. Nature damage triggers constant currency generation. Watch credits shower down as you call divine judgment upon your enemies from the heavens.',
     maxLevel: 1,
     icon: '▼✹▼',
-    color: '#ffaa00',
+    color: '#00ff00',  // Changed to green for NATURE damage
     evolutionType: EvolutionType.APOCALYPSE_RAY,
   },
   [EvolutionType.STORM_BREAKER]: {
     name: 'Storm Breaker',
     type: WeaponType.MINIGUN,
     damageType: DamageType.PHYSICAL,
-    baseDamage: 3,
+    baseDamage: 2,  // Reduced by ~50% (3 → 2)
     baseFireRate: 45,
-    description: 'Toxic bullet storm melts armor',
+    description: 'Toxic minigun melts armor with poison',
+    detailedDescription: 'Minigun + Toxic Rounds Evolution: Bio-weaponized minigun fires armor-piercing toxic rounds at devastating rate. Each bullet applies poison while shredding defensive layers. The relentless bullet storm melts through even the thickest armor as toxins accumulate exponentially.',
     maxLevel: 1,
     icon: '▪▪▪',
     color: '#88ff00',
@@ -507,9 +526,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Minefield',
     type: WeaponType.TRAP_LAYER,
     damageType: DamageType.NATURE,
-    baseDamage: 25,
-    baseFireRate: 400, // Balanced for ~63 DPS (persistent explosions)
-    description: 'Explosive traps shatter frozen enemies',
+    baseDamage: 13,  // Reduced by ~50% (25 → 13)
+    baseFireRate: 400,
+    description: 'Explosive mines obliterate frozen enemies',
+    detailedDescription: 'Trap Layer + Shatter Strike Evolution: Explosive proximity mines detonate with devastating force against frozen enemies. Shatter Strike protocols amplify trap damage multiplicatively. Lay strategic minefields that obliterate frozen targets while denying enemy movement options.',
     maxLevel: 1,
     icon: '✻✦✻',
     color: '#ffff00',
@@ -519,9 +539,10 @@ export const EVOLUTION_CONFIGS: Record<EvolutionType, EvolutionConfig> = {
     name: 'Void Piercer',
     type: WeaponType.SNIPER_RIFLE,
     damageType: DamageType.PHYSICAL,
-    baseDamage: 70,
+    baseDamage: 35,  // Reduced by 50%
     baseFireRate: 2100,
-    description: 'Accelerating shots pierce everything',
+    description: 'Shots gain damage with distance and pierce all',
+    detailedDescription: 'Sniper Rifle + Overdrive Reactor Evolution: Reality-tearing shots accelerate as they travel, gaining damage with distance and piercing through everything. Overdrive bursts enable rapid precision shots. Each shot becomes more deadly the farther it travels, creating lethal sniper lines across the entire screen.',
     maxLevel: 1,
     icon: '═══',
     color: '#8800ff',

@@ -5,11 +5,13 @@ import { WeaponType, WEAPON_CONFIGS, WeaponConfig, DamageType } from '../game/We
 import { PassiveType, PASSIVE_CONFIGS, PassiveConfig } from '../game/Passive'
 import { EvolutionType, EVOLUTION_RECIPES, EvolutionRecipe, EVOLUTION_CONFIGS } from '../game/Evolution'
 import { gameProgression } from '../game/GameProgression'
+import { RunStatistics } from '../game/RunStatistics'
 
 type TabType = 'ships' | 'weapons' | 'passives' | 'evolutions'
 
 export default class StatsScene extends Phaser.Scene {
   private gameState!: GameState
+  private runStats!: RunStatistics
   private currentTab: TabType = 'ships'
   private selectedItem: any = null
   private itemListContainer!: Phaser.GameObjects.Container
@@ -21,6 +23,7 @@ export default class StatsScene extends Phaser.Scene {
 
   create() {
     this.gameState = GameState.getInstance()
+    this.runStats = RunStatistics.getInstance()
 
     // Add background
     this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x0a0a1e)
@@ -296,7 +299,7 @@ export default class StatsScene extends Phaser.Scene {
       const passiveConfig = PASSIVE_CONFIGS[recipe.requiredPassive]
       const evolutionConfig = EVOLUTION_CONFIGS[recipe.evolution]
       name = evolutionConfig.name
-      description = evolutionConfig.description
+      description = evolutionConfig.detailedDescription
       icon = evolutionConfig.icon
       color = evolutionConfig.color
 
@@ -315,7 +318,8 @@ export default class StatsScene extends Phaser.Scene {
     } else {
       config = this.selectedItem.config
       name = config.name
-      description = config.description
+      // Use detailedDescription if available, otherwise use regular description
+      description = config.detailedDescription || config.description
       icon = config.icon
       color = config.color
     }
@@ -324,7 +328,7 @@ export default class StatsScene extends Phaser.Scene {
     const iconFontSize = this.currentTab === 'evolutions' ? '32px' : '40px'
     const iconText = this.add.text(
       detailX + 20,
-      detailY + 50,
+      detailY + 30,
       icon,
       {
         fontFamily: 'Courier New',
@@ -336,7 +340,7 @@ export default class StatsScene extends Phaser.Scene {
     // Name - positioned to avoid icon overlap
     const nameText = this.add.text(
       detailX + 100,
-      detailY + 35,
+      detailY + 20,
       name,
       {
         fontFamily: 'Courier New',
@@ -346,21 +350,10 @@ export default class StatsScene extends Phaser.Scene {
       }
     )
 
-    // Description - use smaller font for ships to prevent overflow
-    const descFontSize = this.currentTab === 'ships' ? '12px' : '14px'
-    const descText = this.add.text(
-      detailX + 100,
-      detailY + 58,
-      description,
-      {
-        fontFamily: 'Courier New',
-        fontSize: descFontSize,
-        color: '#aaaaaa',
-        wordWrap: { width: detailWidth - 120 }
-      }
-    )
+    this.detailContainer.add([iconText, nameText])
 
-    this.detailContainer.add([iconText, nameText, descText])
+    // Add more vertical space for passives, evolutions, and ships to prevent icon overlap
+    let currentY = this.currentTab === 'weapons' ? detailY + 50 : detailY + 70
 
     // Add damage type for weapons
     if (this.currentTab === 'weapons') {
@@ -368,7 +361,7 @@ export default class StatsScene extends Phaser.Scene {
       const damageTypeColor = this.getDamageTypeColor(weaponConfig.damageType)
       const damageTypeText = this.add.text(
         detailX + 100,
-        detailY + 100,
+        currentY,
         `Damage Type: ${weaponConfig.damageType}`,
         {
           fontFamily: 'Courier New',
@@ -378,34 +371,126 @@ export default class StatsScene extends Phaser.Scene {
         }
       )
       this.detailContainer.add(damageTypeText)
+      currentY += 30
     }
 
-    // Stats (placeholder for now)
-    const statsY = this.currentTab === 'evolutions' ? 180 : (this.currentTab === 'weapons' ? 165 : 140)
+    // Stats
     const statsText = this.add.text(
       detailX + 20,
-      detailY + statsY,
+      currentY,
       this.getItemStats(),
       {
         fontFamily: 'Courier New',
-        fontSize: '16px',
+        fontSize: '14px',
         color: '#aaaaaa',
-        lineSpacing: 8
+        lineSpacing: 6
       }
     )
     this.detailContainer.add(statsText)
+    currentY += 140
+
+    // Description at the bottom - most variable in size
+    const descText = this.add.text(
+      detailX + 20,
+      currentY,
+      description,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '13px',
+        color: '#888888',
+        wordWrap: { width: detailWidth - 40 },
+        lineSpacing: 4
+      }
+    )
+    this.detailContainer.add(descText)
   }
 
   private getItemStats(): string {
-    // Placeholder stats - in a real implementation, these would come from GameState
-    return `Times Used: 0
-Wins with Item: 0
+    if (!this.selectedItem) return ''
+
+    let stats: any = null
+    let timesUsed = 0
+    let wins = 0
+    let winRate = 0
+    let avgDPS = 'N/A'
+
+    if (this.currentTab === 'weapons') {
+      const weaponType = this.selectedItem.type
+      stats = this.runStats.getWeaponStats(weaponType)
+      if (stats) {
+        timesUsed = stats.timesPicked
+        wins = stats.wins
+        winRate = timesUsed > 0 ? (wins / timesUsed) * 100 : 0
+
+        // Calculate average DPS from recent runs
+        const recentRuns = this.runStats.getRecentRuns()
+          .filter((run: any) => run.weapons.includes(weaponType) && run.weaponDPS)
+
+        if (recentRuns.length > 0) {
+          let totalDPS = 0
+          let dpsCount = 0
+          recentRuns.forEach((run: any) => {
+            const weaponConfig = WEAPON_CONFIGS[weaponType]
+            const weaponDPSData = run.weaponDPS?.find((w: any) => w.weaponName === weaponConfig.name)
+            if (weaponDPSData) {
+              totalDPS += weaponDPSData.dps
+              dpsCount++
+            }
+          })
+          if (dpsCount > 0) {
+            avgDPS = (totalDPS / dpsCount).toFixed(1)
+          }
+        }
+      }
+    } else if (this.currentTab === 'passives') {
+      const passiveType = this.selectedItem.type
+      stats = this.runStats.getPassiveStats(passiveType)
+      if (stats) {
+        timesUsed = stats.timesPicked
+        wins = stats.wins
+        winRate = timesUsed > 0 ? (wins / timesUsed) * 100 : 0
+      }
+    } else if (this.currentTab === 'evolutions') {
+      const evolutionType = this.selectedItem.recipe.evolution
+      stats = this.runStats.getEvolutionStats(evolutionType)
+      if (stats) {
+        timesUsed = stats.timesAchieved
+        wins = stats.wins
+        winRate = timesUsed > 0 ? (wins / timesUsed) * 100 : 0
+      }
+    } else if (this.currentTab === 'ships') {
+      const characterType = this.selectedItem.type
+      stats = this.runStats.getCharacterStats(characterType)
+      if (stats) {
+        timesUsed = stats.runs
+        wins = stats.wins
+        winRate = timesUsed > 0 ? (wins / timesUsed) * 100 : 0
+
+        return `Times Selected: ${timesUsed}
+Wins: ${wins}
+Win Rate: ${winRate.toFixed(1)}%
+
+Total Damage: ${Math.round(stats.totalDamageDealt).toLocaleString()}
+Total Kills: ${stats.totalKills || 0}
+Longest Survival: ${Math.floor(stats.longestSurvival / 60)}m ${Math.floor(stats.longestSurvival % 60)}s`
+      }
+    }
+
+    if (!stats) {
+      return `Times Used: 0
+Wins: 0
 Win Rate: 0%
 
-Expected DPS: N/A
-Actual DPS: N/A
+Average DPS: N/A
 
-[Stats tracking coming soon]`
+No runs recorded yet`
+    }
+
+    return `Times Used: ${timesUsed}
+Wins: ${wins}
+Win Rate: ${winRate.toFixed(1)}%
+
+Average DPS: ${avgDPS}`
   }
 
   private getDamageTypeColor(damageType: DamageType): string {

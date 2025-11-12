@@ -3,6 +3,13 @@ import { WeaponType } from './Weapon'
 import { PassiveType } from './Passive'
 import { EvolutionType } from './Evolution'
 
+export interface WeaponDPSData {
+  weaponName: string
+  totalDamage: number
+  activeTime: number  // Time weapon was owned (seconds)
+  dps: number
+}
+
 interface CharacterStats {
   runs: number
   wins: number
@@ -38,6 +45,7 @@ interface RunData {
   killCount: number
   level: number
   timestamp: number
+  weaponDPS?: WeaponDPSData[]  // Per-weapon DPS data for balance analysis
 }
 
 interface StatisticsData {
@@ -104,7 +112,7 @@ export class RunStatistics {
   }
 
   // Complete a run and save statistics
-  endRun(won: boolean, survivalTime: number, damageDealt: number, killCount: number, level: number) {
+  endRun(won: boolean, survivalTime: number, damageDealt: number, killCount: number, level: number, weaponDPS?: WeaponDPSData[]) {
     if (!this.currentRun.character) return // No run in progress
 
     const runData: RunData = {
@@ -117,7 +125,22 @@ export class RunStatistics {
       damageDealt,
       killCount,
       level,
-      timestamp: this.currentRun.timestamp || Date.now()
+      timestamp: this.currentRun.timestamp || Date.now(),
+      weaponDPS
+    }
+
+    // Console log weapon DPS data for balance analysis
+    if (weaponDPS && weaponDPS.length > 0) {
+      console.log('=== WEAPON DPS ANALYSIS ===')
+      console.log(`Run: ${won ? 'WON' : 'LOST'} | Level ${level} | Time: ${survivalTime}s`)
+      console.log('Weapon Performance:')
+      weaponDPS.forEach(data => {
+        console.log(`  ${data.weaponName}:`)
+        console.log(`    DPS: ${data.dps.toFixed(1)}`)
+        console.log(`    Total Damage: ${data.totalDamage.toFixed(0)}`)
+        console.log(`    Active Time: ${data.activeTime.toFixed(1)}s`)
+      })
+      console.log('===========================')
     }
 
     // Update character stats
@@ -196,6 +219,11 @@ export class RunStatistics {
       totalWins: this.data.totalWins,
       winRate: this.data.totalRuns > 0 ? (this.data.totalWins / this.data.totalRuns) * 100 : 0
     }
+  }
+
+  // Get recent runs
+  getRecentRuns(): RunData[] {
+    return this.data.recentRuns
   }
 
   // Helper methods to create stats if they don't exist

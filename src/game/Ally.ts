@@ -311,6 +311,7 @@ export class Ally extends Phaser.GameObjects.Text {
       y: this.y,
       radius: explosionRadius,
       damage: this.config.damage * this.damageMultiplier,
+      damageType: this.config.damageType,
     })
 
     // Visual explosion effect
@@ -383,8 +384,13 @@ export class Ally extends Phaser.GameObjects.Text {
   private shoot(enemies: any) {
     if (!this.projectileGroup) return
 
-    // Find nearest enemy
-    const activeEnemies = enemies.getChildren().filter((e: any) => e.active && e.y > 0)
+    // Find nearest enemy with valid on-screen position
+    const screenHeight = this.scene.cameras.main.height
+    const screenWidth = this.scene.cameras.main.width
+    const activeEnemies = enemies.getChildren().filter((e: any) => {
+      return e.active && e.y > 0 && e.y < screenHeight &&
+             e.x >= 0 && e.x <= screenWidth
+    })
     if (activeEnemies.length === 0) return
 
     // Sort by distance
