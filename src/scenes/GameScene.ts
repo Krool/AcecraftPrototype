@@ -1333,8 +1333,8 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  private generateUpgradeOptions(): Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean; synergyPartnerIcon?: string; synergyPartnerColor?: string; synergyPartnerName?: string }> {
-    const options: Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean; synergyPartnerIcon?: string; synergyPartnerColor?: string; synergyPartnerName?: string }> = []
+  private generateUpgradeOptions(): Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean; synergyPartnerIcon?: string; synergyPartnerColor?: string; synergyPartnerName?: string; isPassive?: boolean }> {
+    const options: Array<{ name: string; description: string; effect: () => void; icon?: string; color?: string; recommended?: boolean; enablesEvolution?: boolean; synergyPartnerIcon?: string; synergyPartnerColor?: string; synergyPartnerName?: string; isPassive?: boolean }> = []
 
     // Check for evolutions FIRST (highest priority - always recommended)
     const availableEvolution = this.evolutionManager.checkForEvolutions(this.weapons, this.passives)
@@ -1496,6 +1496,7 @@ export default class GameScene extends Phaser.Scene {
           icon: config.icon,
           color: config.color,
           recommended: isNearMaxLevel,
+          isPassive: true,
           effect: () => {
             passive.levelUp()
             this.modifiersNeedRecalculation = true
@@ -1557,6 +1558,7 @@ export default class GameScene extends Phaser.Scene {
             synergyPartnerIcon: evolutionHint?.partnerIcon,
             synergyPartnerColor: evolutionHint?.partnerColor,
             synergyPartnerName: evolutionHint?.partnerName,
+            isPassive: true,
             effect: () => {
               const newPassive = PassiveFactory.create(this, type)
               this.passives.push(newPassive)
@@ -4045,8 +4047,14 @@ export default class GameScene extends Phaser.Scene {
     selectedUpgrades.forEach((upgrade, index) => {
       const y = startY + (buttonHeight + buttonSpacing) * index
 
-      // Button background (highlight if recommended) - start invisible and offset
-      const bgColor = upgrade.recommended ? 0x1a2a1a : 0x0a0a1e
+      // Button background (different colors for weapons vs passives)
+      // Passives: purple tint, Weapons: blue tint
+      let bgColor: number
+      if (upgrade.isPassive) {
+        bgColor = upgrade.recommended ? 0x2a1a2a : 0x1a0a1e // Purple tint for passives
+      } else {
+        bgColor = upgrade.recommended ? 0x1a2a1a : 0x0a0a1e // Blue/green tint for weapons
+      }
       const button = this.add.rectangle(
         this.cameras.main.centerX - 50, // Start offset to the left
         y,
@@ -4183,13 +4191,21 @@ export default class GameScene extends Phaser.Scene {
             // Enable interaction after animation completes
             button.setInteractive({ useHandCursor: true })
 
-            // Hover effects
+            // Hover effects (different for passives vs weapons)
             button.on('pointerover', () => {
-              button.setFillStyle(upgrade.recommended ? 0x2a3a2a : 0x1a1a3e)
+              if (upgrade.isPassive) {
+                button.setFillStyle(upgrade.recommended ? 0x3a2a3a : 0x2a1a2e) // Purple hover
+              } else {
+                button.setFillStyle(upgrade.recommended ? 0x2a3a2a : 0x1a1a3e) // Blue/green hover
+              }
             })
 
             button.on('pointerout', () => {
-              button.setFillStyle(upgrade.recommended ? 0x1a2a1a : 0x0a0a1e)
+              if (upgrade.isPassive) {
+                button.setFillStyle(upgrade.recommended ? 0x2a1a2a : 0x1a0a1e) // Purple default
+              } else {
+                button.setFillStyle(upgrade.recommended ? 0x1a2a1a : 0x0a0a1e) // Blue/green default
+              }
             })
 
             // Click handler
@@ -5405,8 +5421,14 @@ export default class GameScene extends Phaser.Scene {
     selectedUpgrades.forEach((upgrade, index) => {
       const y = startY + (buttonHeight + buttonSpacing) * index
 
-      // Button background (highlight if recommended or selected)
-      const bgColor = upgrade.recommended ? 0x3a4a2a : 0x2a2a4a
+      // Button background (different colors for weapons vs passives)
+      // Passives: purple tint, Weapons: yellow/blue tint
+      let bgColor: number
+      if (upgrade.isPassive) {
+        bgColor = upgrade.recommended ? 0x3a2a4a : 0x2a1a3a // Purple tint for passives
+      } else {
+        bgColor = upgrade.recommended ? 0x3a4a2a : 0x2a2a4a // Yellow/blue tint for weapons
+      }
       const button = this.add.rectangle(
         this.cameras.main.centerX,
         y,
@@ -5540,7 +5562,11 @@ export default class GameScene extends Phaser.Scene {
           // Deselect
           selections.splice(selectionIndex, 1)
           checkmark.setVisible(false)
-          button.setFillStyle(upgrade.recommended ? 0x3a4a2a : 0x2a2a4a)
+          if (upgrade.isPassive) {
+            button.setFillStyle(upgrade.recommended ? 0x3a2a4a : 0x2a1a3a) // Purple for passives
+          } else {
+            button.setFillStyle(upgrade.recommended ? 0x3a4a2a : 0x2a2a4a) // Yellow/blue for weapons
+          }
         } else if (selections.length < upgradeCount) {
           // Select
           selections.push(index)
@@ -5556,16 +5582,24 @@ export default class GameScene extends Phaser.Scene {
         }
       })
 
-      // Hover effects
+      // Hover effects (different for passives vs weapons)
       button.on('pointerover', () => {
         if (!selections.includes(index)) {
-          button.setFillStyle(upgrade.recommended ? 0x4a5a3a : 0x3a3a6a)
+          if (upgrade.isPassive) {
+            button.setFillStyle(upgrade.recommended ? 0x4a3a5a : 0x3a2a4a) // Purple hover
+          } else {
+            button.setFillStyle(upgrade.recommended ? 0x4a5a3a : 0x3a3a6a) // Yellow/blue hover
+          }
         }
       })
 
       button.on('pointerout', () => {
         if (!selections.includes(index)) {
-          button.setFillStyle(upgrade.recommended ? 0x3a4a2a : 0x2a2a4a)
+          if (upgrade.isPassive) {
+            button.setFillStyle(upgrade.recommended ? 0x3a2a4a : 0x2a1a3a) // Purple default
+          } else {
+            button.setFillStyle(upgrade.recommended ? 0x3a4a2a : 0x2a2a4a) // Yellow/blue default
+          }
         }
       })
 

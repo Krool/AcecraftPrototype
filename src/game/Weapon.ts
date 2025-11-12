@@ -40,6 +40,7 @@ export interface WeaponConfig {
   baseDamage: number
   baseFireRate: number // ms between shots
   description: string
+  detailedDescription?: string // Optional detailed description for info page
   maxLevel: number
   icon: string // ASCII character
   color: string
@@ -53,6 +54,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 7,
     baseFireRate: 350, // Balanced for ~48 DPS at level 3
     description: 'Basic pellets fired upward',
+    detailedDescription: 'Your starter weapon that fires straightforward kinetic projectiles. Reliable and consistent damage with balanced fire rate. Level 1: 1 projectile. Level 2: 2 projectiles. Level 3: 3 projectiles. Pairs perfectly with Ballistics passive for increased damage, evolving into Railstorm Gatling at max level.',
     maxLevel: 3,
     icon: '|',
     color: '#ffff00', // Yellow for PHYSICAL
@@ -64,6 +66,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 5,
     baseFireRate: 488, // Reduced by 25% from 650 (faster fire rate)
     description: 'Wide spread, slow fire rate',
+    detailedDescription: 'Fires a wide arc of pellets covering approximately one-third of the screen. Lower individual projectile damage but excellent area coverage. Level 1: 5 pellets. Level 2: 7 pellets. Level 3: 9 pellets. Evolves with Weapon Speed Up into Auto Scatter for continuous full-screen coverage.',
     maxLevel: 3,
     icon: '╪',
     color: '#ffff00', // Yellow for PHYSICAL
@@ -75,6 +78,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 5,
     baseFireRate: 450, // Balanced for ~71 DPS at level 3 (with 6 chains)
     description: 'Chain lightning between enemies',
+    detailedDescription: 'Arcing electricity jumps between nearby enemies, dealing damage to multiple targets per shot. Effectiveness scales with enemy density. Level 1: Chains 3 times. Level 2: Chains 4 times. Level 3: Chains 6 times. Evolves with Critical Systems into Storm Nexus for infinite chaining and critical storm reactions.',
     maxLevel: 3,
     icon: '‡',
     color: '#00ff00', // Green for NATURE
@@ -84,8 +88,9 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.FIRE,
     damageType: DamageType.FIRE,
     baseDamage: 15,
-    baseFireRate: 585, // Reduced by 25% from 780 (faster fire rate)
+    baseFireRate: 836, // Reduced attack speed by 30% (585 → 836)
     description: 'Explodes on contact (AOE)',
+    detailedDescription: 'Launches explosive fireballs that detonate on impact, dealing area damage to nearby enemies. High damage per shot but slower fire rate. Explosion radius increases with level. Combine with Critical Systems passive to evolve into Combustion Core, creating chain reaction explosions across the battlefield.',
     maxLevel: 3,
     icon: '※',
     color: '#ff8800', // Orange for FIRE
@@ -97,8 +102,9 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 6,
     baseFireRate: 293, // Reduced by 25% from 390 (faster fire rate)
     description: 'Floating ally that shoots',
+    detailedDescription: 'Summons autonomous combat drones that orbit your ship and fire at enemies independently. Each buddy provides consistent DPS without requiring player aim. Level 1: 1 buddy. Level 2: 2 buddies. Level 3: 3 buddies. Combine with Drone Bay Expansion to evolve into Drone Swarm with 5 advanced units.',
     maxLevel: 3,
-    icon: '◉',
+    icon: '⊕',
     color: '#ffff00', // Yellow for PHYSICAL
   },
   [WeaponType.ICE]: {
@@ -108,6 +114,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 10,
     baseFireRate: 341, // Reduced by 25% from 455 (faster fire rate)
     description: 'Freezes and slows enemies',
+    detailedDescription: 'Fires cryogenic projectiles that slow enemy movement and have a chance to freeze targets solid. Frozen enemies are vulnerable to shatter effects. Shards fragment outward on impact. Level 1: 2 shards. Level 2: 3 shards. Level 3: 4 shards. Pair with Thruster Mod to create Cryo Lancer with high-velocity piercing lances.',
     maxLevel: 3,
     icon: '❄',
     color: '#00aaff', // Blue for COLD
@@ -119,6 +126,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 11,
     baseFireRate: 439, // Reduced by 25% from 585 (faster fire rate)
     description: 'Oscillating wave projectiles',
+    detailedDescription: 'Fires undulating water projectiles that wave left and right as they travel upward, covering more horizontal area than straight shots. The wavelength creates unpredictable hit patterns. Pairs with Pickup Radius to evolve into Tidal Surge, creating screen-wide waves that pull enemies and resources toward you.',
     maxLevel: 3,
     icon: '≈',
     color: '#00aaff', // Blue for COLD
@@ -130,6 +138,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 14,
     baseFireRate: 683, // Reduced by 25% from 910 (faster fire rate)
     description: 'Persistent damage zone',
+    detailedDescription: 'Creates stationary damage zones at enemy locations that persist and deal continuous damage over time. Zones stack and last several seconds. Excellent for area denial and holding chokepoints. Evolves with Ship Armor into Tectonic Bloom, spreading fractal damage fields while you tank through enemy fire.',
     maxLevel: 3,
     icon: '▓',
     color: '#00ff00', // Green for NATURE
@@ -141,6 +150,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 25,
     baseFireRate: 1170, // Reduced by 25% from 1560 (faster fire rate)
     description: 'Powerful slow projectiles',
+    detailedDescription: 'Unleashes corrupted void energy orbs with high damage but very slow fire rate and projectile speed. Each shot packs tremendous punch. Works best against large, slow targets or when you need burst damage. Combine with Evasion Drive to create Shadow Legion, converting defeated enemies into permanent shadowy allies.',
     maxLevel: 3,
     icon: '●',
     color: '#00aaff', // Blue for COLD
@@ -152,6 +162,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 5,
     baseFireRate: 146, // Reduced by 25% from 195 (faster fire rate)
     description: 'Burst fire beam, overheats',
+    detailedDescription: 'Continuous beam weapon that fires in rapid bursts before overheating. Very high DPS during active periods but requires cooling between bursts. Beam width increases slightly with level. Pair with Energy Core to evolve into Solar Lance, expanding into a screen-wide annihilation ray without overheating.',
     maxLevel: 3,
     icon: '━',
     color: '#ff8800', // Orange for FIRE
@@ -163,6 +174,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 13,
     baseFireRate: 390, // Reduced by 25% from 520 (faster fire rate)
     description: 'Bounces off edges and enemies',
+    detailedDescription: 'Throws spinning disks that bounce off screen edges and enemies, creating chaotic ricochet patterns. Each bounce can hit enemies again. Higher levels add more initial bounces. Evolves with Ballistics into Pinball Vortex, where disks multiply on each bounce to fill the screen with bouncing projectiles.',
     maxLevel: 3,
     icon: '◇',
     color: '#ffff00', // Yellow for PHYSICAL
@@ -174,6 +186,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 12,
     baseFireRate: 500, // Balanced for ~29 DPS at level 3 (AOE splash)
     description: 'Seeking rockets with splash',
+    detailedDescription: 'Launches homing missiles that track the nearest enemy and explode on impact with splash damage. Slow but guaranteed hits make them reliable. Level 1: 2 missiles. Level 2: 3 missiles. Level 3: 4 missiles. Pair with Salvage Unit to create Nova Barrage, splitting missiles into cluster bombs that blanket the screen.',
     maxLevel: 3,
     icon: '▲',
     color: '#ffff00', // Yellow for PHYSICAL
@@ -185,6 +198,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 14,
     baseFireRate: 450, // Balanced for ~38 DPS at level 3 (orbital damage)
     description: 'Rotating fireballs orbit around you',
+    detailedDescription: 'Creates a protective ring of orbiting fireballs that damage enemies on contact. Excellent close-range defense. Level 1: 3 fireballs. Level 2: 5 fireballs. Level 3: 7 fireballs. Combine with Pyromaniac passive to evolve into Infernal Crown, creating massive superheated orbs that devastate burning enemies.',
     maxLevel: 3,
     icon: '◉',
     color: '#ff8800', // Orange for FIRE
@@ -196,6 +210,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 8,
     baseFireRate: 293, // Reduced by 25% from 390 (faster fire rate)
     description: 'Ricochet weapon that applies poison',
+    detailedDescription: 'Bio-engineered projectiles that bounce between enemies, spreading poison with each hit. Combines ricochet mechanics with damage-over-time. More bounces at higher levels mean more poison spread. Evolves with Hemorrhage passive into Crimson Reaper, creating bouncing lances that apply catastrophic stacking bleeds.',
     maxLevel: 3,
     icon: '╬',
     color: '#00ff00', // Green for NATURE
@@ -207,6 +222,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 12,
     baseFireRate: 400, // Balanced for ~37 DPS at level 3 (constant AOE)
     description: 'Constant AOE damage around you',
+    detailedDescription: 'Radiates pulsing waves of superheated plasma outward from your ship in expanding rings. Hits all enemies in radius. Perfect for aggressive close-range playstyles. Pulse count and radius increase with level. Pair with Vampiric Fire to create Supernova Ring, healing massive amounts while annihilating everything nearby.',
     maxLevel: 3,
     icon: '⊛',
     color: '#ff8800', // Orange for FIRE
@@ -218,6 +234,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 12,
     baseFireRate: 488, // Reduced by 25% from 650 (faster fire rate)
     description: 'Spiraling ice projectiles expand outward',
+    detailedDescription: 'Fires spiraling ice blades that expand outward in circular patterns, covering a wide radius around your ship. Each blade freezes on contact. More blades spawn at higher levels. Combine with Frost Haste to create Spiral Tempest, where frozen enemies trigger exponential fire rate scaling.',
     maxLevel: 3,
     icon: '◈',
     color: '#00aaff', // Blue for COLD
@@ -229,6 +246,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 8,
     baseFireRate: 1200, // Reduced frequency to 1/3rd (was 400ms)
     description: 'Row of explosions across screen top',
+    detailedDescription: 'Calls down devastating beam strikes from above in a horizontal line across the screen. Targets enemies from orbit with delayed but powerful impacts. More strike beams at higher levels. Pair with Static Fortune to evolve into Apocalypse Ray, ionizing credits from every enemy hit while raining divine judgment.',
     maxLevel: 3,
     icon: '▼',
     color: '#ff8800', // Orange for FIRE
@@ -240,6 +258,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 4, // Doubled from 2 for performance (fewer projectiles)
     baseFireRate: 130, // Halved fire rate for performance (was 65ms)
     description: 'Rapid-fire low-damage bullets',
+    detailedDescription: 'Extremely high fire rate weapon that sprays a continuous stream of bullets. Individual shots deal low damage but the volume creates impressive sustained DPS. Slight spread increases with fire time. Evolves with Toxic Rounds into Storm Breaker, firing armor-piercing toxic bullets at devastating rate.',
     maxLevel: 3,
     icon: '▪',
     color: '#ffff00',
@@ -251,6 +270,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 18,
     baseFireRate: 700, // Balanced for ~31 DPS at level 3 (persistent damage)
     description: 'Creates damage traps at your location',
+    detailedDescription: 'Deploys explosive proximity mines at your current position that detonate when enemies approach. Strategic placement allows you to create defensive perimeters or funnel enemies into kill zones. More traps deployed per activation at higher levels. Combine with Shatter Strike to create Minefield that obliterates frozen targets.',
     maxLevel: 3,
     icon: '✻',
     color: '#00ff00', // Green for NATURE
@@ -262,6 +282,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     baseDamage: 50,
     baseFireRate: 2925, // Reduced fire rate to 2/3rds (was 1950ms)
     description: 'High damage shots at nearest enemy',
+    detailedDescription: 'Precision weapon that automatically targets the nearest enemy with devastating high-damage shots. Very slow fire rate balanced by extreme single-target damage. Perfect for eliminating priority threats. Gains additional piercing at higher levels. Pair with Overdrive Reactor to create Void Piercer with reality-tearing shots that gain damage with distance.',
     maxLevel: 3,
     icon: '═',
     color: '#ffff00', // Yellow for PHYSICAL
@@ -832,26 +853,33 @@ export class FireballRingWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 0
 
-    // Add 1 extra fireball only at max level, plus building/character bonuses
-    const fireballCount = (this.level === 3 ? 2 : 1) + (modifiers.projectileCount || 0)
-    const radius = 60
+    // Scale number of fireballs with level, plus building/character bonuses
+    const fireballCount = (4 + this.level) + (modifiers.projectileCount || 0)
+    const radius = 60 + (this.level - 1) * 5
     const angleStep = (Math.PI * 2) / fireballCount
+
+    // Orbital speed - faster with projectile speed multiplier
+    const orbitalSpeed = 300 * modifiers.projectileSpeedMultiplier
 
     for (let i = 0; i < fireballCount; i++) {
       const currentAngle = this.angle + (angleStep * i)
       const offsetX = Math.cos(currentAngle) * radius
       const offsetY = Math.sin(currentAngle) * radius
 
+      // Tangential velocity for circular orbit (perpendicular to radius)
+      const velocityX = -Math.sin(currentAngle) * orbitalSpeed
+      const velocityY = Math.cos(currentAngle) * orbitalSpeed
+
       this.projectileGroup.fireProjectile(
-        x + offsetX, y + offsetY, damage, pierce, 0, -400,
+        x + offsetX, y + offsetY, damage, pierce, velocityX, velocityY,
         this.config.icon, this.config.color,
         ProjectileType.EXPLOSIVE,
         { explosionRadius: (40 + (this.level - 1) * 5) * modifiers.explosionRadiusMultiplier, weaponName: this.config.name }
       )
     }
 
-    // Rotate for next fire
-    this.angle += 0.3
+    // Rotate angle for next fire to create continuous rotating ring effect
+    this.angle += 0.1
   }
 }
 
