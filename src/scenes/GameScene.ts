@@ -77,6 +77,7 @@ export default class GameScene extends Phaser.Scene {
   private levelText!: Phaser.GameObjects.Text
   private health: number = PLAYER.DEFAULT_HEALTH
   private maxHealth: number = PLAYER.DEFAULT_HEALTH
+  private pendingHealAmount: number = 0 // Fractional healing accumulator for Vampiric Fire
   private healthText!: Phaser.GameObjects.Text
   private healthBarBackground!: Phaser.GameObjects.Rectangle
   private healthBarFill!: Phaser.GameObjects.Rectangle
@@ -136,6 +137,7 @@ export default class GameScene extends Phaser.Scene {
   private waveStartPausedTime: number = 0 // Track totalPausedTime when wave started (to calculate wave-specific pause duration)
   private lastPoolLogTime: number = 0 // Track last pool status log
   private consecutiveFailedWaves: number = 0 // Track consecutive waves that failed to spawn enemies
+  private pendingDelayedSpawns: number = 0 // Track formations queued to spawn with delays
   private highScore: number = 0
 
   // Character stats tracking
@@ -222,6 +224,13 @@ export default class GameScene extends Phaser.Scene {
   private fpsHistory: number[] = []
   private lastFrameTime: number = 0
 
+  // Performance tracking for combat summary
+  private frameDropCount: number = 0 // Count frames with FPS < 30
+  private severeFrameDropCount: number = 0 // Count frames with FPS < 20
+  private slowUpdateCount: number = 0 // Count updates with delta > 50ms
+  private worstFrameTime: number = 0 // Track worst frame in ms
+  private totalFrames: number = 0 // Total frames during run
+
   constructor() {
     super('GameScene')
   }
@@ -246,6 +255,7 @@ export default class GameScene extends Phaser.Scene {
     this.xpToNextLevel = XP_REQUIREMENTS[0] // Level 1→2 requires 30 XP
     this.health = PLAYER.DEFAULT_HEALTH
     this.maxHealth = PLAYER.DEFAULT_HEALTH
+    this.pendingHealAmount = 0 // Reset fractional healing accumulator
     this.isPaused = false
     this.playerSpeed = PLAYER.DEFAULT_MOVE_SPEED
     this.enemySpawnRate = WAVE_SPAWNING.BASE_SPAWN_RATE
@@ -269,6 +279,11 @@ export default class GameScene extends Phaser.Scene {
     this.runStartTime = 0
     this.pauseStartTime = 0
     this.lastHitTime = 0
+    this.frameDropCount = 0
+    this.severeFrameDropCount = 0
+    this.slowUpdateCount = 0
+    this.worstFrameTime = 0
+    this.totalFrames = 0
     this.wasInvulnerable = false
     this.totalPausedTime = 0
     this.waveStartPausedTime = 0
@@ -281,6 +296,7 @@ export default class GameScene extends Phaser.Scene {
     this.waveStartPending = false
     this.currentWaveEnemyCount = 0
     this.waveStartTime = 0
+    this.pendingDelayedSpawns = 0
 
     // Clear buff displays map to ensure clean state on restart
     // IMPORTANT: Destroy visual elements before clearing to prevent memory leak
@@ -607,6 +623,26 @@ export default class GameScene extends Phaser.Scene {
         padding: { x: 4, y: 4 }
       }
     ).setOrigin(0, 0).setDepth(1000).setVisible(false)
+      .setInteractive({ useHandCursor: true })
+
+    // Make performance text clickable to hide
+    this.performanceText.on('pointerdown', () => {
+      this.showPerformanceMonitor = false
+      this.performanceText.setVisible(false)
+    })
+
+    // Create invisible clickable zone in top left corner to show performance monitor
+    const perfToggleZone = this.add.rectangle(0, 0, 80, 80, 0x000000, 0)
+      .setOrigin(0, 0)
+      .setDepth(999)
+      .setInteractive({ useHandCursor: true })
+
+    perfToggleZone.on('pointerdown', () => {
+      if (!this.showPerformanceMonitor) {
+        this.showPerformanceMonitor = true
+        this.performanceText.setVisible(true)
+      }
+    })
 
     // Create buff icons container (bottom center, in UI tray)
     this.buffIconsContainer = this.add.container(
@@ -870,8 +906,8 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Initialize reroll system from building bonuses
-    if (bonuses.rerollUnlocked) {
-      this.maxRerolls = bonuses.rerollCharges || 0
+    if (bonuses.rerollCharges && bonuses.rerollCharges > 0) {
+      this.maxRerolls = bonuses.rerollCharges
       this.rerollsRemaining = this.maxRerolls
       this.updateRerollDisplay()
     } else if (this.playerStats.unlimitedRerolls) {
@@ -2064,6 +2100,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.waveInProgress = true
     this.currentWaveEnemyCount = 0
+    this.pendingDelayedSpawns = 0 // Reset delayed spawn counter for new wave
     this.waveStartTime = this.time.now // Track when wave started for failsafe
     this.waveStartPausedTime = this.totalPausedTime // Track paused time at wave start
 
@@ -2080,12 +2117,12 @@ export default class GameScene extends Phaser.Scene {
       this.bossHealthText.setVisible(false)
     }
 
-    // Spawn enemies for each bucket in the wave
+    // Spawn enemies for each bucket in the wave with timing delays
     waveData.buckets.forEach(bucket => {
       // Determine how many enemies to spawn from this bucket
       const enemyCount = Phaser.Math.Between(bucket.minEnemies, bucket.maxEnemies)
 
-      // For boss/mini-boss waves, spawn the boss first
+      // For boss/mini-boss waves, spawn the boss first (always immediate)
       if (waveData.isBoss || waveData.isMiniBoss) {
         // Find formation containing any boss type
         const bossFormation = bucket.formations.find(f =>
@@ -2099,8 +2136,11 @@ export default class GameScene extends Phaser.Scene {
         }
       }
 
-      // Get random formations and spawn them
+      // Collect formations to spawn with their delays
+      const formationsToSpawn: Array<{ formation: any, enemyType: EnemyType, delay: number }> = []
       let spawnedFromBucket = waveData.isBoss || waveData.isMiniBoss ? 1 : 0 // Start at 1 if we already spawned boss
+      let currentDelay = 0
+
       while (spawnedFromBucket < enemyCount) {
         const formation = bucket.formations[Math.floor(Math.random() * bucket.formations.length)]
         const enemyType = formation.enemyTypes[Math.floor(Math.random() * formation.enemyTypes.length)]
@@ -2110,19 +2150,43 @@ export default class GameScene extends Phaser.Scene {
           continue
         }
 
-        // Get actual spawned count (may be less than expected if pool is full)
-        const actualSpawned = this.spawnWaveFormation(formation, enemyType)
+        // Push formation with current delay (first formation gets delay 0)
+        formationsToSpawn.push({ formation, enemyType, delay: currentDelay })
 
-        // Only count enemies that were actually spawned
-        spawnedFromBucket += actualSpawned
-        this.currentWaveEnemyCount += actualSpawned
+        // Add delay for NEXT formation (1000-2000ms between formations)
+        const formationDelay = formation.delay !== undefined ? formation.delay : Phaser.Math.Between(1000, 2000)
+        currentDelay += formationDelay
 
-        // Break if we couldn't spawn any enemies (pool exhausted)
-        if (actualSpawned === 0) {
-          console.warn('Enemy pool exhausted, ending wave spawn early')
-          break
-        }
+        spawnedFromBucket += this.getFormationSize(formation)
       }
+
+      // Spawn formations with delays
+      formationsToSpawn.forEach(({ formation, enemyType, delay }) => {
+        if (delay === 0) {
+          // Spawn first formation immediately (synchronously)
+          const actualSpawned = this.spawnWaveFormation(formation, enemyType)
+          this.currentWaveEnemyCount += actualSpawned
+
+          if (actualSpawned === 0) {
+            console.warn('Enemy pool exhausted during immediate spawn')
+          }
+        } else {
+          // Track that we have a pending delayed spawn
+          this.pendingDelayedSpawns++
+
+          this.time.delayedCall(delay, () => {
+            const actualSpawned = this.spawnWaveFormation(formation, enemyType)
+            this.currentWaveEnemyCount += actualSpawned
+
+            if (actualSpawned === 0) {
+              console.warn('Enemy pool exhausted during delayed spawn')
+            }
+
+            // Mark this delayed spawn as complete
+            this.pendingDelayedSpawns--
+          })
+        }
+      })
     })
 
     // Log pool status after spawning
@@ -2202,6 +2266,19 @@ export default class GameScene extends Phaser.Scene {
     const currentWave = this.waveSystem.getCurrentWave()
     let spawnedCount = 0
 
+    // Helper function to apply Salvage Unit passive (chance to spawn golden enemy)
+    const applyGoldenChance = (type: EnemyType): EnemyType => {
+      const salvagePassive = this.passives.find(p => p.getConfig().type === PassiveType.SALVAGE_UNIT)
+      if (salvagePassive) {
+        const level = salvagePassive.getLevel()
+        const goldenChance = 10 * level // 10%, 20%, or 30% chance
+        if (Math.random() * 100 < goldenChance) {
+          return EnemyType.GOLDEN
+        }
+      }
+      return type
+    }
+
     switch (formation.type) {
       case 'single':
         const count = formation.count || 1
@@ -2210,7 +2287,8 @@ export default class GameScene extends Phaser.Scene {
         for (let i = 0; i < count; i++) {
           const offsetX = (i - (count - 1) / 2) * 100
           const spawnX = this.clampSpawnX(centerX + offsetX)
-          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y, actualType, currentWave)
           if (enemy) {
             spawnedCount++
             spawnedEnemies.push(enemy)
@@ -2225,7 +2303,8 @@ export default class GameScene extends Phaser.Scene {
       case 'line':
         for (let i = -4; i <= 4; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y, actualType, currentWave)
           if (enemy) {
             spawnedCount++
             this.cachedActiveEnemyCount++
@@ -2236,7 +2315,8 @@ export default class GameScene extends Phaser.Scene {
       case 'v':
         for (let i = -2; i <= 2; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y, actualType, currentWave)
           if (enemy) {
             spawnedCount++
             this.cachedActiveEnemyCount++
@@ -2244,7 +2324,8 @@ export default class GameScene extends Phaser.Scene {
         }
         for (let i = -3; i <= 3; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 40, enemyType, currentWave)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 40, actualType, currentWave)
           if (enemy) {
             spawnedCount++
             this.cachedActiveEnemyCount++
@@ -2252,7 +2333,8 @@ export default class GameScene extends Phaser.Scene {
         }
         for (let i = -2; i <= 2; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 80, enemyType, currentWave)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 80, actualType, currentWave)
           if (enemy) {
             spawnedCount++
             this.cachedActiveEnemyCount++
@@ -2260,7 +2342,8 @@ export default class GameScene extends Phaser.Scene {
         }
         for (let i = -1; i <= 1; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 120, enemyType, currentWave)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 120, actualType, currentWave)
           if (enemy) {
             spawnedCount++
             this.cachedActiveEnemyCount++
@@ -2274,7 +2357,8 @@ export default class GameScene extends Phaser.Scene {
           const offsetX = Math.cos(angle) * 80
           const offsetY = Math.sin(angle) * 40
           const spawnX = this.clampSpawnX(centerX + offsetX)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
           if (enemy) {
             spawnedCount++
             this.cachedActiveEnemyCount++
@@ -2286,7 +2370,205 @@ export default class GameScene extends Phaser.Scene {
         for (let i = -5; i <= 5; i++) {
           const waveOffset = Math.sin((i / 5) * Math.PI) * 30
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + waveOffset, enemyType, currentWave)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + waveOffset, actualType, currentWave)
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
+        }
+        break
+
+      case 'diamond':
+        // Diamond formation (4 corners + 4 sides + 1 center = 9 enemies)
+        const diamondPoints = [
+          { x: 0, y: -spacing * 1.5 },     // Top
+          { x: -spacing, y: -spacing * 0.75 },  // Top-left
+          { x: spacing, y: -spacing * 0.75 },   // Top-right
+          { x: -spacing * 1.5, y: 0 },     // Left
+          { x: 0, y: 0 },                  // Center
+          { x: spacing * 1.5, y: 0 },      // Right
+          { x: -spacing, y: spacing * 0.75 },   // Bottom-left
+          { x: spacing, y: spacing * 0.75 },    // Bottom-right
+          { x: 0, y: spacing * 1.5 },      // Bottom
+        ]
+        for (const point of diamondPoints) {
+          const spawnX = this.clampSpawnX(centerX + point.x)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + point.y, actualType, currentWave)
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
+        }
+        break
+
+      case 'x':
+        // X formation (two diagonal lines)
+        for (let i = -3; i <= 3; i++) {
+          // Top-left to bottom-right diagonal
+          const spawnX1 = this.clampSpawnX(centerX + i * spacing * 0.7)
+          const actualType1 = applyGoldenChance(enemyType)
+          const enemy1 = this.enemies.spawnEnemy(spawnX1, y + i * spacing * 0.7, actualType1, currentWave)
+          if (enemy1) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
+          // Top-right to bottom-left diagonal
+          const spawnX2 = this.clampSpawnX(centerX - i * spacing * 0.7)
+          const actualType2 = applyGoldenChance(enemyType)
+          const enemy2 = this.enemies.spawnEnemy(spawnX2, y + i * spacing * 0.7, actualType2, currentWave)
+          if (enemy2) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
+        }
+        break
+
+      case 'arc':
+        // Arc formation (curved line across top)
+        for (let i = 0; i < 9; i++) {
+          const t = i / 8 // 0 to 1
+          const angle = (t - 0.5) * Math.PI * 0.8 // -72 to +72 degrees
+          const radius = spacing * 2
+          const offsetX = Math.sin(angle) * radius
+          const offsetY = -Math.cos(angle) * radius * 0.3
+          const spawnX = this.clampSpawnX(centerX + offsetX)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
+        }
+        break
+
+      case 'cross':
+        // Cross/Plus formation (horizontal + vertical lines)
+        // Horizontal line
+        for (let i = -3; i <= 3; i++) {
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y, actualType, currentWave)
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
+        }
+        // Vertical line (skip center since it's already spawned)
+        for (let i = -2; i <= 2; i++) {
+          if (i !== 0) {
+            const spawnX = this.clampSpawnX(centerX)
+            const actualType = applyGoldenChance(enemyType)
+            const enemy = this.enemies.spawnEnemy(spawnX, y + i * spacing, actualType, currentWave)
+            if (enemy) {
+              spawnedCount++
+              this.cachedActiveEnemyCount++
+            }
+          }
+        }
+        break
+
+      case 'wedge':
+        // Wedge formation (inverted triangle pointing down)
+        for (let row = 0; row < 4; row++) {
+          const rowWidth = row + 1
+          for (let i = 0; i < rowWidth; i++) {
+            const offsetX = (i - (rowWidth - 1) / 2) * spacing
+            const spawnX = this.clampSpawnX(centerX + offsetX)
+            const actualType = applyGoldenChance(enemyType)
+            const enemy = this.enemies.spawnEnemy(spawnX, y + row * spacing * 0.8, actualType, currentWave)
+            if (enemy) {
+              spawnedCount++
+              this.cachedActiveEnemyCount++
+            }
+          }
+        }
+        break
+
+      case 'inverted-v':
+        // Inverted V formation (upside down V)
+        for (let i = -2; i <= 2; i++) {
+          const spawnX = this.clampSpawnX(centerX + i * spacing)
+          const offsetY = Math.abs(i) * spacing * 0.6
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
+        }
+        for (let i = -3; i <= 3; i++) {
+          if (Math.abs(i) >= 2) {
+            const spawnX = this.clampSpawnX(centerX + i * spacing)
+            const offsetY = (Math.abs(i) - 1) * spacing * 0.6
+            const actualType = applyGoldenChance(enemyType)
+            const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
+            if (enemy) {
+              spawnedCount++
+              this.cachedActiveEnemyCount++
+            }
+          }
+        }
+        break
+
+      case 'column':
+        // Vertical column formation
+        for (let i = 0; i < 7; i++) {
+          const spawnX = this.clampSpawnX(centerX)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + i * spacing * 0.8, actualType, currentWave)
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
+        }
+        break
+
+      case 'scattered':
+        // Scattered random formation
+        const scatterCount = 8
+        for (let i = 0; i < scatterCount; i++) {
+          const randomX = Phaser.Math.Between(-spacing * 2, spacing * 2)
+          const randomY = Phaser.Math.Between(-spacing, spacing)
+          const spawnX = this.clampSpawnX(centerX + randomX)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + randomY, actualType, currentWave)
+          if (enemy) {
+            spawnedCount++
+            this.cachedActiveEnemyCount++
+          }
+        }
+        break
+
+      case 'grid':
+        // Grid formation (3x3)
+        for (let row = 0; row < 3; row++) {
+          for (let col = 0; col < 3; col++) {
+            const offsetX = (col - 1) * spacing
+            const offsetY = (row - 1) * spacing * 0.8
+            const spawnX = this.clampSpawnX(centerX + offsetX)
+            const actualType = applyGoldenChance(enemyType)
+            const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
+            if (enemy) {
+              spawnedCount++
+              this.cachedActiveEnemyCount++
+            }
+          }
+        }
+        break
+
+      case 'spiral':
+        // Spiral formation
+        const spiralPoints = 12
+        for (let i = 0; i < spiralPoints; i++) {
+          const angle = (i / spiralPoints) * Math.PI * 3 // 1.5 rotations
+          const radius = (i / spiralPoints) * spacing * 2
+          const offsetX = Math.cos(angle) * radius
+          const offsetY = Math.sin(angle) * radius * 0.5
+          const spawnX = this.clampSpawnX(centerX + offsetX)
+          const actualType = applyGoldenChance(enemyType)
+          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
           if (enemy) {
             spawnedCount++
             this.cachedActiveEnemyCount++
@@ -2310,6 +2592,26 @@ export default class GameScene extends Phaser.Scene {
         return 10
       case 'wave':
         return 11 // -5 to 5
+      case 'diamond':
+        return 9
+      case 'x':
+        return 14 // 7 per diagonal
+      case 'arc':
+        return 9
+      case 'cross':
+        return 11 // 7 horizontal + 4 vertical
+      case 'wedge':
+        return 10 // 1 + 2 + 3 + 4
+      case 'inverted-v':
+        return 9
+      case 'column':
+        return 7
+      case 'scattered':
+        return 8
+      case 'grid':
+        return 9 // 3x3
+      case 'spiral':
+        return 12
       default:
         return 1
     }
@@ -2443,6 +2745,22 @@ export default class GameScene extends Phaser.Scene {
     // Cap delta to prevent physics explosions after long pauses (e.g., window loses focus)
     // Max 100ms per frame = 10 FPS minimum
     const cappedDelta = Math.min(delta, 100)
+
+    // Track performance metrics during active gameplay (not paused)
+    if (!this.isPaused && this.runStartTime > 0) {
+      this.totalFrames++
+      const currentFPS = delta > 0 ? 1000 / delta : 60
+
+      // Track frame drops
+      if (currentFPS < 30) this.frameDropCount++
+      if (currentFPS < 20) this.severeFrameDropCount++
+
+      // Track slow updates (before capping)
+      if (delta > 50) this.slowUpdateCount++
+
+      // Track worst frame
+      if (delta > this.worstFrameTime) this.worstFrameTime = delta
+    }
 
     // Set run start time on first update
     if (this.runStartTime === 0 && !this.isPaused) {
@@ -2630,38 +2948,43 @@ export default class GameScene extends Phaser.Scene {
 
       // Check if all enemies are cleared and wave is in progress
       // Add grace period: don't check for completion until at least 2 seconds after wave starts
+      // Also ensure all delayed formations have been spawned before completing the wave
       const pausedDuringWave = this.totalPausedTime - this.waveStartPausedTime
       const timeSinceWaveStart = time - this.waveStartTime - pausedDuringWave
-      if (this.waveInProgress && activeEnemyCount === 0 && this.currentWaveEnemyCount > 0 && timeSinceWaveStart > 2000) {
+      if (this.waveInProgress && activeEnemyCount === 0 && this.currentWaveEnemyCount > 0 && timeSinceWaveStart > 2000 && this.pendingDelayedSpawns === 0) {
         console.log(`Wave ${this.waveSystem.getCurrentWave()} complete! Time: ${timeSinceWaveStart}ms, Enemies spawned: ${this.currentWaveEnemyCount}`)
         // Wave cleared! Apply wave heal bonus
         const bonuses = this.gameState.getTotalBonuses()
         if (bonuses.waveHeal && bonuses.waveHeal > 0) {
+          const oldHealth = this.health
           this.health = Math.floor(Math.min(this.maxHealth, this.health + bonuses.waveHeal))
+          const actualHealAmount = this.health - oldHealth
 
-          // Show healing text
-          const healText = this.add.text(
-            this.player.x,
-            this.player.y - 50,
-            `+${Math.floor(bonuses.waveHeal)} HP`,
-            {
-              fontFamily: 'Courier New',
-              fontSize: '20px',
-              color: '#00ff00',
-              fontStyle: 'bold',
-            }
-          ).setOrigin(0.5).setDepth(100)
+          // Only show healing text if health actually changed
+          if (actualHealAmount > 0) {
+            const healText = this.add.text(
+              this.player.x,
+              this.player.y - 50,
+              `+${actualHealAmount} HP`,
+              {
+                fontFamily: 'Courier New',
+                fontSize: '20px',
+                color: '#00ff00',
+                fontStyle: 'bold',
+              }
+            ).setOrigin(0.5).setDepth(100)
 
-          // Animate heal text rising and fading
-          this.tweens.add({
-            targets: healText,
-            y: healText.y - 40,
-            alpha: 0,
-            duration: 1000,
-            onComplete: () => {
-              healText.destroy()
-            }
-          })
+            // Animate heal text rising and fading
+            this.tweens.add({
+              targets: healText,
+              y: healText.y - 40,
+              alpha: 0,
+              duration: 1000,
+              onComplete: () => {
+                healText.destroy()
+              }
+            })
+          }
         }
 
         // Track wave clear for Vulcan character
@@ -2672,6 +2995,7 @@ export default class GameScene extends Phaser.Scene {
         // Start next wave immediately
         this.waveInProgress = false
         this.currentWaveEnemyCount = 0
+        this.pendingDelayedSpawns = 0 // Reset delayed spawn counter
         this.consecutiveFailedWaves = 0 // Reset failure counter on successful wave completion
         this.waveStartPending = true
         this.time.delayedCall(1000, () => {
@@ -2702,6 +3026,7 @@ export default class GameScene extends Phaser.Scene {
           // Start next wave
           this.waveInProgress = false
           this.currentWaveEnemyCount = 0
+          this.pendingDelayedSpawns = 0 // Reset delayed spawn counter
           this.waveStartPending = true
           this.time.delayedCall(1000, () => {
             this.startNextWave()
@@ -2712,7 +3037,8 @@ export default class GameScene extends Phaser.Scene {
       // Failsafe 2: If no wave is in progress and no enemies are active, start next wave
       // This handles cases where the wave system got stuck
       // Increased delay to 10 seconds to avoid rapid wave advancement and allow time for enemies to despawn
-      if (!this.waveInProgress && !this.waveStartPending && activeEnemyCount === 0 && this.waveSystem.getCurrentWave() > 0 && !this.waveSystem.isComplete()) {
+      // Also check that there are no pending delayed spawns before triggering
+      if (!this.waveInProgress && !this.waveStartPending && activeEnemyCount === 0 && this.pendingDelayedSpawns === 0 && this.waveSystem.getCurrentWave() > 0 && !this.waveSystem.isComplete()) {
         const pausedDuringWave = this.totalPausedTime - this.waveStartPausedTime
         const timeSinceWaveStart = time - this.waveStartTime - pausedDuringWave
         // Only trigger if it's been at least 10 seconds since last wave start (avoid rapid re-trigger)
@@ -3370,7 +3696,31 @@ export default class GameScene extends Phaser.Scene {
   private resumeGame() {
     // Track paused time before unpausing
     if (this.pauseStartTime > 0) {
-      this.totalPausedTime += this.time.now - this.pauseStartTime
+      const pausedDuration = this.time.now - this.pauseStartTime
+      this.totalPausedTime += pausedDuration
+
+      // Extend all combat timer end times by the paused duration
+      if (this.shieldEndTime > 0) {
+        this.shieldEndTime += pausedDuration
+      }
+      if (this.rapidFireEndTime > 0) {
+        this.rapidFireEndTime += pausedDuration
+      }
+      if (this.magnetEndTime > 0) {
+        this.magnetEndTime += pausedDuration
+      }
+      if (this.overdriveEndTime > 0) {
+        this.overdriveEndTime += pausedDuration
+      }
+
+      // Extend Frost Haste stack expiration times
+      this.frostHasteExpireTimes = this.frostHasteExpireTimes.map(expireTime => expireTime + pausedDuration)
+
+      // Extend combo timer
+      if (this.comboTimer > 0) {
+        this.comboTimer += pausedDuration
+      }
+
       this.pauseStartTime = 0
     }
 
@@ -3423,27 +3773,59 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private createEngineTrail() {
-    // Create subtle sparkle trail behind the player ship
-    const trail = this.add.text(
-      this.player.x + Phaser.Math.Between(-5, 5),
-      this.player.y + 20, // Behind the ship
-      '·',
-      {
-        fontFamily: 'Courier New',
-        fontSize: '12px',
-        color: '#00ccff',
-      }
-    ).setOrigin(0.5).setDepth(9).setAlpha(0.6)
+    // Get engine count from character config
+    const characterConfig = this.character.getConfig()
+    const engineCount = characterConfig.engineCount || 2
 
-    // Fade out and fall behind
-    this.tweens.add({
-      targets: trail,
-      y: trail.y + 40,
-      alpha: 0,
-      scale: 0.5,
-      duration: 400,
-      ease: 'Cubic.easeOut',
-      onComplete: () => trail.destroy()
+    // Use actual ship dimensions to position engines
+    const shipWidth = this.player.displayWidth
+    const shipHeight = this.player.displayHeight
+
+    // Calculate engine positions based on count
+    // Position engines as fractions of ship width
+    let enginePositions: number[] = []
+    switch (engineCount) {
+      case 1:
+        enginePositions = [0] // Single center engine
+        break
+      case 2:
+        enginePositions = [-0.35, 0.35] // Twin engines at 35% from center
+        break
+      case 3:
+        enginePositions = [-0.4, 0, 0.4] // Triple engines spread
+        break
+      case 4:
+        enginePositions = [-0.45, -0.15, 0.15, 0.45] // Quad engines
+        break
+      default:
+        enginePositions = [-0.35, 0.35] // Default to twin
+    }
+
+    // Convert fractions to actual pixel offsets
+    const engineOffsets = enginePositions.map(fraction => fraction * shipWidth)
+
+    engineOffsets.forEach(offset => {
+      const trail = this.add.text(
+        this.player.x + offset,
+        this.player.y + (shipHeight / 2), // Bottom edge of ship
+        '·',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '60px',
+          color: '#00ccff',
+        }
+      ).setOrigin(0.5).setDepth(9).setAlpha(0.6)
+
+      // Fade out and fall behind
+      this.tweens.add({
+        targets: trail,
+        y: trail.y + 40,
+        alpha: 0,
+        scale: 0.5,
+        duration: 400,
+        ease: 'Cubic.easeOut',
+        onComplete: () => trail.destroy()
+      })
     })
   }
 
@@ -3961,7 +4343,7 @@ export default class GameScene extends Phaser.Scene {
       case PassiveType.DRONE_BAY_EXPANSION:
         return `+${20 * level}% Drone Damage\n+${15 * level}% Drone Attack Speed`
       case PassiveType.VAMPIRIC_FIRE:
-        return `Heal ${1 + level}% of\nFire Damage Dealt`
+        return `Heal ${level * 0.5}% of\nFire Damage Dealt`
       case PassiveType.FROST_HASTE:
         return `+${5 * level}% Attack Speed\nper Cold Damage Hit (stacks)`
       case PassiveType.STATIC_FORTUNE:
@@ -4106,9 +4488,34 @@ export default class GameScene extends Phaser.Scene {
     const bonuses = this.gameState.getTotalBonuses()
     const upgradeCount = 3 + (bonuses.upgradeOptions || 0)
 
-    // Randomly select upgrades based on available options
-    const shuffled = Phaser.Utils.Array.Shuffle([...upgrades])
-    const selectedUpgrades = shuffled.slice(0, Math.min(upgradeCount, upgrades.length))
+    // Special case for level 2: Try to offer 2 weapons and 1 passive
+    let selectedUpgrades: typeof upgrades = []
+    if (this.level === 2) {
+      // Separate into new weapons, new passives, and other upgrades
+      const newWeapons = upgrades.filter(u => !u.name.includes('Level Up') && !u.isPassive && !u.name.includes('‡'))
+      const newPassives = upgrades.filter(u => !u.name.includes('Level Up') && u.isPassive)
+      const otherUpgrades = upgrades.filter(u => u.name.includes('Level Up') || u.name.includes('‡'))
+
+      // Try to select 2 weapons and 1 passive
+      const shuffledWeapons = Phaser.Utils.Array.Shuffle([...newWeapons])
+      const shuffledPassives = Phaser.Utils.Array.Shuffle([...newPassives])
+
+      const selectedWeapons = shuffledWeapons.slice(0, Math.min(2, newWeapons.length))
+      const selectedPassive = shuffledPassives.slice(0, Math.min(1, newPassives.length))
+
+      selectedUpgrades = [...selectedWeapons, ...selectedPassive]
+
+      // If we don't have enough, fill with other upgrades
+      if (selectedUpgrades.length < upgradeCount) {
+        const shuffledOther = Phaser.Utils.Array.Shuffle([...otherUpgrades])
+        const needed = upgradeCount - selectedUpgrades.length
+        selectedUpgrades.push(...shuffledOther.slice(0, needed))
+      }
+    } else {
+      // Normal random selection for other levels
+      const shuffled = Phaser.Utils.Array.Shuffle([...upgrades])
+      selectedUpgrades = shuffled.slice(0, Math.min(upgradeCount, upgrades.length))
+    }
 
     // SUPERNOVA: Auto-select upgrades without showing UI
     if (this.playerStats.autoSelectUpgrades) {
@@ -4360,9 +4767,9 @@ export default class GameScene extends Phaser.Scene {
       if (synergyPlus) buttons.push(synergyPlus)
     })
 
-    // Add Reroll button (only if unlocked and have charges, OR Eclipse with unlimited rerolls)
+    // Add Reroll button (only if have charges, OR Eclipse with unlimited rerolls)
     const hasUnlimitedRerolls = this.playerStats.unlimitedRerolls === true
-    const rerollUnlocked = hasUnlimitedRerolls || (bonuses.rerollUnlocked && this.rerollsRemaining > 0)
+    const rerollUnlocked = hasUnlimitedRerolls || (this.rerollsRemaining > 0)
     if (rerollUnlocked) {
       const rerollButtonY = startY + (buttonHeight + buttonSpacing) * selectedUpgrades.length + 20
       const rerollButton = this.add.rectangle(
@@ -5175,14 +5582,28 @@ export default class GameScene extends Phaser.Scene {
     } else {
       this.buffDisplays.forEach((buff, key) => {
         const timeRemaining = Math.max(0, Math.ceil((buff.duration - (this.time.now - buff.startTime)) / 1000))
-        const buffName = key === 'shield' ? 'Shield' :
-                        key === 'rapidFire' ? 'Damage Boost' :
-                        key === 'magnet' ? 'Magnet' : key
+
+        let buffName = ''
+        let buffDescription = ''
+
+        if (key === 'shield') {
+          buffName = 'Shield'
+          buffDescription = 'Cannot take damage'
+        } else if (key === 'rapidfire') {
+          buffName = 'Damage Boost'
+          buffDescription = '3x damage, +25% fire rate'
+        } else if (key === 'magnet') {
+          buffName = 'Magnet'
+          buffDescription = 'Increased pickup radius'
+        } else {
+          buffName = key
+          buffDescription = 'Active buff'
+        }
 
         const buffText = this.add.text(
           this.cameras.main.centerX,
           yOffset,
-          `${buff.icon.text} ${buffName}: ${timeRemaining}s remaining`,
+          `${buff.icon.text} ${buffName}: ${timeRemaining}s`,
           {
             fontFamily: 'Courier New',
             fontSize: '16px',
@@ -5191,6 +5612,19 @@ export default class GameScene extends Phaser.Scene {
         ).setOrigin(0.5).setDepth(201)
         uiElements.push(buffText)
         yOffset += 22
+
+        const descText = this.add.text(
+          this.cameras.main.centerX,
+          yOffset,
+          buffDescription,
+          {
+            fontFamily: 'Courier New',
+            fontSize: '13px',
+            color: '#cccccc',
+          }
+        ).setOrigin(0.5).setDepth(201)
+        uiElements.push(descText)
+        yOffset += 20
       })
     }
 
@@ -6218,14 +6652,22 @@ export default class GameScene extends Phaser.Scene {
     const vampiricFirePassive = this.passives.find(p => p.getConfig().type === PassiveType.VAMPIRIC_FIRE)
     if (vampiricFirePassive) {
       const level = vampiricFirePassive.getLevel()
-      const healPercent = (1 + level) / 100 // 2%, 3%, or 4%
-      const healAmount = Math.floor(damage * healPercent)
-      if (healAmount > 0) {
-        this.health = Math.floor(Math.min(this.maxHealth, this.health + healAmount))
+      const healPercent = level * 0.005 // 0.5%, 1%, or 1.5%
+      const healAmount = damage * healPercent // Keep as decimal
+
+      // Accumulate fractional healing
+      this.pendingHealAmount += healAmount
+
+      // Only apply healing when we've accumulated at least 1 HP
+      if (this.pendingHealAmount >= 1) {
+        const wholeHealAmount = Math.floor(this.pendingHealAmount)
+        this.pendingHealAmount -= wholeHealAmount // Keep the remainder
+
+        this.health = Math.floor(Math.min(this.maxHealth, this.health + wholeHealAmount))
         this.updateHealthDisplay()
 
         // Show healing visual effect
-        const healText = this.add.text(this.player.x, this.player.y - 20, `+${healAmount}`, {
+        const healText = this.add.text(this.player.x, this.player.y - 20, `+${wholeHealAmount}`, {
           fontFamily: 'Courier New',
           fontSize: '14px',
           color: '#00ff00',
@@ -6382,32 +6824,37 @@ export default class GameScene extends Phaser.Scene {
         const baseHealPercent = 0.2
         const healPercent = baseHealPercent * (1 + (bonuses2.healthPackValue || 0))
         const healAmount = Math.floor(this.maxHealth * healPercent)
+        const oldHealth = this.health
         this.health = Math.floor(Math.min(this.maxHealth, this.health + healAmount))
+        const actualHealAmount = this.health - oldHealth
 
-        // Visual feedback - flash green
-        this.cameras.main.flash(200, 0, 255, 0)
+        // Only show visual feedback and text if health actually changed
+        if (actualHealAmount > 0) {
+          // Visual feedback - flash green
+          this.cameras.main.flash(200, 0, 255, 0)
 
-        // Show healing text
-        const healText = this.add.text(
-          this.player.x,
-          this.player.y - 40,
-          `+${healAmount}`,
-          {
-            fontFamily: 'Courier New',
-            fontSize: '24px',
-            color: '#00ff00',
-            fontStyle: 'bold',
-          }
-        ).setOrigin(0.5).setDepth(100)
+          // Show healing text
+          const healText = this.add.text(
+            this.player.x,
+            this.player.y - 40,
+            `+${actualHealAmount}`,
+            {
+              fontFamily: 'Courier New',
+              fontSize: '24px',
+              color: '#00ff00',
+              fontStyle: 'bold',
+            }
+          ).setOrigin(0.5).setDepth(100)
 
-        // Animate heal text rising and fading
-        this.tweens.add({
-          targets: healText,
-          y: healText.y - 50,
-          alpha: 0,
-          duration: 1000,
-          onComplete: () => healText.destroy()
-        })
+          // Animate heal text rising and fading
+          this.tweens.add({
+            targets: healText,
+            y: healText.y - 50,
+            alpha: 0,
+            duration: 1000,
+            onComplete: () => healText.destroy()
+          })
+        }
         break
 
       case PowerUpType.CHEST:
@@ -6664,6 +7111,7 @@ export default class GameScene extends Phaser.Scene {
 
   private gameOver() {
     this.isPaused = true
+    this.pauseStartTime = this.time.now
     this.physics.pause()
     // Pause star field
     this.starFieldTweens.forEach(tween => tween.pause())
@@ -6713,6 +7161,40 @@ export default class GameScene extends Phaser.Scene {
       this.level,
       weaponDPSData
     )
+
+    // Log performance summary for debugging
+    const avgFPS = this.survivalTime > 0 ? (this.totalFrames / this.survivalTime) : 0
+    const frameDropPercent = this.totalFrames > 0 ? ((this.frameDropCount / this.totalFrames) * 100).toFixed(1) : '0.0'
+    const severeDropPercent = this.totalFrames > 0 ? ((this.severeFrameDropCount / this.totalFrames) * 100).toFixed(1) : '0.0'
+    const slowUpdatePercent = this.totalFrames > 0 ? ((this.slowUpdateCount / this.totalFrames) * 100).toFixed(1) : '0.0'
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const logContent = [
+      '=== COMBAT PERFORMANCE SUMMARY ===',
+      `Timestamp: ${new Date().toLocaleString()}`,
+      `Character: ${this.character.getConfig().name}`,
+      `Duration: ${Math.floor(this.survivalTime / 60)}m ${this.survivalTime % 60}s | Level: ${this.level} | Kills: ${enemyKills}`,
+      `Score: ${this.score} | Damage Dealt: ${this.totalDamageDealt.toFixed(0)}`,
+      '',
+      'PERFORMANCE:',
+      `Total Frames: ${this.totalFrames} | Avg FPS: ${avgFPS.toFixed(1)}`,
+      `Frame Drops (<30 FPS): ${this.frameDropCount} (${frameDropPercent}%)`,
+      `Severe Drops (<20 FPS): ${this.severeFrameDropCount} (${severeDropPercent}%)`,
+      `Slow Updates (>50ms): ${this.slowUpdateCount} (${slowUpdatePercent}%)`,
+      `Worst Frame: ${this.worstFrameTime.toFixed(1)}ms`,
+      `Paused Time: ${(this.totalPausedTime / 1000).toFixed(1)}s`,
+      '',
+      'WEAPONS:',
+      ...weaponDPSData.map(w => `  ${w.weaponName}: ${w.dps.toFixed(1)} DPS (${w.totalDamage.toFixed(0)} dmg over ${w.activeTime.toFixed(1)}s)`),
+      '',
+      'PASSIVES:',
+      ...this.passives.map(p => `  ${p.getConfig().name}`),
+      '==================================',
+      ''
+    ].join('\n')
+
+    // Log to console
+    console.log(logContent)
 
     // Clear any existing game over UI
     this.gameOverUI.forEach(obj => obj.destroy())
@@ -6912,6 +7394,7 @@ export default class GameScene extends Phaser.Scene {
 
   private levelWon() {
     this.isPaused = true
+    this.pauseStartTime = this.time.now
     this.physics.pause()
     // Pause star field
     this.starFieldTweens.forEach(tween => tween.pause())

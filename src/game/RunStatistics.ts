@@ -15,6 +15,7 @@ interface CharacterStats {
   wins: number
   totalSurvivalTime: number
   totalDamageDealt: number
+  totalKills: number
   longestSurvival: number
 }
 
@@ -149,6 +150,7 @@ export class RunStatistics {
     if (won) charStats.wins++
     charStats.totalSurvivalTime += survivalTime
     charStats.totalDamageDealt += damageDealt
+    charStats.totalKills += killCount
     if (survivalTime > charStats.longestSurvival) {
       charStats.longestSurvival = survivalTime
     }
@@ -234,6 +236,7 @@ export class RunStatistics {
         wins: 0,
         totalSurvivalTime: 0,
         totalDamageDealt: 0,
+        totalKills: 0,
         longestSurvival: 0
       })
     }
@@ -277,8 +280,17 @@ export class RunStatistics {
       const stored = localStorage.getItem(this.STORAGE_KEY)
       if (stored) {
         const parsed = JSON.parse(stored)
+
+        // Migrate old character stats to include totalKills if missing
+        const characters = new Map(Object.entries(parsed.characters || {}) as [CharacterType, CharacterStats][])
+        characters.forEach((stats, character) => {
+          if (stats.totalKills === undefined) {
+            stats.totalKills = 0 // Initialize to 0 for old save data
+          }
+        })
+
         return {
-          characters: new Map(Object.entries(parsed.characters || {}) as [CharacterType, CharacterStats][]),
+          characters,
           weapons: new Map(Object.entries(parsed.weapons || {}) as [WeaponType, WeaponStats][]),
           passives: new Map(Object.entries(parsed.passives || {}) as [PassiveType, PassiveStats][]),
           evolutions: new Map(Object.entries(parsed.evolutions || {}) as [EvolutionType, EvolutionStats][]),

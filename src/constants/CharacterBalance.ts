@@ -225,10 +225,8 @@ export const PHANTOM = {
 // =============================================================================
 
 export const PHOTON = {
-  /** Damage bonus (currently always active) */
-  DAMAGE_BONUS: 0.15, // +15%
-
-  // TODO: Make conditional on heat level in future refactor
+  /** Heat gain multiplier (0.5 = overheats 50% slower) */
+  HEAT_REDUCTION: 0.5, // 50% heat gain
 } as const
 
 // =============================================================================

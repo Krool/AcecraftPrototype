@@ -48,6 +48,7 @@ export interface CharacterConfig {
   cost: number // Credit cost to purchase (0 = free/starter)
   scale: number // Visual scale of ship (0.7-1.0, affects sprite size and collision)
   collisionRadius: number // Collision radius in pixels (smaller = easier to dodge)
+  engineCount: number // Number of engines (1-4, affects thruster particle visual)
 }
 
 export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
@@ -67,6 +68,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     cost: 0,
     scale: 1.0, // Starter ship - normal size
     collisionRadius: 18,
+    engineCount: 3, // Heavy cruiser needs multiple engines
   },
   [CharacterType.SCATTERSHOT]: {
     name: 'Scattershot',
@@ -84,6 +86,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     cost: 500,
     scale: 1.0,
     collisionRadius: 17,
+    engineCount: 2, // Standard twin engines
   },
   [CharacterType.SWARM]: {
     name: 'Swarm',
@@ -101,6 +104,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 1.0,
     collisionRadius: 16,
     cost: 800,
+    engineCount: 4, // Carrier needs power for drones
   },
   [CharacterType.TEMPEST]: {
     name: 'Tempest',
@@ -118,6 +122,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 1.0,
     collisionRadius: 16,
     cost: 1000,
+    engineCount: 2, // Fast interceptor
   },
   [CharacterType.GLACIER]: {
     name: 'Glacier',
@@ -135,6 +140,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.9,
     collisionRadius: 15,
     cost: 1200,
+    engineCount: 2, // Standard twin engines
   },
   [CharacterType.INFERNO]: {
     name: 'Inferno',
@@ -152,6 +158,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.9,
     collisionRadius: 15,
     cost: 1500,
+    engineCount: 3, // Heavy bomber
   },
   [CharacterType.TSUNAMI]: {
     name: 'Tsunami',
@@ -169,6 +176,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.9,
     collisionRadius: 14,
     cost: 2000,
+    engineCount: 3, // Destroyer class
   },
   [CharacterType.BASTION]: {
     name: 'Bastion',
@@ -186,6 +194,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.9,
     collisionRadius: 14,
     cost: 2500,
+    engineCount: 4, // Heavy fortress needs power
   },
   [CharacterType.ECLIPSE]: {
     name: 'Eclipse',
@@ -203,13 +212,14 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.9,
     collisionRadius: 14,
     cost: 3000,
+    engineCount: 1, // Mysterious void ship
   },
   [CharacterType.PHOTON]: {
     name: 'Photon',
     type: CharacterType.PHOTON,
     startingWeapon: WeaponType.LASER_BEAM,
-    innateAbility: '+15% damage at max heat, slower overheat',
-    description: 'Beam Frigate with heat management',
+    innateAbility: 'Laser overheats 50% slower',
+    description: 'Beam Frigate with superior heat management',
     symbol: '=━=',
     color: '#ff8800', // Orange for Fire damage
     baseHealth: 85,
@@ -220,6 +230,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.9,
     collisionRadius: 14,
     cost: 3500,
+    engineCount: 2, // Frigate class
   },
   [CharacterType.REFLEX]: {
     name: 'Reflex',
@@ -237,6 +248,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.8,
     collisionRadius: 13,
     cost: 250,
+    engineCount: 1, // Light scout
   },
   [CharacterType.ARSENAL]: {
     name: 'Arsenal',
@@ -254,6 +266,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.8,
     collisionRadius: 13,
     cost: 250,
+    engineCount: 4, // Heavy missile cruiser
   },
   [CharacterType.CORONA]: {
     name: 'Corona',
@@ -271,6 +284,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.8,
     collisionRadius: 12,
     cost: 250,
+    engineCount: 3, // Powerful stellar ship
   },
   [CharacterType.REAPER]: {
     name: 'Reaper',
@@ -288,6 +302,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.8,
     collisionRadius: 12,
     cost: 250,
+    engineCount: 2, // Fast executioner
   },
   [CharacterType.SUPERNOVA]: {
     name: 'Supernova',
@@ -305,6 +320,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.8,
     collisionRadius: 12,
     cost: 250,
+    engineCount: 4, // Massive living star
   },
   [CharacterType.CYCLONE]: {
     name: 'Cyclone',
@@ -322,6 +338,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.8,
     collisionRadius: 12,
     cost: 250,
+    engineCount: 3, // Vortex power
   },
   [CharacterType.ZENITH]: {
     name: 'Zenith',
@@ -339,6 +356,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.7,
     collisionRadius: 11,
     cost: 250,
+    engineCount: 4, // Orbital platform
   },
   [CharacterType.HAVOC]: {
     name: 'Havoc',
@@ -356,6 +374,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.7,
     collisionRadius: 11,
     cost: 250,
+    engineCount: 3, // War machine
   },
   [CharacterType.WARDEN]: {
     name: 'Warden',
@@ -373,6 +392,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.7,
     collisionRadius: 10,
     cost: 250,
+    engineCount: 2, // Defensive platform
   },
   [CharacterType.PHANTOM]: {
     name: 'Phantom',
@@ -390,6 +410,7 @@ export const CHARACTER_CONFIGS: Record<CharacterType, CharacterConfig> = {
     scale: 0.7,
     collisionRadius: 10,
     cost: 250,
+    engineCount: 1, // Ghost assassin
   },
 }
 
@@ -547,9 +568,8 @@ export class EclipseCharacter extends Character {
 // Photon Implementation
 export class PhotonCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +15% damage at max heat (simplified to always on)
-    modifiers.damageMultiplier += PHOTON.DAMAGE_BONUS
-    // Slower overheat would need special weapon logic
+    // Laser overheats 50% slower (50% heat gain)
+    modifiers.heatMultiplier = (modifiers.heatMultiplier ?? 1.0) * PHOTON.HEAT_REDUCTION
   }
 }
 
@@ -565,8 +585,8 @@ export class ReflexCharacter extends Character {
 // Arsenal Implementation
 export class ArsenalCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +1 missile per salvo (add 1 extra projectile for missiles)
-    modifiers.projectileCount += ARSENAL.PROJECTILE_BONUS
+    // +1 missile per salvo (missile-specific bonus)
+    modifiers.missileCount = (modifiers.missileCount || 0) + ARSENAL.PROJECTILE_BONUS
     // +10% explosion radius
     modifiers.explosionRadiusMultiplier = (modifiers.explosionRadiusMultiplier || 1) * ARSENAL.EXPLOSION_RADIUS_MULTIPLIER
   }

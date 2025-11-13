@@ -364,11 +364,13 @@ export interface WeaponModifiers {
   critChance: number
   critDamage: number
   projectileCount?: number // Extra projectiles per shot
+  missileCount?: number // Extra missiles per salvo (missile-specific)
   explosionRadiusMultiplier?: number // Multiplier for explosion radius
   additionalShots?: number // Fire weapon multiple times
   dotDurationMultiplier?: number // Duration multiplier for DoT effects
   homingEnabled?: boolean // Enable homing for projectiles
   projectileLifetimeMultiplier?: number // Lifetime multiplier for projectiles
+  heatMultiplier?: number // Heat gain multiplier for heat-based weapons (lower = slower overheat)
 }
 
 export const DEFAULT_MODIFIERS: WeaponModifiers = {
@@ -380,6 +382,7 @@ export const DEFAULT_MODIFIERS: WeaponModifiers = {
   critChance: 0,
   critDamage: 1.5,
   projectileCount: 0,
+  missileCount: 0,
   explosionRadiusMultiplier: 1.0,
   additionalShots: 0,
   dotDurationMultiplier: 1.0,
@@ -475,7 +478,7 @@ export class LightningWeapon extends Weapon {
         x, y, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         ProjectileType.CHAINING,
-        { chainCount, weaponName: this.config.name, fontSize }
+        { chainCount, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
       )
     } else {
       const totalWidth = (projectileCount - 1) * spacing
@@ -486,7 +489,7 @@ export class LightningWeapon extends Weapon {
           startX + i * spacing, y, damage, pierce, 0, speed,
           this.config.icon, this.config.color,
           ProjectileType.CHAINING,
-          { chainCount, weaponName: this.config.name, fontSize }
+          { chainCount, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
         )
       }
     }
@@ -519,7 +522,7 @@ export class FireWeapon extends Weapon {
         x, y, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         ProjectileType.EXPLOSIVE,
-        { explosionRadius, fontSize, weaponName: this.config.name }
+        { explosionRadius, fontSize, weaponName: this.config.name, damageType: this.config.damageType }
       )
     } else {
       const spacing = 20
@@ -531,7 +534,7 @@ export class FireWeapon extends Weapon {
           startX + i * spacing, y, damage, pierce, 0, speed,
           this.config.icon, this.config.color,
           ProjectileType.EXPLOSIVE,
-          { explosionRadius, fontSize, weaponName: this.config.name }
+          { explosionRadius, fontSize, weaponName: this.config.name, damageType: this.config.damageType }
         )
       }
     }
@@ -572,7 +575,7 @@ export class IceWeapon extends Weapon {
         x, y, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         ProjectileType.FREEZING,
-        { freezeChance, freezeDuration, fontSize, weaponName: this.config.name }
+        { freezeChance, freezeDuration, fontSize, weaponName: this.config.name, damageType: this.config.damageType }
       )
     } else {
       const spacing = 20
@@ -584,7 +587,7 @@ export class IceWeapon extends Weapon {
           startX + i * spacing, y, damage, pierce, 0, speed,
           this.config.icon, this.config.color,
           ProjectileType.FREEZING,
-          { freezeChance, freezeDuration, fontSize, weaponName: this.config.name }
+          { freezeChance, freezeDuration, fontSize, weaponName: this.config.name, damageType: this.config.damageType }
         )
       }
     }
@@ -618,7 +621,7 @@ export class WaterWeapon extends Weapon {
         x, y, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         ProjectileType.WAVE,
-        { waveAmplitude, waveFrequency, weaponName: this.config.name, fontSize }
+        { waveAmplitude, waveFrequency, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
       )
     } else {
       const totalWidth = (projectileCount - 1) * spacing
@@ -629,7 +632,7 @@ export class WaterWeapon extends Weapon {
           startX + i * spacing, y, damage, pierce, 0, speed,
           this.config.icon, this.config.color,
           ProjectileType.WAVE,
-          { waveAmplitude, waveFrequency, weaponName: this.config.name, fontSize }
+          { waveAmplitude, waveFrequency, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
         )
       }
     }
@@ -663,7 +666,7 @@ export class EarthWeapon extends Weapon {
         x, y, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         ProjectileType.EARTH_ZONE,
-        { zoneDuration, zoneRadius, weaponName: this.config.name, fontSize }
+        { zoneDuration, zoneRadius, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
       )
     } else {
       const totalWidth = (projectileCount - 1) * spacing
@@ -674,7 +677,7 @@ export class EarthWeapon extends Weapon {
           startX + i * spacing, y, damage, pierce, 0, speed,
           this.config.icon, this.config.color,
           ProjectileType.EARTH_ZONE,
-          { zoneDuration, zoneRadius, weaponName: this.config.name, fontSize }
+          { zoneDuration, zoneRadius, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
         )
       }
     }
@@ -704,7 +707,7 @@ export class DarkWeapon extends Weapon {
         x, y, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         undefined,
-        { fontSize, weaponName: this.config.name }
+        { fontSize, weaponName: this.config.name, damageType: this.config.damageType }
       )
     } else {
       const totalWidth = (projectileCount - 1) * spacing
@@ -715,7 +718,7 @@ export class DarkWeapon extends Weapon {
           startX + i * spacing, y, damage, pierce, 0, speed,
           this.config.icon, this.config.color,
           undefined,
-          { fontSize, weaponName: this.config.name }
+          { fontSize, weaponName: this.config.name, damageType: this.config.damageType }
         )
       }
     }
@@ -779,8 +782,9 @@ export class LaserBeamWeapon extends Weapon {
       damageType: this.config.damageType
     })
 
-    // Increase heat
-    this.heat += this.heatPerShot
+    // Increase heat (apply heat multiplier from character/modifiers)
+    const heatGain = this.heatPerShot * (modifiers.heatMultiplier ?? 1.0)
+    this.heat += heatGain
     if (this.heat >= this.maxHeat && !this.isOverheated) {
       this.isOverheated = true
       this.overheatStartTime = this.scene.time.now // Use current time as overheat start
@@ -824,7 +828,7 @@ export class RicochetDiskWeapon extends Weapon {
         x, y, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         ProjectileType.BOUNCING,
-        { bounceCount, weaponName: this.config.name, fontSize }
+        { bounceCount, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
       )
     } else {
       const totalWidth = (projectileCount - 1) * spacing
@@ -835,7 +839,7 @@ export class RicochetDiskWeapon extends Weapon {
           startX + i * spacing, y, damage, pierce, 0, speed,
           this.config.icon, this.config.color,
           ProjectileType.BOUNCING,
-          { bounceCount, weaponName: this.config.name, fontSize }
+          { bounceCount, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
         )
       }
     }
@@ -854,8 +858,8 @@ export class MissilePodWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 0 // Missiles explode on impact
 
-    // Modest missile count increase with level, plus building/character bonuses
-    const missileCount = 2 + Math.floor((this.level - 1) * 0.5) + (modifiers.projectileCount || 0)
+    // Modest missile count increase with level, plus missile-specific bonuses
+    const missileCount = 2 + Math.floor((this.level - 1) * 0.5) + (modifiers.missileCount || 0)
 
     // Apply projectile speed multiplier
     const speed = 350 * modifiers.projectileSpeedMultiplier
@@ -878,7 +882,7 @@ export class MissilePodWeapon extends Weapon {
         startX + i * spacing, y, damage, pierce, 0, -speed,
         this.config.icon, this.config.color,
         ProjectileType.HOMING,
-        { explosionRadius, homingTurnRate, homingSpeed, fontSize, weaponName: this.config.name }
+        { explosionRadius, homingTurnRate, homingSpeed, fontSize, weaponName: this.config.name, damageType: this.config.damageType }
       )
     }
   }
@@ -887,8 +891,19 @@ export class MissilePodWeapon extends Weapon {
 // Fireball Ring Implementation (Placeholder)
 export class FireballRingWeapon extends Weapon {
   private angle: number = 0
+  private readonly MAX_FIREBALLS = 21 // Max 3 cycles of 7 fireballs
 
   fire(x: number, y: number, modifiers: WeaponModifiers): void {
+    // Count active fireballs with this weapon name
+    const activeFireballs = this.projectileGroup.getChildren().filter((proj: any) =>
+      proj.active && proj.getWeaponName && proj.getWeaponName() === this.config.name
+    ).length
+
+    // Don't fire if we're at max fireballs
+    if (activeFireballs >= this.MAX_FIREBALLS) {
+      return
+    }
+
     soundManager.playWeaponSound(this.config.name)
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = 0
@@ -897,6 +912,9 @@ export class FireballRingWeapon extends Weapon {
     const fireballCount = (4 + this.level) + (modifiers.projectileCount || 0)
     const radius = 60 + (this.level - 1) * 5
     const angleStep = (Math.PI * 2) / fireballCount
+
+    // Maximum distance fireballs can get from player before being destroyed
+    const maxOrbitDistance = 150
 
     // Orbital speed - faster with projectile speed multiplier
     const orbitalSpeed = 300 * modifiers.projectileSpeedMultiplier
@@ -918,7 +936,15 @@ export class FireballRingWeapon extends Weapon {
         x + offsetX, y + offsetY, damage, pierce, velocityX, velocityY,
         this.config.icon, this.config.color,
         ProjectileType.EXPLOSIVE,
-        { explosionRadius: (40 + (this.level - 1) * 5) * modifiers.explosionRadiusMultiplier, weaponName: this.config.name, fontSize }
+        {
+          explosionRadius: (40 + (this.level - 1) * 5) * modifiers.explosionRadiusMultiplier,
+          weaponName: this.config.name,
+          fontSize,
+          orbitOriginX: x,
+          orbitOriginY: y,
+          maxOrbitDistance,
+          damageType: this.config.damageType
+        }
       )
     }
 
@@ -951,7 +977,7 @@ export class BloodLanceWeapon extends Weapon {
         x, y, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         ProjectileType.BOUNCING,
-        { bounceCount, weaponName: this.config.name, fontSize }
+        { bounceCount, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
       )
     } else {
       const totalWidth = (projectileCount - 1) * spacing
@@ -962,7 +988,7 @@ export class BloodLanceWeapon extends Weapon {
           startX + i * spacing, y, damage, pierce, 0, speed,
           this.config.icon, this.config.color,
           ProjectileType.BOUNCING,
-          { bounceCount, weaponName: this.config.name, fontSize }
+          { bounceCount, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
         )
       }
     }
@@ -997,7 +1023,7 @@ export class PlasmaAuraWeapon extends Weapon {
         x, y, damage, pierce, velocityX, velocityY,
         this.config.icon, this.config.color,
         undefined,
-        { weaponName: this.config.name, fontSize }
+        { weaponName: this.config.name, fontSize, damageType: this.config.damageType }
       )
     }
   }
@@ -1026,13 +1052,13 @@ export class VortexBladeWeapon extends Weapon {
     for (let i = 0; i < bladeCount; i++) {
       const angle = this.spiralAngle + (angleStep * i)
       const velocityX = Math.cos(angle) * speed
-      const velocityY = Math.sin(angle) * speed // Pure radial movement, no upward bias
+      const velocityY = Math.sin(angle) * speed // Pure radial movement, spiraling handled in projectile update
 
       this.projectileGroup.fireProjectile(
         x, y, damage, pierce, velocityX, velocityY,
         this.config.icon, this.config.color,
         ProjectileType.FREEZING,
-        { weaponName: this.config.name, fontSize }
+        { weaponName: this.config.name, fontSize, damageType: this.config.damageType }
       )
     }
 
@@ -1069,7 +1095,7 @@ export class OrbitalStrikeWeapon extends Weapon {
         strikeX, strikeY, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         ProjectileType.EXPLOSIVE,
-        { explosionRadius, weaponName: this.config.name, fontSize }
+        { explosionRadius, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
       )
     }
   }
@@ -1105,7 +1131,7 @@ export class MinigunWeapon extends Weapon {
         x, y, damage, pierce, velocityX, velocityY,
         this.config.icon, this.config.color,
         undefined,
-        { fontSize, weaponName: this.config.name }
+        { fontSize, weaponName: this.config.name, damageType: this.config.damageType }
       )
     }
   }
@@ -1135,7 +1161,7 @@ export class TrapLayerWeapon extends Weapon {
         x, y, damage, pierce, 0, 0,
         this.config.icon, this.config.color,
         ProjectileType.EARTH_ZONE,
-        { zoneDuration, zoneRadius, weaponName: this.config.name, fontSize }
+        { zoneDuration, zoneRadius, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
       )
     } else {
       const totalWidth = (projectileCount - 1) * spacing
@@ -1146,7 +1172,7 @@ export class TrapLayerWeapon extends Weapon {
           startX + i * spacing, y, damage, pierce, 0, 0,
           this.config.icon, this.config.color,
           ProjectileType.EARTH_ZONE,
-          { zoneDuration, zoneRadius, weaponName: this.config.name, fontSize }
+          { zoneDuration, zoneRadius, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
         )
       }
     }
@@ -1176,7 +1202,7 @@ export class SniperRifleWeapon extends Weapon {
         x, y, damage, pierce, 0, speed,
         this.config.icon, this.config.color,
         undefined,
-        { fontSize, weaponName: this.config.name }
+        { fontSize, weaponName: this.config.name, damageType: this.config.damageType }
       )
     } else {
       const totalWidth = (projectileCount - 1) * spacing
@@ -1187,7 +1213,7 @@ export class SniperRifleWeapon extends Weapon {
           startX + i * spacing, y, damage, pierce, 0, speed,
           this.config.icon, this.config.color,
           undefined,
-          { fontSize, weaponName: this.config.name }
+          { fontSize, weaponName: this.config.name, damageType: this.config.damageType }
         )
       }
     }

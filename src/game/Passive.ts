@@ -136,8 +136,8 @@ export const PASSIVE_CONFIGS: Record<PassiveType, PassiveConfig> = {
   [PassiveType.VAMPIRIC_FIRE]: {
     name: 'Vampiric Fire',
     type: PassiveType.VAMPIRIC_FIRE,
-    description: 'Fire damage heals you (10% per level)',
-    detailedDescription: 'Experimental energy converter transforms Fire damage into life force restoration. Level 1: 10% of Fire damage heals you. Level 2: 20% of Fire damage heals you. Level 3: 30% of Fire damage heals you. Sustain through intense combat with Fire-based builds.',
+    description: 'Fire damage heals you (0.5% per level)',
+    detailedDescription: 'Experimental energy converter transforms Fire damage into life force restoration. Level 1: 0.5% of Fire damage heals you. Level 2: 1% of Fire damage heals you. Level 3: 1.5% of Fire damage heals you. Sustain through intense combat with Fire-based builds.',
     maxLevel: 3,
     icon: '♥',
     color: '#ff8800',

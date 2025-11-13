@@ -36,6 +36,9 @@ export class Projectile extends Phaser.GameObjects.Text {
   private currentAngle: number = 0
   private enemyGroupRef: any = null
   private weaponName: string = ''
+  private orbitOriginX: number = 0
+  private orbitOriginY: number = 0
+  private maxOrbitDistance: number = 0
   declare body: Phaser.Physics.Arcade.Body
 
   constructor(
@@ -65,6 +68,9 @@ export class Projectile extends Phaser.GameObjects.Text {
       fontSize?: string
       damageType?: DamageType
       weaponName?: string
+      orbitOriginX?: number
+      orbitOriginY?: number
+      maxOrbitDistance?: number
     }
   ) {
     const defaultFontSize = pierceCount > 0 ? '22px' : '19px'
@@ -98,6 +104,9 @@ export class Projectile extends Phaser.GameObjects.Text {
     this.homingTurnRate = specialData?.homingTurnRate || 0.05 // Radians per frame (slow turning)
     this.homingSpeed = specialData?.homingSpeed || 350
     this.weaponName = specialData?.weaponName || ''
+    this.orbitOriginX = specialData?.orbitOriginX || 0
+    this.orbitOriginY = specialData?.orbitOriginY || 0
+    this.maxOrbitDistance = specialData?.maxOrbitDistance || 0
     this.initialX = x
     this.distanceTraveled = 0
 
@@ -260,6 +269,30 @@ export class Projectile extends Phaser.GameObjects.Text {
     //   this.lastTrailTime = currentTime
     // }
 
+    // Apply spiral motion for FREEZING projectiles (Vortex Blade/Blizzard)
+    if (this.projectileType === ProjectileType.FREEZING) {
+      const currentVelX = this.body.velocity.x
+      const currentVelY = this.body.velocity.y
+
+      // Calculate perpendicular vector (rotate 90 degrees)
+      const perpX = -currentVelY
+      const perpY = currentVelX
+
+      // Normalize perpendicular vector
+      const perpMag = Math.sqrt(perpX * perpX + perpY * perpY)
+      if (perpMag > 0) {
+        const normalizedPerpX = perpX / perpMag
+        const normalizedPerpY = perpY / perpMag
+
+        // Add perpendicular component (spiral strength)
+        const spiralStrength = 50 // Pixels per frame to spiral
+        this.body.setVelocity(
+          currentVelX + normalizedPerpX * spiralStrength,
+          currentVelY + normalizedPerpY * spiralStrength
+        )
+      }
+    }
+
     // Apply wave motion for WAVE projectiles
     if (this.projectileType === ProjectileType.WAVE) {
       // Use delta time instead of assuming 60 FPS (delta is in milliseconds, convert to seconds)
@@ -357,6 +390,18 @@ export class Projectile extends Phaser.GameObjects.Text {
       }
     }
 
+    // Check orbit distance constraint for orbiting projectiles (e.g., Fireball Ring)
+    if (this.maxOrbitDistance > 0) {
+      const distanceFromOrigin = Phaser.Math.Distance.Between(
+        this.x, this.y,
+        this.orbitOriginX, this.orbitOriginY
+      )
+      if (distanceFromOrigin > this.maxOrbitDistance) {
+        this.destroy()
+        return
+      }
+    }
+
     // Destroy if off screen (tighter bounds for better cleanup)
     const margin = this.projectileType === ProjectileType.BOUNCING ? 50 : 20
     if (this.y < -margin || this.y > this.scene.cameras.main.height + margin ||
@@ -403,6 +448,9 @@ export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
       fontSize?: string
       damageType?: DamageType
       weaponName?: string
+      orbitOriginX?: number
+      orbitOriginY?: number
+      maxOrbitDistance?: number
     }
   ): Projectile {
     // Create new projectile
