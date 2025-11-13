@@ -358,8 +358,8 @@ export default class GameScene extends Phaser.Scene {
     // Setup keyboard controls
     this.cursors = this.input.keyboard!.createCursorKeys()
 
-    // Add F3 key to toggle performance monitor
-    this.input.keyboard!.on('keydown-F3', () => {
+    // Add backtick (`) key to toggle performance monitor (common debug key)
+    this.input.keyboard!.on('keydown-BACKTICK', () => {
       this.showPerformanceMonitor = !this.showPerformanceMonitor
       this.performanceText.setVisible(this.showPerformanceMonitor)
       console.log(`Performance Monitor: ${this.showPerformanceMonitor ? 'ON' : 'OFF'}`)
