@@ -100,15 +100,15 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyTypeConfig> = {
     symbol: '[■]',
     color: '#ff3333',
     fontSize: '60px',
-    health: 210, // Reduced by 25% from 280
-    speed: 42, // Reduced by 30% (was 60)
+    health: 147, // Reduced by 30% from 210 (originally 280, reduced by 25%, then by 30%)
+    speed: 30, // Reduced further for slower movement (was 42)
     xpValue: 10,
     scoreValue: 50,
     behavior: {
       shootsBack: true,
       shootInterval: 2500, // Reduced attack speed by 40% (was 1500)
       movementPattern: 'straight',
-      specialAbility: 'spread_fire',
+      specialAbility: 'tank_explode', // New: explodes on death damaging nearby enemies
     },
   },
   [EnemyType.SNIPER]: {
@@ -763,6 +763,7 @@ export class Enemy extends Phaser.GameObjects.Text {
   private vulnerableUntil: number = 0 // For time-based vulnerability windows
   private teleportCooldown: number = 0
   private phaseChangeTriggered: boolean = false
+  private isGolden: boolean = false // Track if this enemy is a golden variant
 
   declare body: Phaser.Physics.Arcade.Body
 
@@ -806,6 +807,19 @@ export class Enemy extends Phaser.GameObjects.Text {
 
   setProjectileGroup(projectiles: EnemyProjectileGroup) {
     this.enemyProjectiles = projectiles
+  }
+
+  setGolden(isGolden: boolean) {
+    this.isGolden = isGolden
+    if (isGolden) {
+      // Override color to gold
+      this.originalColor = '#ffd700'
+      this.setColor('#ffd700')
+    }
+  }
+
+  getIsGolden(): boolean {
+    return this.isGolden
   }
 
   spawn(x: number, y: number, type?: EnemyType, wave: number = 1) {
@@ -862,6 +876,7 @@ export class Enemy extends Phaser.GameObjects.Text {
     } else if (type) {
       // Same type, just use existing config
       const config = ENEMY_CONFIGS[type]
+      this.originalColor = config.color
       // Apply wave-based health scaling: 13% compound per wave (exponential)
       const healthMultiplier = Math.pow(1.13, wave - 1)
       this.maxHealth = Math.floor(config.health * healthMultiplier)
@@ -881,6 +896,7 @@ export class Enemy extends Phaser.GameObjects.Text {
     this.lastSpawnTime = this.scene.time.now
     this.patrolStartX = x
     this.patrolDirection = 1
+    this.isGolden = false // Reset golden status
 
     // Reset status effects
     this.statusEffects.isBurning = false
@@ -1044,6 +1060,8 @@ export class Enemy extends Phaser.GameObjects.Text {
       this.split()
     } else if (this.behavior.specialAbility === 'area_explode') {
       this.areaExplode()
+    } else if (this.behavior.specialAbility === 'tank_explode') {
+      this.tankExplode()
     }
 
     // Destroy shield if present
@@ -1078,6 +1096,7 @@ export class Enemy extends Phaser.GameObjects.Text {
       xpValue: this.xpValue,
       scoreValue: this.scoreValue,
       type: this.enemyType,
+      isGolden: this.isGolden,
     })
   }
 
@@ -1263,6 +1282,63 @@ export class Enemy extends Phaser.GameObjects.Text {
       alpha: 0,
       duration: 500,
       onComplete: () => flash.destroy(),
+    })
+  }
+
+  private tankExplode() {
+    // Tank enemies explode on death, damaging nearby enemies (not the player)
+    // This explosion is not attributed to any weapon, but still uses player upgrades
+    const explosionRadius = 100
+    const explosionDamage = Math.floor(this.maxHealth * 0.1) // 10% of tank's max health
+    this.scene.events.emit('tankExplosion', {
+      x: this.x,
+      y: this.y,
+      radius: explosionRadius,
+      damage: explosionDamage,
+    })
+
+    // Visual explosion effect - orange/red fire theme
+    for (let i = 0; i < 16; i++) {
+      const angle = (i / 16) * Math.PI * 2
+      const speed = Phaser.Math.Between(80, 140)
+      const particle = this.scene.add.text(this.x, this.y, '●', {
+        fontFamily: 'Courier New',
+        fontSize: '20px',
+        color: Phaser.Math.Between(0, 1) === 0 ? '#ff4400' : '#ffaa00',
+      }).setOrigin(0.5).setDepth(45)
+
+      this.scene.tweens.add({
+        targets: particle,
+        x: this.x + Math.cos(angle) * speed,
+        y: this.y + Math.sin(angle) * speed,
+        alpha: 0,
+        scale: 0.4,
+        duration: 600,
+        onComplete: () => particle.destroy(),
+      })
+    }
+
+    // Central explosion flash
+    const flash = this.scene.add.circle(this.x, this.y, 8, 0xffffff, 1)
+      .setDepth(46)
+    this.scene.tweens.add({
+      targets: flash,
+      radius: explosionRadius,
+      alpha: 0,
+      duration: 450,
+      onComplete: () => flash.destroy(),
+    })
+
+    // Shockwave ring
+    const shockwave = this.scene.add.circle(this.x, this.y, 10, 0x000000, 0)
+      .setStrokeStyle(3, 0xff6600, 1)
+      .setDepth(46)
+    this.scene.tweens.add({
+      targets: shockwave,
+      radius: explosionRadius,
+      alpha: { from: 1, to: 0 },
+      duration: 500,
+      onComplete: () => shockwave.destroy(),
     })
   }
 
@@ -1589,9 +1665,9 @@ export class Enemy extends Phaser.GameObjects.Text {
     }
 
     // Deactivate if off screen - treat as death to avoid stuck waves
-    // Give top much more grace (400px) since enemies spawn from above
+    // Give top much more grace (500px) since enemies spawn from above at higher positions
     const cam = this.scene.cameras.main
-    if (this.y > cam.height + 50 || this.y < -400 || this.x < -100 || this.x > cam.width + 100) {
+    if (this.y > cam.height + 50 || this.y < -500 || this.x < -100 || this.x > cam.width + 100) {
       // Save position before deactivating
       const deathX = this.x
       const deathY = this.y

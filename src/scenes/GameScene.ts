@@ -162,6 +162,21 @@ export default class GameScene extends Phaser.Scene {
   }> = new Map()
 
   private creditsCollectedThisRun: number = 0
+  private creditBreakdown: {
+    kills: number
+    passives: number
+    pickups: number
+    levelRewards: number
+    skillTree: number
+    victory: number
+  } = {
+    kills: 0,
+    passives: 0,
+    pickups: 0,
+    levelRewards: 0,
+    skillTree: 0,
+    victory: 0
+  }
   private creditsCollectedText!: Phaser.GameObjects.Text
   private lastEngineTrailTime: number = 0
   private lastHitTime: number = 0
@@ -464,6 +479,14 @@ export default class GameScene extends Phaser.Scene {
 
     // Add credits collected counter (to the right of menu button, below score)
     this.creditsCollectedThisRun = 0
+    this.creditBreakdown = {
+      kills: 0,
+      passives: 0,
+      pickups: 0,
+      levelRewards: 0,
+      skillTree: 0,
+      victory: 0
+    }
     this.creditsCollectedText = this.add.text(
       this.cameras.main.centerX + 70,
       30,
@@ -822,6 +845,7 @@ export default class GameScene extends Phaser.Scene {
     this.events.off('enemyExplosion', this.handleEnemyExplosion, this)
     this.events.off('enemySplit', this.handleEnemySplit, this)
     this.events.off('healNearbyEnemies', this.handleHealNearby, this)
+    this.events.off('tankExplosion', this.handleTankExplosion, this)
     this.events.off('allyExplosion', this.handleAllyExplosion, this)
     this.events.off('allyRerollGenerated', this.handleAllyRerollGenerated, this)
     this.events.off('allyDied', this.handleAllyDied, this)
@@ -833,6 +857,7 @@ export default class GameScene extends Phaser.Scene {
     this.events.on('enemySplit', this.handleEnemySplit, this)
     this.events.on('healNearbyEnemies', this.handleHealNearby, this)
     this.events.on('laserFire', this.handleLaserFire, this)
+    this.events.on('tankExplosion', this.handleTankExplosion, this)
     this.events.on('allyExplosion', this.handleAllyExplosion, this)
     this.events.on('allyRerollGenerated', this.handleAllyRerollGenerated, this)
     this.events.on('allyDied', this.handleAllyDied, this)
@@ -1974,19 +1999,28 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    // SALVAGE_UNIT: Chance to spawn golden pinata enemy instead
-    const salvagePassive = this.passives.find(p => p.getConfig().type === PassiveType.SALVAGE_UNIT)
-    if (salvagePassive) {
-      const level = salvagePassive.getLevel()
-      const goldenChance = 10 * level // 10%, 20%, or 30% chance
-      if (Math.random() * 100 < goldenChance) {
-        type = EnemyType.GOLDEN
+    // SALVAGE_UNIT: Chance to spawn golden pinata enemy instead (but not for bosses/mini-bosses)
+    let isGolden = false
+    const isBossOrMiniBoss = this.isBossType(type) || this.isMiniBossType(type)
+    if (!isBossOrMiniBoss) {
+      const salvagePassive = this.passives.find(p => p.getConfig().type === PassiveType.SALVAGE_UNIT)
+      if (salvagePassive) {
+        const level = salvagePassive.getLevel()
+        const goldenChance = 10 * level // 10%, 20%, or 30% chance
+        if (Math.random() * 100 < goldenChance) {
+          isGolden = true // Mark as golden but keep original enemy type
+        }
       }
     }
 
     // Get current wave for health scaling
     const currentWave = this.waveSystem.getCurrentWave()
     const enemy = this.enemies.spawnEnemy(x, y, type, currentWave)
+
+    // Mark enemy as golden if needed (keeps ship symbol but makes it gold)
+    if (enemy && isGolden) {
+      enemy.setGolden(true)
+    }
 
     // Update cached active enemy count if spawn was successful (performance optimization)
     if (enemy) {
@@ -2261,22 +2295,27 @@ export default class GameScene extends Phaser.Scene {
     const yOffset = Phaser.Math.Between(-30, 30) // Random vertical offset
 
     const centerX = this.cameras.main.centerX + centerXOffset
-    const y = -50 + yOffset // Spawn above the screen with variation
+    const y = -150 + yOffset // Spawn above the screen with variation (moved higher to prevent pop-in)
     const spacing = formation.spacing || 60
     const currentWave = this.waveSystem.getCurrentWave()
     let spawnedCount = 0
 
-    // Helper function to apply Salvage Unit passive (chance to spawn golden enemy)
-    const applyGoldenChance = (type: EnemyType): EnemyType => {
+    // Helper function to apply Salvage Unit passive (chance to spawn golden enemy, but not bosses/mini-bosses)
+    const checkGoldenChance = (): boolean => {
+      // Don't make bosses or mini-bosses golden
+      if (this.isBossType(enemyType) || this.isMiniBossType(enemyType)) {
+        return false
+      }
+
       const salvagePassive = this.passives.find(p => p.getConfig().type === PassiveType.SALVAGE_UNIT)
       if (salvagePassive) {
         const level = salvagePassive.getLevel()
         const goldenChance = 10 * level // 10%, 20%, or 30% chance
         if (Math.random() * 100 < goldenChance) {
-          return EnemyType.GOLDEN
+          return true
         }
       }
-      return type
+      return false
     }
 
     switch (formation.type) {
@@ -2287,9 +2326,10 @@ export default class GameScene extends Phaser.Scene {
         for (let i = 0; i < count; i++) {
           const offsetX = (i - (count - 1) / 2) * 100
           const spawnX = this.clampSpawnX(centerX + offsetX)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             spawnedEnemies.push(enemy)
             this.cachedActiveEnemyCount++
@@ -2303,9 +2343,10 @@ export default class GameScene extends Phaser.Scene {
       case 'line':
         for (let i = -4; i <= 4; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -2315,36 +2356,40 @@ export default class GameScene extends Phaser.Scene {
       case 'v':
         for (let i = -2; i <= 2; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
         }
         for (let i = -3; i <= 3; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 40, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 40, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
         }
         for (let i = -2; i <= 2; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 80, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 80, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
         }
         for (let i = -1; i <= 1; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 120, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y - 120, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -2357,9 +2402,10 @@ export default class GameScene extends Phaser.Scene {
           const offsetX = Math.cos(angle) * 80
           const offsetY = Math.sin(angle) * 40
           const spawnX = this.clampSpawnX(centerX + offsetX)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -2370,9 +2416,10 @@ export default class GameScene extends Phaser.Scene {
         for (let i = -5; i <= 5; i++) {
           const waveOffset = Math.sin((i / 5) * Math.PI) * 30
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + waveOffset, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y + waveOffset, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -2394,9 +2441,10 @@ export default class GameScene extends Phaser.Scene {
         ]
         for (const point of diamondPoints) {
           const spawnX = this.clampSpawnX(centerX + point.x)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + point.y, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y + point.y, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -2408,17 +2456,19 @@ export default class GameScene extends Phaser.Scene {
         for (let i = -3; i <= 3; i++) {
           // Top-left to bottom-right diagonal
           const spawnX1 = this.clampSpawnX(centerX + i * spacing * 0.7)
-          const actualType1 = applyGoldenChance(enemyType)
-          const enemy1 = this.enemies.spawnEnemy(spawnX1, y + i * spacing * 0.7, actualType1, currentWave)
+          const isGoldenVariant1 = checkGoldenChance()
+          const enemy1 = this.enemies.spawnEnemy(spawnX1, y + i * spacing * 0.7, enemyType, currentWave)
           if (enemy1) {
+            if (isGoldenVariant1) enemy1.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
           // Top-right to bottom-left diagonal
           const spawnX2 = this.clampSpawnX(centerX - i * spacing * 0.7)
-          const actualType2 = applyGoldenChance(enemyType)
-          const enemy2 = this.enemies.spawnEnemy(spawnX2, y + i * spacing * 0.7, actualType2, currentWave)
+          const isGoldenVariant2 = checkGoldenChance()
+          const enemy2 = this.enemies.spawnEnemy(spawnX2, y + i * spacing * 0.7, enemyType, currentWave)
           if (enemy2) {
+            if (isGoldenVariant2) enemy2.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -2434,9 +2484,10 @@ export default class GameScene extends Phaser.Scene {
           const offsetX = Math.sin(angle) * radius
           const offsetY = -Math.cos(angle) * radius * 0.3
           const spawnX = this.clampSpawnX(centerX + offsetX)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -2448,9 +2499,10 @@ export default class GameScene extends Phaser.Scene {
         // Horizontal line
         for (let i = -3; i <= 3; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -2459,9 +2511,10 @@ export default class GameScene extends Phaser.Scene {
         for (let i = -2; i <= 2; i++) {
           if (i !== 0) {
             const spawnX = this.clampSpawnX(centerX)
-            const actualType = applyGoldenChance(enemyType)
-            const enemy = this.enemies.spawnEnemy(spawnX, y + i * spacing, actualType, currentWave)
+            const isGoldenVariant = checkGoldenChance()
+            const enemy = this.enemies.spawnEnemy(spawnX, y + i * spacing, enemyType, currentWave)
             if (enemy) {
+              if (isGoldenVariant) enemy.setGolden(true)
               spawnedCount++
               this.cachedActiveEnemyCount++
             }
@@ -2476,9 +2529,10 @@ export default class GameScene extends Phaser.Scene {
           for (let i = 0; i < rowWidth; i++) {
             const offsetX = (i - (rowWidth - 1) / 2) * spacing
             const spawnX = this.clampSpawnX(centerX + offsetX)
-            const actualType = applyGoldenChance(enemyType)
-            const enemy = this.enemies.spawnEnemy(spawnX, y + row * spacing * 0.8, actualType, currentWave)
+            const isGoldenVariant = checkGoldenChance()
+            const enemy = this.enemies.spawnEnemy(spawnX, y + row * spacing * 0.8, enemyType, currentWave)
             if (enemy) {
+              if (isGoldenVariant) enemy.setGolden(true)
               spawnedCount++
               this.cachedActiveEnemyCount++
             }
@@ -2491,9 +2545,10 @@ export default class GameScene extends Phaser.Scene {
         for (let i = -2; i <= 2; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
           const offsetY = Math.abs(i) * spacing * 0.6
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -2502,9 +2557,10 @@ export default class GameScene extends Phaser.Scene {
           if (Math.abs(i) >= 2) {
             const spawnX = this.clampSpawnX(centerX + i * spacing)
             const offsetY = (Math.abs(i) - 1) * spacing * 0.6
-            const actualType = applyGoldenChance(enemyType)
-            const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
+            const isGoldenVariant = checkGoldenChance()
+            const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
             if (enemy) {
+              if (isGoldenVariant) enemy.setGolden(true)
               spawnedCount++
               this.cachedActiveEnemyCount++
             }
@@ -2516,9 +2572,10 @@ export default class GameScene extends Phaser.Scene {
         // Vertical column formation
         for (let i = 0; i < 7; i++) {
           const spawnX = this.clampSpawnX(centerX)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + i * spacing * 0.8, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y + i * spacing * 0.8, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -2532,9 +2589,10 @@ export default class GameScene extends Phaser.Scene {
           const randomX = Phaser.Math.Between(-spacing * 2, spacing * 2)
           const randomY = Phaser.Math.Between(-spacing, spacing)
           const spawnX = this.clampSpawnX(centerX + randomX)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + randomY, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y + randomY, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -2548,9 +2606,10 @@ export default class GameScene extends Phaser.Scene {
             const offsetX = (col - 1) * spacing
             const offsetY = (row - 1) * spacing * 0.8
             const spawnX = this.clampSpawnX(centerX + offsetX)
-            const actualType = applyGoldenChance(enemyType)
-            const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
+            const isGoldenVariant = checkGoldenChance()
+            const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
             if (enemy) {
+              if (isGoldenVariant) enemy.setGolden(true)
               spawnedCount++
               this.cachedActiveEnemyCount++
             }
@@ -2567,9 +2626,10 @@ export default class GameScene extends Phaser.Scene {
           const offsetX = Math.cos(angle) * radius
           const offsetY = Math.sin(angle) * radius * 0.5
           const spawnX = this.clampSpawnX(centerX + offsetX)
-          const actualType = applyGoldenChance(enemyType)
-          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, actualType, currentWave)
+          const isGoldenVariant = checkGoldenChance()
+          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
           if (enemy) {
+            if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             this.cachedActiveEnemyCount++
           }
@@ -3209,7 +3269,7 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  private handleEnemyDied(data: { x: number; y: number; xpValue: number; reachedBottom?: boolean; type?: EnemyType }) {
+  private handleEnemyDied(data: { x: number; y: number; xpValue: number; reachedBottom?: boolean; type?: EnemyType; isGolden?: boolean }) {
     // Update cached active enemy count for performance
     this.cachedActiveEnemyCount = Math.max(0, this.cachedActiveEnemyCount - 1)
 
@@ -3249,6 +3309,7 @@ export default class GameScene extends Phaser.Scene {
     if (creditsEarned > 0) {
       this.gameState.addCredits(creditsEarned)
       this.creditsCollectedThisRun += creditsEarned
+      this.creditBreakdown.kills += creditsEarned
       this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
     }
 
@@ -3301,8 +3362,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Golden enemy special drops: lots of credits in a circle
-    const isGolden = data.type === EnemyType.GOLDEN
-    if (isGolden) {
+    if (data.isGolden) {
       const creditDropCount = 8 // 8 credit drops in a circle
       for (let i = 0; i < creditDropCount; i++) {
         const angle = (i / creditDropCount) * Math.PI * 2
@@ -3315,7 +3375,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Chance to spawn credit drop OR health potion (25% chance) - only for normal enemies
-    if (!isBoss && !isMiniBoss && !isGolden && Math.random() < 0.25) {
+    if (!isBoss && !isMiniBoss && !data.isGolden && Math.random() < 0.25) {
       // If player is hurt, chance to drop health potion instead of credits
       const isHurt = this.health < this.maxHealth
       const bonuses = this.gameState.getTotalBonuses()
@@ -3571,6 +3631,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Update run counter
     this.creditsCollectedThisRun += creditValue
+    this.creditBreakdown.pickups += creditValue
     this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
   }
 
@@ -4445,6 +4506,7 @@ export default class GameScene extends Phaser.Scene {
       const creditAmount = 50
       this.gameState.addCredits(creditAmount)
       this.creditsCollectedThisRun += creditAmount
+      this.creditBreakdown.levelRewards += creditAmount
       this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
 
       // Show message
@@ -4912,9 +4974,15 @@ export default class GameScene extends Phaser.Scene {
       chestSymbol = '▣'
     }
 
-    // Apply chest value bonus (increases upgrade count)
-    if (bonuses.chestValue && bonuses.chestValue > 0) {
-      upgradeCount = Math.ceil(upgradeCount * (1 + bonuses.chestValue))
+    // Apply chest level bonus if unlocked (sets specific upgrade counts)
+    if (bonuses.chestLevelBonus && bonuses.chestLevelBonus > 0) {
+      if (tierName === 'BRONZE') {
+        upgradeCount = 2
+      } else if (tierName === 'SILVER') {
+        upgradeCount = 4
+      } else if (tierName === 'GOLD') {
+        upgradeCount = 6
+      }
     }
 
     // Award gold based on chest tier (base values: Bronze=50, Silver=100, Gold=200)
@@ -4936,6 +5004,7 @@ export default class GameScene extends Phaser.Scene {
     if (goldReward > 0) {
       this.gameState.addCredits(goldReward)
       this.creditsCollectedThisRun += goldReward
+      this.creditBreakdown.pickups += goldReward
       this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
     }
 
@@ -5220,6 +5289,9 @@ export default class GameScene extends Phaser.Scene {
     // Award credits if any slots couldn't be filled
     if (creditsEarned > 0) {
       this.gameState.addCredits(creditsEarned)
+      this.creditsCollectedThisRun += creditsEarned
+      this.creditBreakdown.pickups += creditsEarned
+      this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
     }
 
     // upgradeInfos now contains the applied upgrades with their level info
@@ -6592,7 +6664,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private showDamageNumber(x: number, y: number, damage: number, isCritical: boolean = false) {
-    // Only show damage numbers for critical hits
+    // Only show damage numbers for critical hits (performance optimization)
     if (!isCritical) {
       return
     }
@@ -6603,19 +6675,19 @@ export default class GameScene extends Phaser.Scene {
 
     const damageText = this.add.text(x, y, damageString, {
       fontFamily: 'Courier New',
-      fontSize: isCritical ? '48px' : '36px',
-      color: isCritical ? '#ff4400' : '#ffff00',
+      fontSize: '48px',
+      color: '#ff4400',
       fontStyle: 'bold',
       stroke: '#000000',
-      strokeThickness: 3
+      strokeThickness: 4
     }).setOrigin(0.5).setDepth(50)
 
     // Animate the damage number
     this.tweens.add({
       targets: damageText,
-      y: y - 50,
+      y: y - 60,
       alpha: 0,
-      duration: 800,
+      duration: 1000,
       ease: 'Power2',
       onComplete: () => {
         damageText.destroy()
@@ -7251,8 +7323,12 @@ export default class GameScene extends Phaser.Scene {
     const weaponPassiveElements = this.createWeaponPassiveDisplay(this.cameras.main.centerY - 50, weaponDPSData)
     this.gameOverUI.push(...weaponPassiveElements)
 
-    // Revive button - positioned after weapons/passives display
-    const reviveButtonY = this.cameras.main.centerY + 240
+    // Credits breakdown display
+    const creditBreakdownElements = this.createCreditBreakdownDisplay(this.cameras.main.centerY + 150)
+    this.gameOverUI.push(...creditBreakdownElements)
+
+    // Revive button - positioned after credits breakdown
+    const reviveButtonY = this.cameras.main.centerY + 280
     const reviveButton = this.add.rectangle(
       this.cameras.main.centerX,
       reviveButtonY,
@@ -7312,7 +7388,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Main menu button (positioned lower)
-    const mainMenuButtonY = this.cameras.main.centerY + 340
+    const mainMenuButtonY = this.cameras.main.centerY + 380
     const mainMenuButton = this.add.rectangle(
       this.cameras.main.centerX,
       mainMenuButtonY,
@@ -7421,6 +7497,7 @@ export default class GameScene extends Phaser.Scene {
     // Add credits once (GameState now delegates to GameProgression)
     this.gameState.addCredits(creditsReward)
     this.creditsCollectedThisRun += creditsReward
+    this.creditBreakdown.victory += creditsReward
     this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
 
     // Unlock next level if available
@@ -7491,6 +7568,84 @@ export default class GameScene extends Phaser.Scene {
     this.showVictoryOverlay(creditsReward, newlyUnlockedShips)
   }
 
+  private createCreditBreakdownDisplay(startY: number): Phaser.GameObjects.GameObject[] {
+    const elements: Phaser.GameObjects.GameObject[] = []
+    const centerX = this.cameras.main.centerX
+    let currentY = startY
+
+    // Title
+    const titleText = this.add.text(
+      centerX,
+      currentY,
+      'REWARDS',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '18px',
+        color: '#ffdd00',
+        fontStyle: 'bold',
+      }
+    ).setOrigin(0.5).setDepth(201)
+    elements.push(titleText)
+    currentY += 30
+
+    // Breakdown items (only show non-zero sources)
+    const breakdownItems: Array<{label: string, amount: number}> = []
+
+    if (this.creditBreakdown.kills > 0) {
+      breakdownItems.push({ label: 'Kills', amount: this.creditBreakdown.kills })
+    }
+    if (this.creditBreakdown.pickups > 0) {
+      breakdownItems.push({ label: 'Pickups', amount: this.creditBreakdown.pickups })
+    }
+    if (this.creditBreakdown.levelRewards > 0) {
+      breakdownItems.push({ label: 'Level Rewards', amount: this.creditBreakdown.levelRewards })
+    }
+    if (this.creditBreakdown.passives > 0) {
+      breakdownItems.push({ label: 'Passives', amount: this.creditBreakdown.passives })
+    }
+    if (this.creditBreakdown.skillTree > 0) {
+      breakdownItems.push({ label: 'Skill Tree', amount: this.creditBreakdown.skillTree })
+    }
+    if (this.creditBreakdown.victory > 0) {
+      breakdownItems.push({ label: 'Victory Bonus', amount: this.creditBreakdown.victory })
+    }
+
+    // Display breakdown items with small font
+    breakdownItems.forEach(item => {
+      const itemText = this.add.text(
+        centerX,
+        currentY,
+        `${item.label}: ${item.amount}¤`,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '14px',
+          color: '#cccccc',
+        }
+      ).setOrigin(0.5).setDepth(201)
+      elements.push(itemText)
+      currentY += 18
+    })
+
+    // Add some spacing before total
+    currentY += 5
+
+    // Display total with larger font
+    const totalText = this.add.text(
+      centerX,
+      currentY,
+      `TOTAL: ${this.creditsCollectedThisRun}¤`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '24px',
+        color: '#ffdd00',
+        fontStyle: 'bold',
+      }
+    ).setOrigin(0.5).setDepth(201)
+    elements.push(totalText)
+
+    return elements
+  }
+
   private showVictoryOverlay(creditsEarned: number, newlyUnlockedShips: CharacterType[] = []) {
     // Create victory overlay
     const overlay = this.add.rectangle(
@@ -7558,32 +7713,11 @@ export default class GameScene extends Phaser.Scene {
     // Interactive Weapons and Passives display with icons and pips - closer to stats
     this.createWeaponPassiveDisplay(165, weaponDPSData)
 
-    // Credits earned display - moved up
-    const creditsText = this.add.text(
-      this.cameras.main.centerX,
-      400,
-      `REWARDS`,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '18px',
-        color: '#ffdd00',
-        fontStyle: 'bold',
-      }
-    ).setOrigin(0.5).setDepth(201)
-
-    const creditsValue = this.add.text(
-      this.cameras.main.centerX,
-      425,
-      `${creditsEarned} ¤`,
-      {
-        fontFamily: 'Courier New',
-        fontSize: '24px',
-        color: '#ffdd00',
-      }
-    ).setOrigin(0.5).setDepth(201)
+    // Credits breakdown display
+    this.createCreditBreakdownDisplay(400)
 
     // Display newly unlocked ships - moved up
-    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, 470)
+    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, 520)
 
     // Position continue button at bottom of screen
     const continueButtonY = this.cameras.main.height - 60
@@ -7687,6 +7821,87 @@ export default class GameScene extends Phaser.Scene {
     if (this.waveInProgress) {
       this.currentWaveEnemyCount += actuallySpawned
     }
+  }
+
+  private handleTankExplosion(data: { x: number; y: number; radius: number; damage: number }) {
+    // Tank explosion damages nearby enemies (not the player)
+    // This explosion is not attributed to any weapon, but still uses player upgrades
+    const nearbyEnemies = this.enemies.getNearbyEnemies(data.x, data.y, data.radius)
+
+    nearbyEnemies.forEach((enemy: any) => {
+      if (!enemy.active) return
+
+      // Prevent tank chain reactions: tanks can't be damaged by other tank explosions
+      if ('getType' in enemy && enemy.getType() === EnemyType.TANK) {
+        return
+      }
+
+      // Start with base damage
+      let damage = data.damage
+
+      // Apply critical hit chance with player modifiers
+      const isCritical = Math.random() * 100 < this.weaponModifiers.critChance
+      if (isCritical) {
+        damage = Math.floor(damage * this.weaponModifiers.critDamage)
+        // Create critical hit sparkle burst
+        this.createCriticalHitBurst(enemy.x, enemy.y)
+      }
+
+      // Apply status effect damage bonuses (just like regular projectiles)
+      if ('isBurning' in enemy && enemy.isBurning()) {
+        // PYROMANIAC: +25% damage per level vs burning enemies
+        const pyromaniacPassive = this.passives.find(p => p.getConfig().type === PassiveType.PYROMANIAC)
+        if (pyromaniacPassive) {
+          const bonusMultiplier = 1 + (0.25 * pyromaniacPassive.getLevel())
+          damage = Math.floor(damage * bonusMultiplier)
+        }
+      }
+
+      if ('isFrozen' in enemy && enemy.isFrozen()) {
+        // SHATTER_STRIKE: +30% damage per level vs frozen enemies
+        const shatterStrikePassive = this.passives.find(p => p.getConfig().type === PassiveType.SHATTER_STRIKE)
+        if (shatterStrikePassive) {
+          const bonusMultiplier = 1 + (0.30 * shatterStrikePassive.getLevel())
+          damage = Math.floor(damage * bonusMultiplier)
+        }
+      }
+
+      if ('isBleeding' in enemy && enemy.isBleeding()) {
+        // HEMORRHAGE: +10% damage per level per bleed stack (max 3 stacks)
+        const hemorrhagePassive = this.passives.find(p => p.getConfig().type === PassiveType.HEMORRHAGE)
+        if (hemorrhagePassive && 'getBleedStacks' in enemy) {
+          const bleedStacks = enemy.getBleedStacks()
+          const bonusPerStack = 0.10 * hemorrhagePassive.getLevel()
+          const bonusMultiplier = 1 + (bonusPerStack * bleedStacks)
+          damage = Math.floor(damage * bonusMultiplier)
+        }
+      }
+
+      // REAPER: Execute enemies under 15% HP instantly
+      if (this.character.getConfig().type === 'REAPER' && 'getHealth' in enemy && 'getMaxHealth' in enemy) {
+        const enemyHealth = enemy.getHealth()
+        const enemyMaxHealth = enemy.getMaxHealth()
+        const healthPercent = enemyHealth / enemyMaxHealth
+
+        if (healthPercent < 0.15 && healthPercent > 0) {
+          // Execute! Deal massive damage to instantly kill
+          damage = enemyHealth + 1000 // Ensure death
+        }
+      }
+
+      // Track damage dealt
+      this.totalDamageDealt += damage
+      this.damageTrackingWindow.push({ timestamp: this.time.now, damage })
+
+      // Show damage number
+      this.showDamageNumber(enemy.x, enemy.y, damage, isCritical)
+
+      // Apply damage to enemy
+      enemy.takeDamage(damage)
+    })
+
+    // Play a secondary explosion sound for the tank explosion
+    soundManager.playEnemyExplode(0.2)
   }
 
   private showMenuConfirmation() {
@@ -8321,6 +8536,7 @@ export default class GameScene extends Phaser.Scene {
     this.events.off('enemyExplosion', this.handleEnemyExplosion, this)
     this.events.off('enemySplit', this.handleEnemySplit, this)
     this.events.off('healNearbyEnemies', this.handleHealNearby, this)
+    this.events.off('tankExplosion', this.handleTankExplosion, this)
     this.events.off('allyExplosion', this.handleAllyExplosion, this)
     this.events.off('allyRerollGenerated', this.handleAllyRerollGenerated, this)
     this.events.off('allyDied', this.handleAllyDied, this)
