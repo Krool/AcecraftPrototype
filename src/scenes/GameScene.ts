@@ -216,6 +216,12 @@ export default class GameScene extends Phaser.Scene {
   private bgMusic?: Phaser.Sound.BaseSound
   private runStatistics!: RunStatistics
 
+  // Performance monitoring
+  private showPerformanceMonitor: boolean = false
+  private performanceText!: Phaser.GameObjects.Text
+  private fpsHistory: number[] = []
+  private lastFrameTime: number = 0
+
   constructor() {
     super('GameScene')
   }
@@ -351,6 +357,13 @@ export default class GameScene extends Phaser.Scene {
 
     // Setup keyboard controls
     this.cursors = this.input.keyboard!.createCursorKeys()
+
+    // Add F3 key to toggle performance monitor
+    this.input.keyboard!.on('keydown-F3', () => {
+      this.showPerformanceMonitor = !this.showPerformanceMonitor
+      this.performanceText.setVisible(this.showPerformanceMonitor)
+      console.log(`Performance Monitor: ${this.showPerformanceMonitor ? 'ON' : 'OFF'}`)
+    })
 
     // Add score and timer (top right, on same line)
     this.scoreText = this.add.text(
@@ -580,6 +593,20 @@ export default class GameScene extends Phaser.Scene {
         align: 'right'
       }
     ).setOrigin(1, 0).setVisible(false).setDepth(11)
+
+    // Create performance monitor (top right, always on top)
+    this.performanceText = this.add.text(
+      10,
+      10,
+      '',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '12px',
+        color: '#00ff00',
+        backgroundColor: '#000000',
+        padding: { x: 4, y: 4 }
+      }
+    ).setOrigin(0, 0).setDepth(1000).setVisible(false)
 
     // Create buff icons container (bottom center, in UI tray)
     this.buffIconsContainer = this.add.container(
@@ -2791,6 +2818,68 @@ export default class GameScene extends Phaser.Scene {
 
       // Update health bar position to follow player
       this.updateHealthDisplay()
+    }
+
+    // Update performance monitor (always, even when paused)
+    if (this.showPerformanceMonitor) {
+      this.updatePerformanceMonitor(time, delta)
+    }
+  }
+
+  private updatePerformanceMonitor(time: number, delta: number) {
+    // Calculate FPS
+    const currentFPS = delta > 0 ? Math.round(1000 / delta) : 60
+
+    // Track FPS history (last 60 frames for averaging)
+    this.fpsHistory.push(currentFPS)
+    if (this.fpsHistory.length > 60) {
+      this.fpsHistory.shift()
+    }
+
+    // Calculate average FPS
+    const avgFPS = Math.round(this.fpsHistory.reduce((a, b) => a + b, 0) / this.fpsHistory.length)
+
+    // Get object counts
+    const activeEnemies = this.enemies.getChildren().filter((e: any) => e.active).length
+    const activeProjectiles = this.projectiles.getChildren().filter((p: any) => p.active).length
+    const activeEnemyProjectiles = this.enemyProjectiles.getChildren().filter((p: any) => p.active).length
+    const activeTweens = this.tweens.getTweens().length
+    const activeXP = this.xpDrops.getActiveCount()
+    const activeCredits = this.creditDrops.getActiveCount()
+    const activePowerUps = this.powerUps.getChildren().filter((p: any) => p.active).length
+
+    // Calculate frame time in ms
+    const frameTime = delta.toFixed(2)
+
+    // Build performance text
+    const perfText = [
+      `FPS: ${currentFPS} (avg: ${avgFPS})`,
+      `Frame: ${frameTime}ms`,
+      ``,
+      `Objects:`,
+      `  Enemies: ${activeEnemies}`,
+      `  Projectiles: ${activeProjectiles}`,
+      `  Enemy Proj: ${activeEnemyProjectiles}`,
+      `  XP Drops: ${activeXP}`,
+      `  Credits: ${activeCredits}`,
+      `  Power-ups: ${activePowerUps}`,
+      `  Tweens: ${activeTweens}`,
+      ``,
+      `Stats:`,
+      `  Level: ${this.level}`,
+      `  Kills: ${this.killCount}`,
+      `  Combo: ${this.comboCount}x`,
+    ].join('\n')
+
+    this.performanceText.setText(perfText)
+
+    // Color code FPS (green = good, yellow = ok, red = bad)
+    if (avgFPS >= 50) {
+      this.performanceText.setColor('#00ff00')
+    } else if (avgFPS >= 30) {
+      this.performanceText.setColor('#ffff00')
+    } else {
+      this.performanceText.setColor('#ff0000')
     }
   }
 
