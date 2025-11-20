@@ -170,13 +170,13 @@ export default class GameScene extends Phaser.Scene {
     skillTree: number
     victory: number
   } = {
-    kills: 0,
-    passives: 0,
-    pickups: 0,
-    levelRewards: 0,
-    skillTree: 0,
-    victory: 0
-  }
+      kills: 0,
+      passives: 0,
+      pickups: 0,
+      levelRewards: 0,
+      skillTree: 0,
+      victory: 0
+    }
   private creditsCollectedText!: Phaser.GameObjects.Text
   private lastEngineTrailTime: number = 0
   private lastHitTime: number = 0
@@ -833,7 +833,7 @@ export default class GameScene extends Phaser.Scene {
         const allyType = ally.getType ? ally.getType() : null
         const isCombatAlly = allyType === AllyType.WINGMAN || allyType === AllyType.RANGED || allyType === AllyType.WALL
         return ally.active && isCombatAlly &&
-               enemy.body && enemy.body.enable && enemy.active
+          enemy.body && enemy.body.enable && enemy.active
       },
       this
     )
@@ -1830,7 +1830,7 @@ export default class GameScene extends Phaser.Scene {
           onRepeat: () => {
             // Reset to top with new random X position
             (particle as any).x = Phaser.Math.Between(0, this.cameras.main.width)
-            ;(particle as any).y = -10
+              ; (particle as any).y = -10
 
             // Recalculate duration for consistent speed
             const newDistance = this.cameras.main.height + 20
@@ -2262,25 +2262,25 @@ export default class GameScene extends Phaser.Scene {
   private isBossType(type?: EnemyType): boolean {
     if (!type) return false
     return type === EnemyType.BOSS ||
-           type === EnemyType.SCOUT_COMMANDER ||
-           type === EnemyType.TANK_TWIN ||
-           type === EnemyType.HIVE_QUEEN ||
-           type === EnemyType.ORBITAL_DEVASTATOR ||
-           type === EnemyType.FRACTURED_TITAN ||
-           type === EnemyType.SHIELD_WARDEN ||
-           type === EnemyType.ACE_BOMBER ||
-           type === EnemyType.VOID_NEXUS ||
-           type === EnemyType.SIEGE_ENGINE ||
-           type === EnemyType.MOTHERSHIP_OMEGA
+      type === EnemyType.SCOUT_COMMANDER ||
+      type === EnemyType.TANK_TWIN ||
+      type === EnemyType.HIVE_QUEEN ||
+      type === EnemyType.ORBITAL_DEVASTATOR ||
+      type === EnemyType.FRACTURED_TITAN ||
+      type === EnemyType.SHIELD_WARDEN ||
+      type === EnemyType.ACE_BOMBER ||
+      type === EnemyType.VOID_NEXUS ||
+      type === EnemyType.SIEGE_ENGINE ||
+      type === EnemyType.MOTHERSHIP_OMEGA
   }
 
   private isMiniBossType(type?: EnemyType): boolean {
     if (!type) return false
     return type === EnemyType.MINI_BOSS ||
-           type === EnemyType.PROTOTYPE_BOMBER ||
-           type === EnemyType.VOID_HERALD ||
-           type === EnemyType.ASSAULT_CRUISER ||
-           type === EnemyType.BATTLE_COORDINATOR
+      type === EnemyType.PROTOTYPE_BOMBER ||
+      type === EnemyType.VOID_HERALD ||
+      type === EnemyType.ASSAULT_CRUISER ||
+      type === EnemyType.BATTLE_COORDINATOR
   }
 
   private clampSpawnX(x: number): number {
@@ -2721,13 +2721,13 @@ export default class GameScene extends Phaser.Scene {
       case EnemyType.SIEGE_ENGINE:
         if (spawnedEnemies.length >= 1 && spawnedEnemies[0]) {
           const boss = spawnedEnemies[0]
-          ;[-100, 0, 100].forEach(offsetX => {
-            const turret = this.enemies.spawnEnemy(this.clampSpawnX(centerX + offsetX), y + 60, EnemyType.SIEGE_TURRET, currentWave)
-            if (turret) {
-              boss.addChildEnemy(turret)
-              this.cachedActiveEnemyCount++
-            }
-          })
+            ;[-100, 0, 100].forEach(offsetX => {
+              const turret = this.enemies.spawnEnemy(this.clampSpawnX(centerX + offsetX), y + 60, EnemyType.SIEGE_TURRET, currentWave)
+              if (turret) {
+                boss.addChildEnemy(turret)
+                this.cachedActiveEnemyCount++
+              }
+            })
         }
         break
 
@@ -3121,7 +3121,6 @@ export default class GameScene extends Phaser.Scene {
 
     // Update projectiles, enemies, and XP drops (only if not paused)
     if (!this.isPaused) {
-      this.projectiles.update(cappedDelta)
       this.enemies.update(time, cappedDelta)
       this.allies.update(time, cappedDelta, this.player.x, this.player.y, this.enemies)
       this.enemyProjectiles.update(cappedDelta)
@@ -3409,7 +3408,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Check if we hit a guaranteed chest milestone
     if (this.guaranteedChestMilestones.includes(this.killCount) &&
-        this.chestsSpawnedThisRun < this.maxChestsPerRun) {
+      this.chestsSpawnedThisRun < this.maxChestsPerRun) {
       shouldSpawnChest = true
     }
 
@@ -3642,7 +3641,7 @@ export default class GameScene extends Phaser.Scene {
     const activeEnemies = this.enemies.getChildren().filter((e: any) => {
       // Filter for active enemies with valid on-screen positions
       return e.active && e.y > 0 && e.y < this.cameras.main.height &&
-             e.x >= 0 && e.x <= this.cameras.main.width
+        e.x >= 0 && e.x <= this.cameras.main.width
     }) as any[]
 
     if (activeEnemies.length === 0) return
@@ -6528,8 +6527,8 @@ export default class GameScene extends Phaser.Scene {
         .filter(e => {
           // Don't chain to same enemy, and ensure valid on-screen position
           return e !== enemy && e.active &&
-                 e.y > 0 && e.y < this.cameras.main.height &&
-                 e.x >= 0 && e.x <= this.cameras.main.width
+            e.y > 0 && e.y < this.cameras.main.height &&
+            e.x >= 0 && e.x <= this.cameras.main.width
         })
         .slice(0, chainCount)
 
@@ -6599,10 +6598,10 @@ export default class GameScene extends Phaser.Scene {
 
         // Visual feedback - flash the projectile
         const originalColor = (projectile as Phaser.GameObjects.Text).style.color
-        ;(projectile as Phaser.GameObjects.Text).setColor('#ffff00')
+          ; (projectile as Phaser.GameObjects.Text).setColor('#ffff00')
         this.time.delayedCall(50, () => {
           if (projectile.active) {
-            ;(projectile as Phaser.GameObjects.Text).setColor(originalColor)
+            ; (projectile as Phaser.GameObjects.Text).setColor(originalColor)
           }
         })
 
@@ -7589,7 +7588,7 @@ export default class GameScene extends Phaser.Scene {
     currentY += 30
 
     // Breakdown items (only show non-zero sources)
-    const breakdownItems: Array<{label: string, amount: number}> = []
+    const breakdownItems: Array<{ label: string, amount: number }> = []
 
     if (this.creditBreakdown.kills > 0) {
       breakdownItems.push({ label: 'Kills', amount: this.creditBreakdown.kills })
@@ -7716,8 +7715,8 @@ export default class GameScene extends Phaser.Scene {
     // Credits breakdown display
     this.createCreditBreakdownDisplay(400)
 
-    // Display newly unlocked ships - moved up
-    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, 520)
+    // Display newly unlocked ships - with padding after credits
+    const unlockSectionHeight = this.displayUnlockedShips(newlyUnlockedShips, 580)
 
     // Position continue button at bottom of screen
     const continueButtonY = this.cameras.main.height - 60
@@ -8476,7 +8475,8 @@ export default class GameScene extends Phaser.Scene {
 
       this.load.once('loaderror', (file: any) => {
         console.error(`[Music] Failed to load track ${trackNumber}:`, file)
-        // Game continues without music
+        // Try to load other tracks anyway so we might have music later
+        this.lazyLoadRemainingTracks(trackNumber)
       })
 
       this.load.start()
@@ -8610,6 +8610,12 @@ export default class GameScene extends Phaser.Scene {
     // Clear damage zones
     this.damageZones.forEach(zone => zone.destroy())
     this.damageZones = []
+
+    // Clean up event listeners
+    this.events.off('shutdown')
+    this.events.off('pause')
+    this.events.off('resume')
+    this.input.off('pointerdown')
   }
 }
 

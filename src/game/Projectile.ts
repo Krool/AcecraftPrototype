@@ -10,6 +10,7 @@ export enum ProjectileType {
   WAVE = 'WAVE',                // Water - oscillates left/right
   EARTH_ZONE = 'EARTH_ZONE',    // Earth - creates persistent damage zones
   HOMING = 'HOMING',            // Missiles - homes in on enemies
+  SPIRALING = 'SPIRALING',      // Blizzard - spirals outward from player
 }
 
 export class Projectile extends Phaser.GameObjects.Text {
@@ -261,6 +262,89 @@ export class Projectile extends Phaser.GameObjects.Text {
     })
   }
 
+  fire(
+    x: number,
+    y: number,
+    damage: number,
+    pierceCount: number,
+    velocityX: number,
+    velocityY: number,
+    icon: string,
+    color: string,
+    type: ProjectileType,
+    specialData?: {
+      explosionRadius?: number
+      freezeChance?: number
+      freezeDuration?: number
+      chainCount?: number
+      bounceCount?: number
+      waveAmplitude?: number
+      waveFrequency?: number
+      wavePhase?: number
+      zoneDuration?: number
+      zoneRadius?: number
+      homingTurnRate?: number
+      homingSpeed?: number
+      fontSize?: string
+      damageType?: DamageType
+      weaponName?: string
+      orbitOriginX?: number
+      orbitOriginY?: number
+      maxOrbitDistance?: number
+    }
+  ) {
+    this.setPosition(x, y)
+    this.setActive(true)
+    this.setVisible(true)
+    this.body.enable = true
+
+    const defaultFontSize = pierceCount > 0 ? '22px' : '19px'
+    const fontSize = specialData?.fontSize || defaultFontSize
+
+    this.setText(icon)
+    this.setStyle({
+      fontFamily: 'Courier New',
+      fontSize: fontSize,
+      color: color,
+    })
+
+    this.setOrigin(0.5)
+    this.setDepth(20)
+
+    // Set properties
+    this.damage = damage
+    this.pierceCount = pierceCount
+    this.remainingPierces = pierceCount
+    this.projectileType = type
+    this.damageType = specialData?.damageType || DamageType.PHYSICAL
+    this.explosionRadius = specialData?.explosionRadius || 0
+    this.freezeChance = specialData?.freezeChance || 0
+    this.freezeDuration = specialData?.freezeDuration || 0
+    this.chainCount = specialData?.chainCount || 0
+    this.bounceCount = specialData?.bounceCount || 0
+    this.waveAmplitude = specialData?.waveAmplitude || 50
+    this.waveFrequency = specialData?.waveFrequency || 0.01
+    this.wavePhase = specialData?.wavePhase || 0
+    this.zoneDuration = specialData?.zoneDuration || 0
+    this.zoneRadius = specialData?.zoneRadius || 0
+    this.homingTurnRate = specialData?.homingTurnRate || 0.05
+    this.homingSpeed = specialData?.homingSpeed || 350
+    this.weaponName = specialData?.weaponName || ''
+    this.orbitOriginX = specialData?.orbitOriginX || 0
+    this.orbitOriginY = specialData?.orbitOriginY || 0
+    this.maxOrbitDistance = specialData?.maxOrbitDistance || 0
+    this.initialX = x
+    this.distanceTraveled = 0
+    this.lastTrailTime = 0
+
+    // Calculate initial angle from velocity for homing projectiles
+    this.currentAngle = Math.atan2(velocityY, velocityX)
+
+    // Set fixed body size
+    this.body.setSize(16, 24)
+    this.body.setVelocity(velocityX, velocityY)
+  }
+
   update(delta?: number) {
     // Trail particles disabled for performance
     // const currentTime = this.scene.time.now
@@ -269,8 +353,8 @@ export class Projectile extends Phaser.GameObjects.Text {
     //   this.lastTrailTime = currentTime
     // }
 
-    // Apply spiral motion for FREEZING projectiles (Vortex Blade/Blizzard)
-    if (this.projectileType === ProjectileType.FREEZING) {
+    // Apply spiral motion for SPIRALING projectiles (Vortex Blade/Blizzard)
+    if (this.projectileType === ProjectileType.SPIRALING) {
       const currentVelX = this.body.velocity.x
       const currentVelY = this.body.velocity.y
 
@@ -285,7 +369,7 @@ export class Projectile extends Phaser.GameObjects.Text {
         const normalizedPerpY = perpY / perpMag
 
         // Add perpendicular component (spiral strength)
-        const spiralStrength = 50 // Pixels per frame to spiral
+        const spiralStrength = 100 // Pixels per frame to spiral (increased for faster expansion)
         this.body.setVelocity(
           currentVelX + normalizedPerpX * spiralStrength,
           currentVelY + normalizedPerpY * spiralStrength
@@ -333,13 +417,17 @@ export class Projectile extends Phaser.GameObjects.Text {
           const stillHasBounces = this.decrementBounce()
           if (!stillHasBounces) {
             // Destroy projectile when it runs out of bounces
-            this.destroy()
+            this.setActive(false)
+            this.setVisible(false)
+            this.body.enable = false
             return
           }
         }
       } else {
         // No bounces left - destroy projectile
-        this.destroy()
+        this.setActive(false)
+        this.setVisible(false)
+        this.body.enable = false
         return
       }
     }
@@ -397,7 +485,9 @@ export class Projectile extends Phaser.GameObjects.Text {
         this.orbitOriginX, this.orbitOriginY
       )
       if (distanceFromOrigin > this.maxOrbitDistance) {
-        this.destroy()
+        this.setActive(false)
+        this.setVisible(false)
+        this.body.enable = false
         return
       }
     }
@@ -405,8 +495,10 @@ export class Projectile extends Phaser.GameObjects.Text {
     // Destroy if off screen (tighter bounds for better cleanup)
     const margin = this.projectileType === ProjectileType.BOUNCING ? 50 : 20
     if (this.y < -margin || this.y > this.scene.cameras.main.height + margin ||
-        this.x < -margin || this.x > this.scene.cameras.main.width + margin) {
-      this.destroy()
+      this.x < -margin || this.x > this.scene.cameras.main.width + margin) {
+      this.setActive(false)
+      this.setVisible(false)
+      this.body.enable = false
     }
   }
 }
@@ -415,7 +507,11 @@ export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
   private enemyGroupRef: any = null
 
   constructor(scene: Phaser.Scene) {
-    super(scene.physics.world, scene)
+    super(scene.physics.world, scene, {
+      classType: Projectile,
+      maxSize: 200, // Limit total projectiles to prevent memory issues
+      runChildUpdate: true
+    })
   }
 
   setEnemyGroup(enemyGroup: any): void {
@@ -452,10 +548,17 @@ export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
       orbitOriginY?: number
       maxOrbitDistance?: number
     }
-  ): Projectile {
-    // Create new projectile
-    const projectile = new Projectile(
-      this.scene,
+  ): Projectile | null {
+    // Get projectile from pool
+    const projectile = this.get(x, y)
+
+    if (!projectile) {
+      // Pool is full
+      return null
+    }
+
+    // Initialize the projectile
+    projectile.fire(
       x,
       y,
       damage,
@@ -467,12 +570,6 @@ export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
       type,
       specialData
     )
-
-    // Add to group (false = already added to scene)
-    this.add(projectile, false)
-
-    // Re-apply velocity after adding to group (in case it was reset)
-    projectile.body.setVelocity(velocityX, velocityY)
 
     // Set enemy group reference for homing projectiles
     if (this.enemyGroupRef) {
@@ -509,14 +606,5 @@ export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
         fontSize ? { fontSize } : undefined
       )
     }
-  }
-
-  update(delta?: number) {
-    // Update all projectiles
-    this.getChildren().forEach((projectile: any) => {
-      if (projectile.update) {
-        projectile.update(delta)
-      }
-    })
   }
 }

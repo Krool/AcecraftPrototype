@@ -75,7 +75,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     name: 'Lightning',
     type: WeaponType.LIGHTNING,
     damageType: DamageType.NATURE,
-    baseDamage: 5,
+    baseDamage: 6,
     baseFireRate: 450, // Balanced for ~71 DPS at level 3 (with 6 chains)
     description: 'Chain lightning between enemies',
     detailedDescription: 'Arcing electricity jumps between nearby enemies, dealing damage to multiple targets per shot. Effectiveness scales with enemy density. Level 1: Chains 2 times (hits 3 enemies). Level 2: Chains 4 times (hits 5 enemies). Level 3: Chains 6 times (hits 7 enemies). Evolves with Critical Systems into Storm Nexus for infinite chaining and critical storm reactions.',
@@ -379,7 +379,7 @@ export const DEFAULT_MODIFIERS: WeaponModifiers = {
   pierceCount: 0,
   projectileSpeedMultiplier: 1.0,
   projectileSizeMultiplier: 1.0,
-  critChance: 0,
+  critChance: 5, // 5% base crit chance
   critDamage: 1.5,
   projectileCount: 0,
   missileCount: 0,
@@ -1038,6 +1038,10 @@ export class VortexBladeWeapon extends Weapon {
     const damage = this.getDamage() * modifiers.damageMultiplier
     const pierce = modifiers.pierceCount
 
+    // Freeze chance increases with level
+    const freezeChance = 20 + (this.level - 1) * 10
+    const freezeDuration = 1500 // 1.5 seconds
+
     // More blades with level, plus building/character bonuses
     const bladeCount = 3 + this.level + (modifiers.projectileCount || 0)
     const angleStep = (Math.PI * 2) / bladeCount
@@ -1057,8 +1061,8 @@ export class VortexBladeWeapon extends Weapon {
       this.projectileGroup.fireProjectile(
         x, y, damage, pierce, velocityX, velocityY,
         this.config.icon, this.config.color,
-        ProjectileType.FREEZING,
-        { weaponName: this.config.name, fontSize, damageType: this.config.damageType }
+        ProjectileType.SPIRALING,
+        { freezeChance, freezeDuration, weaponName: this.config.name, fontSize, damageType: this.config.damageType }
       )
     }
 

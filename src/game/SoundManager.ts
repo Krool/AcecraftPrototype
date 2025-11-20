@@ -1,5 +1,9 @@
 // @ts-ignore - zzfx doesn't have types
-import { zzfx } from 'zzfx'
+import * as zzfxModule from 'zzfx'
+
+// Handle different export formats (CommonJS, ESM, etc.)
+// @ts-ignore
+const zzfx = zzfxModule.zzfx || zzfxModule.default || zzfxModule
 
 /**
  * Sound Manager for Roguecraft
@@ -176,7 +180,11 @@ export class SoundManager {
       modifiedDef[0] = finalVolume
 
       // Play the sound using ZzFX
-      zzfx(...modifiedDef)
+      if (typeof zzfx === 'function') {
+        zzfx(...modifiedDef)
+      } else {
+        console.warn('ZzFX not initialized correctly')
+      }
     } catch (error) {
       console.error(`Error playing sound ${soundType}:`, error)
     }
