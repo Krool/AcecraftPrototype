@@ -1141,9 +1141,9 @@ export class Enemy extends Phaser.GameObjects.Text {
     const sizeScale = parseInt(this.config.fontSize) / 36 // Base 36px = scale 1
     const explosionScale = Math.max(0.5, Math.min(3, (healthScale + sizeScale) / 2))
 
-    // Reduced particle count for performance: 2 for normal enemies, 4 for bosses
+    // Boss detection: bosses get way more particles
     const isBoss = this.maxHealth > 100
-    const particleCount = isBoss ? 4 : 2
+    const particleCount = isBoss ? 16 : 2
 
     // Color variations based on enemy type
     const explosionColors = [this.config.color, '#ff6600', '#ffaa00', '#ffdd00']
@@ -1152,7 +1152,7 @@ export class Enemy extends Phaser.GameObjects.Text {
     for (let i = 0; i < particleCount; i++) {
       const angle = (i / particleCount) * Math.PI * 2
       const speed = 100 * explosionScale
-      const maxDistance = 40 * explosionScale
+      const maxDistance = isBoss ? 80 * explosionScale : 40 * explosionScale
 
       // Randomize particle symbols for variety
       const particleSymbols = ['●', '◆', '■', '▲', '✦', '※']
@@ -1160,10 +1160,10 @@ export class Enemy extends Phaser.GameObjects.Text {
       const color = Phaser.Utils.Array.GetRandom(explosionColors)
 
       // Stagger particle creation (5ms delay per particle)
-      this.scene.time.delayedCall(i * 5, () => {
+      this.scene.time.delayedCall(i * 3, () => {
         const particle = this.scene.add.text(x, y, symbol, {
           fontFamily: 'Courier New',
-          fontSize: `${Math.floor(14 * explosionScale)}px`,
+          fontSize: `${Math.floor((isBoss ? 18 : 14) * explosionScale)}px`,
           color: color,
         }).setOrigin(0.5).setDepth(45) // Above enemies
 
@@ -1173,40 +1173,90 @@ export class Enemy extends Phaser.GameObjects.Text {
           x: x + Math.cos(angle) * maxDistance,
           y: y + Math.sin(angle) * maxDistance,
           alpha: { from: 1, to: 0 },
-          scale: { from: 1.5, to: 0.3 },
-          duration: 400 + Math.random() * 200,
+          scale: { from: isBoss ? 2 : 1.5, to: 0.3 },
+          duration: (isBoss ? 600 : 400) + Math.random() * 200,
           ease: 'Cubic.easeOut',
           onComplete: () => particle.destroy(),
         })
       })
     }
 
-    // Create central flash
-    const flash = this.scene.add.circle(x, y, 5 * explosionScale, 0xffffff, 1)
+    // Boss gets extra inner ring of particles
+    if (isBoss) {
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2 + Math.PI / 8 // Offset from main ring
+        const maxDistance = 50 * explosionScale
+
+        const symbol = Phaser.Utils.Array.GetRandom(['✦', '✧', '★', '☆'])
+        const color = Phaser.Utils.Array.GetRandom(explosionColors)
+
+        this.scene.time.delayedCall(50 + i * 5, () => {
+          const particle = this.scene.add.text(x, y, symbol, {
+            fontFamily: 'Courier New',
+            fontSize: `${Math.floor(20 * explosionScale)}px`,
+            color: color,
+          }).setOrigin(0.5).setDepth(45)
+
+          this.scene.tweens.add({
+            targets: particle,
+            x: x + Math.cos(angle) * maxDistance,
+            y: y + Math.sin(angle) * maxDistance,
+            alpha: { from: 1, to: 0 },
+            scale: { from: 2.5, to: 0.5 },
+            rotation: Math.PI * 2,
+            duration: 500 + Math.random() * 200,
+            ease: 'Cubic.easeOut',
+            onComplete: () => particle.destroy(),
+          })
+        })
+      }
+    }
+
+    // Create central flash (bigger for bosses)
+    const flashRadius = isBoss ? 8 * explosionScale : 5 * explosionScale
+    const flash = this.scene.add.circle(x, y, flashRadius, 0xffffff, 1)
       .setDepth(46)
 
     this.scene.tweens.add({
       targets: flash,
-      radius: 30 * explosionScale,
+      radius: (isBoss ? 60 : 30) * explosionScale,
       alpha: 0,
-      duration: 300,
+      duration: isBoss ? 400 : 300,
       ease: 'Cubic.easeOut',
       onComplete: () => flash.destroy(),
     })
 
-    // Add shockwave ring
+    // Add shockwave ring (bigger and thicker for bosses)
     const shockwave = this.scene.add.circle(x, y, 10 * explosionScale, 0x000000, 0)
-      .setStrokeStyle(2 * explosionScale, 0xffffff, 1)
+      .setStrokeStyle((isBoss ? 4 : 2) * explosionScale, 0xffffff, 1)
       .setDepth(46)
 
     this.scene.tweens.add({
       targets: shockwave,
-      radius: 50 * explosionScale,
+      radius: (isBoss ? 100 : 50) * explosionScale,
       alpha: { from: 1, to: 0 },
-      duration: 350,
+      duration: isBoss ? 500 : 350,
       ease: 'Cubic.easeOut',
       onComplete: () => shockwave.destroy(),
     })
+
+    // Boss gets a second delayed shockwave
+    if (isBoss) {
+      this.scene.time.delayedCall(100, () => {
+        const shockwave2 = this.scene.add.circle(x, y, 10 * explosionScale, 0x000000, 0)
+          .setStrokeStyle(3 * explosionScale, 0xffaa00, 1)
+          .setDepth(46)
+
+        this.scene.tweens.add({
+          targets: shockwave2,
+          radius: 80 * explosionScale,
+          alpha: { from: 1, to: 0 },
+          duration: 450,
+          ease: 'Cubic.easeOut',
+          onComplete: () => shockwave2.destroy(),
+        })
+      })
+    }
 
     // Extra large enemies - extra flash particles disabled for performance
     // if (explosionScale >= 1.5) {

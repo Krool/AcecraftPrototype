@@ -4,6 +4,7 @@ import { CharacterType, CHARACTER_CONFIGS } from '../game/Character'
 import { WEAPON_CONFIGS } from '../game/Weapon'
 import { soundManager, SoundType } from '../game/SoundManager'
 import { gameProgression } from '../game/GameProgression'
+import { partySystem } from '../systems/PartySystem'
 
 export default class HangarScene extends Phaser.Scene {
   private gameState!: GameState
@@ -666,6 +667,11 @@ export default class HangarScene extends Phaser.Scene {
         soundManager.play(SoundType.BUTTON_CLICK)
         if (this.gameState.selectCharacter(this.viewingCharacter)) {
           this.selectedCharacter = this.viewingCharacter
+
+          // Update party system with new character selection
+          if (partySystem.isInParty()) {
+            partySystem.updateCharacter(this.viewingCharacter)
+          }
 
           // Visual feedback before transitioning
           selectButton.setFillStyle(0x4a6a8a)

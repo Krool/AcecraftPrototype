@@ -64,6 +64,43 @@ class PartySystem {
     networkSystem.on(MessageType.GAME_START, () => {
       this.emit('gameStart', {})
     })
+
+    // Handle state sync messages (including character/name changes from clients)
+    networkSystem.on(MessageType.STATE_SYNC, (data, senderId) => {
+      if (networkSystem.isHost && data.type === 'character_change' && senderId) {
+        // Find the slot for this player and update their character
+        const slotIndex = this.state.slots.findIndex(slot => slot.peerId === senderId)
+        if (slotIndex !== -1) {
+          this.state.slots[slotIndex].character = data.character
+          this.broadcastPartySync()
+          this.emit('partyUpdated', this.state)
+        }
+      } else if (networkSystem.isHost && data.type === 'name_change' && senderId) {
+        // Find the slot for this player and update their name
+        const slotIndex = this.state.slots.findIndex(slot => slot.peerId === senderId)
+        if (slotIndex !== -1) {
+          this.state.slots[slotIndex].name = data.name
+          this.broadcastPartySync()
+          this.emit('partyUpdated', this.state)
+        }
+      } else if (!networkSystem.isHost && data.type === 'party_sync') {
+        // Client received party sync from host
+        this.state.slots = data.slots.map((slot: any) => ({
+          peerId: slot.peerId,
+          name: slot.name,
+          character: slot.character as CharacterType,
+          isHost: slot.isHost,
+          isEmpty: slot.isEmpty
+        }))
+
+        // Update local slot index
+        this.state.localSlotIndex = this.state.slots.findIndex(
+          slot => slot.peerId === networkSystem.localPlayerId
+        )
+
+        this.emit('partyUpdated', this.state)
+      }
+    })
   }
 
   /**
@@ -236,6 +273,28 @@ class PartySystem {
       networkSystem.send(MessageType.STATE_SYNC, {
         type: 'character_change',
         character: character
+      })
+    }
+
+    this.emit('partyUpdated', this.state)
+  }
+
+  /**
+   * Update local player's name
+   */
+  updateName(name: string) {
+    if (this.state.localSlotIndex === -1) return
+
+    this.playerName = name
+    this.state.slots[this.state.localSlotIndex].name = name.substring(0, 3).toUpperCase()
+
+    if (networkSystem.isHost) {
+      this.broadcastPartySync()
+    } else {
+      // Send update to host
+      networkSystem.send(MessageType.STATE_SYNC, {
+        type: 'name_change',
+        name: name.substring(0, 3).toUpperCase()
       })
     }
 

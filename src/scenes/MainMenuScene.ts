@@ -35,6 +35,11 @@ export default class MainMenuScene extends Phaser.Scene {
   private nameInput: string = ''
   private playerName: string = ''
 
+  // Party event handler references for cleanup
+  private partyUpdatedHandler?: (state: PartyState) => void
+  private gameStartHandler?: () => void
+  private disconnectedHandler?: () => void
+
   constructor() {
     super('MainMenuScene')
   }
@@ -42,6 +47,17 @@ export default class MainMenuScene extends Phaser.Scene {
   shutdown() {
     // Stop all tweens to prevent errors when scene changes
     this.tweens.killAll()
+
+    // Remove party event handlers to prevent duplicates on scene restart
+    if (this.partyUpdatedHandler) {
+      partySystem.off('partyUpdated', this.partyUpdatedHandler)
+    }
+    if (this.gameStartHandler) {
+      partySystem.off('gameStart', this.gameStartHandler)
+    }
+    if (this.disconnectedHandler) {
+      partySystem.off('disconnected', this.disconnectedHandler)
+    }
   }
 
   create() {
@@ -457,19 +473,31 @@ export default class MainMenuScene extends Phaser.Scene {
     // Party Panel
     this.createPartyPanel(scaleFactor)
 
-    // Setup party event handlers
-    partySystem.on('partyUpdated', (state: PartyState) => {
-      this.updatePartyUI(state)
-    })
-
-    partySystem.on('gameStart', () => {
-      this.startCoopGame()
-    })
-
-    partySystem.on('disconnected', () => {
+    // Setup party event handlers (store references for cleanup)
+    this.partyUpdatedHandler = (state: PartyState) => {
+      // Only update UI if this scene is active
+      if (this.scene.isActive()) {
+        this.updatePartyUI(state)
+      }
+    }
+    this.gameStartHandler = () => {
+      if (this.scene.isActive()) {
+        this.startCoopGame()
+      }
+    }
+    this.disconnectedHandler = () => {
       // When disconnected (host left), automatically re-host
-      this.autoHostParty()
-    })
+      if (this.scene.isActive()) {
+        this.autoHostParty()
+      }
+    }
+
+    partySystem.on('partyUpdated', this.partyUpdatedHandler)
+    partySystem.on('gameStart', this.gameStartHandler)
+    partySystem.on('disconnected', this.disconnectedHandler)
+
+    // Update party UI with current state (in case we returned from another scene)
+    this.updatePartyUI(partySystem.getState())
 
     // Stats display at bottom
     const statsDisplayText = this.add.text(
@@ -1317,13 +1345,9 @@ export default class MainMenuScene extends Phaser.Scene {
     // Pad to 3 characters if needed
     this.playerName = this.nameInput.padEnd(3, '_').substring(0, 3)
 
-    // Update party system with new name
-    // For now, we need to re-host with the new name
-    if (partySystem.isHost()) {
-      partySystem.leaveParty()
-      partySystem.hostParty(this.playerName).catch(err => {
-        console.error('Failed to update name:', err)
-      })
+    // Update party system with new name (syncs to party members)
+    if (partySystem.isInParty()) {
+      partySystem.updateName(this.playerName)
     }
 
     this.closeNameOverlay()
