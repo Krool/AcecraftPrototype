@@ -813,7 +813,7 @@ export default class GameScene extends Phaser.Scene {
       this.player2Body.setCircle(partner2Config.collisionRadius)
 
       // Set player2 speed from partner's character config
-      this.player2Speed = partner2Config.speed
+      this.player2Speed = partner2Config.baseMoveSpeed
 
       // Set player2 health (use default for now)
       this.player2Health = PLAYER.DEFAULT_HEALTH
