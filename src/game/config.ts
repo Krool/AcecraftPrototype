@@ -6,12 +6,16 @@ import MainMenuScene from '../scenes/MainMenuScene'
 import BuildingMenuScene from '../scenes/BuildingMenuScene'
 import HangarScene from '../scenes/HangarScene'
 import StatsScene from '../scenes/StatsScene'
+import { CoopLobbyScene } from '../scenes/CoopLobbyScene'
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 540,
-  height: 880,
+  width: 600,
+  height: 980,
   backgroundColor: '#1a1a2e',
+  input: {
+    gamepad: true,
+  },
   physics: {
     default: 'arcade',
     arcade: {
@@ -19,13 +23,13 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, LoadingScene, GameScene, MainMenuScene, BuildingMenuScene, HangarScene, StatsScene],
+  scene: [BootScene, LoadingScene, GameScene, MainMenuScene, BuildingMenuScene, HangarScene, StatsScene, CoopLobbyScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     // Fixed virtual resolution - Phaser will scale to fit any screen
-    width: 540,
-    height: 880,
+    width: 600,
+    height: 980,
   },
   render: {
     pixelArt: true,

@@ -232,6 +232,7 @@ export default class GameScene extends Phaser.Scene {
 
   // Performance optimization: Cache values to reduce per-frame calculations
   private cachedActiveEnemyCount: number = 0
+  private cachedBoss: Enemy | null = null
   private modifiersNeedRecalculation: boolean = true
   private lastPowerUpDisplayState: string = '' // Track power-up state to avoid unnecessary updates
   private wasInvulnerable: boolean = false // Track if we need to restore color/scale
@@ -2375,10 +2376,9 @@ export default class GameScene extends Phaser.Scene {
       })
     })
 
-    // Log pool status after spawning
+    // Sync cached count after spawning
     const poolStatusAfter = this.enemies.getPoolStatus()
-    console.log(`Wave ${this.waveSystem.getCurrentWave()} spawned ${this.currentWaveEnemyCount} enemies`)
-    console.log(`[Pool Status] Total: ${poolStatusAfter.total}, Active: ${poolStatusAfter.active}, Inactive: ${poolStatusAfter.inactive}, Body Disabled: ${poolStatusAfter.bodyDisabled}`)
+    this.cachedActiveEnemyCount = poolStatusAfter.active
 
     // If no enemies could be spawned, check for cascading failure
     if (this.currentWaveEnemyCount === 0) {
@@ -2906,12 +2906,9 @@ export default class GameScene extends Phaser.Scene {
     // Update wave counter
     this.waveText.setText(`Wave ${currentWave}/${totalWaves}`)
 
-    // Update progress bar based on remaining enemies
+    // Update progress bar based on remaining enemies (use cached count for performance)
     if (this.currentWaveEnemyCount > 0) {
-      const activeEnemyCount = this.enemies.getChildren().filter((e: any) => e.active).length
-      const progress = this.currentWaveEnemyCount > 0
-        ? 1 - (activeEnemyCount / this.currentWaveEnemyCount)
-        : 0
+      const progress = 1 - (this.cachedActiveEnemyCount / this.currentWaveEnemyCount)
       const progressBarWidth = 200
       this.waveProgressBar.width = progressBarWidth * Math.max(0, Math.min(1, progress))
     } else {
@@ -2926,20 +2923,23 @@ export default class GameScene extends Phaser.Scene {
       this.bossHealthBar.setVisible(true)
       this.bossHealthText.setVisible(true)
 
-      // Find boss enemy (includes all custom boss types)
-      const boss = this.enemies.getChildren().find((e: any) => {
-        const enemy = e as Enemy
-        const enemyType = enemy.getType ? enemy.getType() : null
-        return enemy.active && (this.isBossType(enemyType) || this.isMiniBossType(enemyType))
-      }) as Enemy | undefined
+      // Use cached boss reference (set when boss spawns, cleared when dies)
+      // Only search if cache is invalid
+      if (!this.cachedBoss || !this.cachedBoss.active) {
+        this.cachedBoss = this.enemies.getChildren().find((e: any) => {
+          const enemy = e as Enemy
+          const enemyType = enemy.getType ? enemy.getType() : null
+          return enemy.active && (this.isBossType(enemyType) || this.isMiniBossType(enemyType))
+        }) as Enemy | null
+      }
 
-      if (boss && boss.getHealth && boss.getMaxHealth) {
-        const bossHealth = boss.getHealth() ?? 0
-        const bossMaxHealth = boss.getMaxHealth() ?? 1
+      if (this.cachedBoss && this.cachedBoss.getHealth && this.cachedBoss.getMaxHealth) {
+        const bossHealth = this.cachedBoss.getHealth() ?? 0
+        const bossMaxHealth = this.cachedBoss.getMaxHealth() ?? 1
         const healthPercent = Math.max(0, bossHealth / bossMaxHealth)
         const bossBarWidth = 400
         this.bossHealthBar.width = bossBarWidth * healthPercent
-        const bossName = boss.getName() || (waveData.isBoss ? 'BOSS' : 'MINI-BOSS')
+        const bossName = this.cachedBoss.getName() || (waveData.isBoss ? 'BOSS' : 'MINI-BOSS')
         this.bossHealthText.setText(`${bossName} - ${Math.ceil(bossHealth)} / ${bossMaxHealth}`)
       } else {
         // Boss not found yet or already defeated, show waiting message
@@ -2950,6 +2950,7 @@ export default class GameScene extends Phaser.Scene {
       this.bossHealthBarBg.setVisible(false)
       this.bossHealthBar.setVisible(false)
       this.bossHealthText.setVisible(false)
+      this.cachedBoss = null // Clear cache when not in boss wave
     }
   }
 
@@ -2980,32 +2981,23 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Prune tracking windows every 5 seconds to prevent unbounded growth
-    // Using in-place splice() instead of filter() to reduce GC pressure
     if (Math.floor(time / 5000) !== Math.floor((time - delta) / 5000)) {
       const fiveSecondsAgo = time - 5000
 
-      // Prune old entries using backwards iteration + splice
-      for (let i = this.healthTrackingWindow.length - 1; i >= 0; i--) {
-        if (this.healthTrackingWindow[i].timestamp <= fiveSecondsAgo) {
-          this.healthTrackingWindow.splice(i, 1)
-        }
-      }
+      // Use filter() once instead of multiple splice() calls - more efficient
+      this.healthTrackingWindow = this.healthTrackingWindow.filter(
+        entry => entry.timestamp > fiveSecondsAgo
+      )
+      this.damageTrackingWindow = this.damageTrackingWindow.filter(
+        entry => entry.timestamp > fiveSecondsAgo
+      )
 
-      for (let i = this.damageTrackingWindow.length - 1; i >= 0; i--) {
-        if (this.damageTrackingWindow[i].timestamp <= fiveSecondsAgo) {
-          this.damageTrackingWindow.splice(i, 1)
-        }
+      // Hard cap: if still over 1000 entries, keep only newest
+      if (this.healthTrackingWindow.length > 1000) {
+        this.healthTrackingWindow = this.healthTrackingWindow.slice(-1000)
       }
-
-      // Hard cap: if still over 1000 entries, remove oldest
-      const healthOverflow = this.healthTrackingWindow.length - 1000
-      if (healthOverflow > 0) {
-        this.healthTrackingWindow.splice(0, healthOverflow)
-      }
-
-      const damageOverflow = this.damageTrackingWindow.length - 1000
-      if (damageOverflow > 0) {
-        this.damageTrackingWindow.splice(0, damageOverflow)
+      if (this.damageTrackingWindow.length > 1000) {
+        this.damageTrackingWindow = this.damageTrackingWindow.slice(-1000)
       }
     }
 
@@ -3190,18 +3182,10 @@ export default class GameScene extends Phaser.Scene {
 
     // Wave-based spawning (only if not paused)
     if (!this.isPaused) {
-      // Periodic pool status logging (every 10 seconds)
+      // Periodic sync of cached count to prevent drift (every 10 seconds)
       if (time - this.lastPoolLogTime > 10000) {
         const poolStatus = this.enemies.getPoolStatus()
-        console.log(`[Pool Health Check] Active: ${poolStatus.active}/${this.enemies.getChildren().length}, Inactive: ${poolStatus.inactive}, Body Disabled: ${poolStatus.bodyDisabled}`)
-
-        // Log projectile pool status
-        const projActive = this.projectiles.getActiveCount()
-        console.log(`[Projectile Pool] Active: ${projActive}/200`)
-
-        // Periodic sync of cached count to prevent drift (performance optimization)
         this.cachedActiveEnemyCount = poolStatus.active
-
         this.lastPoolLogTime = time
       }
 

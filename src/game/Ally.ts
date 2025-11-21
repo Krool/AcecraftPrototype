@@ -138,6 +138,11 @@ export class Ally extends Phaser.GameObjects.Text {
       console.error('[Ally] Cannot spawn - scene is undefined')
       this.setActive(false)
       this.setVisible(false)
+      this.setPosition(-1000, -1000)
+      if (this.body) {
+        this.body.setVelocity(0, 0)
+        this.body.enable = false
+      }
       return
     }
 
@@ -169,6 +174,7 @@ export class Ally extends Phaser.GameObjects.Text {
       console.error(`[Ally] No physics body found for ally type ${this.allyType}`)
       this.setActive(false)
       this.setVisible(false)
+      this.setPosition(-1000, -1000)
       return
     }
 

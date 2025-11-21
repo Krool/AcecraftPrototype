@@ -419,13 +419,12 @@ export class NetworkSystem {
   }
 
   /**
-   * Generate short invite code (6 chars, uppercase)
+   * Generate short invite code (6 digits)
    */
   private generateInviteCode(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // Avoiding confusing chars
     let code = ''
     for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length))
+      code += Math.floor(Math.random() * 10).toString()
     }
     return code
   }

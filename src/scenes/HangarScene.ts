@@ -145,6 +145,13 @@ export default class HangarScene extends Phaser.Scene {
     // Create left list container (scrollable)
     this.listContainer = this.add.container(0, 140)
 
+    // Create mask for the scrolling list to prevent overlapping with header
+    const maskShape = this.make.graphics({})
+    maskShape.fillStyle(0xffffff)
+    maskShape.fillRect(0, 140, this.cameras.main.width / 2, this.cameras.main.height - 140)
+    const mask = maskShape.createGeometryMask()
+    this.listContainer.setMask(mask)
+
     // Create right detail panel container (fixed)
     this.detailContainer = this.add.container(0, 140)
 

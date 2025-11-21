@@ -113,13 +113,16 @@ export default class BuildingMenuScene extends Phaser.Scene {
         { id: BuildingType.BOSS_BONUS, x: 3.5, y: 1, requires: [BuildingType.CREDIT_DROP_RATE] },
 
         // ===== CHEST CLUSTER (middle) =====
-        { id: BuildingType.GOLD_CHEST_CHANCE, x: 1.5, y: 2, requires: [BuildingType.UPGRADE_OPTIONS, BuildingType.WIN_BONUS] },
-        { id: BuildingType.CHEST_VALUE, x: 2.5, y: 2, requires: [BuildingType.WIN_BONUS, BuildingType.BOSS_BONUS] },
-        { id: BuildingType.MAGNET_DURATION, x: 3.5, y: 2, requires: [BuildingType.BOSS_BONUS] },
+        { id: BuildingType.MAGNET_DURATION, x: 1.5, y: 2, requires: [BuildingType.WIN_BONUS] },
+        { id: BuildingType.CHEST_VALUE, x: 3.5, y: 2, requires: [BuildingType.WIN_BONUS, BuildingType.BOSS_BONUS] },
         { id: BuildingType.DISCOUNT, x: 0.5, y: 3, requires: [BuildingType.UPGRADE_OPTIONS] },
 
         // ===== REROLL CLUSTER (middle-top) =====
-        { id: BuildingType.REROLL_CHARGES, x: 1.5, y: 3, requires: [BuildingType.GOLD_CHEST_CHANCE] }, // Combined unlock + charges
+        { id: BuildingType.REROLL_CHARGES, x: 1.5, y: 3, requires: [BuildingType.MAGNET_DURATION] }, // Combined unlock + charges
+
+        // ===== GOLD CHEST PATH (right side) =====
+        { id: BuildingType.GOLD_CHEST_CHANCE, x: 3.5, y: 3, requires: [BuildingType.CHEST_VALUE] },
+        { id: BuildingType.CHEST_LEVEL_BONUS, x: 3.5, y: 4, requires: [BuildingType.GOLD_CHEST_CHANCE] },
 
         // ===== TERMINAL CLUSTER (top) =====
         { id: BuildingType.GREED, x: 1.5, y: 5, requires: [BuildingType.REROLL_CHARGES, BuildingType.DISCOUNT] },

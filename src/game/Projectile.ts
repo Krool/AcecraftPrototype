@@ -293,10 +293,14 @@ export class Projectile extends Phaser.GameObjects.Text {
       maxOrbitDistance?: number
     }
   ) {
+    // Reset body first to ensure proper physics state
+    this.body.reset(x, y)
+    this.body.enable = true
+
     this.setPosition(x, y)
     this.setActive(true)
     this.setVisible(true)
-    this.body.enable = true
+    this.setRotation(0) // Reset rotation from previous use (e.g., homing missiles)
 
     const defaultFontSize = pierceCount > 0 ? '22px' : '19px'
     const fontSize = specialData?.fontSize || defaultFontSize
@@ -416,17 +420,21 @@ export class Projectile extends Phaser.GameObjects.Text {
         if (bounced) {
           const stillHasBounces = this.decrementBounce()
           if (!stillHasBounces) {
-            // Destroy projectile when it runs out of bounces
+            // Deactivate projectile when it runs out of bounces
             this.setActive(false)
             this.setVisible(false)
+            this.setPosition(-1000, -1000)
+            this.body.setVelocity(0, 0)
             this.body.enable = false
             return
           }
         }
       } else {
-        // No bounces left - destroy projectile
+        // No bounces left - deactivate projectile
         this.setActive(false)
         this.setVisible(false)
+        this.setPosition(-1000, -1000)
+        this.body.setVelocity(0, 0)
         this.body.enable = false
         return
       }
@@ -487,35 +495,64 @@ export class Projectile extends Phaser.GameObjects.Text {
       if (distanceFromOrigin > this.maxOrbitDistance) {
         this.setActive(false)
         this.setVisible(false)
+        this.setPosition(-1000, -1000)
+        this.body.setVelocity(0, 0)
         this.body.enable = false
         return
       }
     }
 
-    // Destroy if off screen (tighter bounds for better cleanup)
+    // Deactivate if off screen (tighter bounds for better cleanup)
     const margin = this.projectileType === ProjectileType.BOUNCING ? 50 : 20
     if (this.y < -margin || this.y > this.scene.cameras.main.height + margin ||
       this.x < -margin || this.x > this.scene.cameras.main.width + margin) {
       this.setActive(false)
       this.setVisible(false)
+      this.setPosition(-1000, -1000)
+      this.body.setVelocity(0, 0)
       this.body.enable = false
+    }
+
+    // Safety: Check for projectiles with disabled body but still active (invalid state)
+    if (this.active && !this.body.enable) {
+      console.warn(`[Projectile] Invalid state: active but body disabled at (${this.x}, ${this.y}) type: ${this.projectileType}`)
+      this.setActive(false)
+      this.setVisible(false)
+      this.setPosition(-1000, -1000)
     }
   }
 }
 
 export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
   private enemyGroupRef: any = null
+  private pool: Projectile[] = []
+  private maxProjectiles: number = 500
 
-  constructor(scene: Phaser.Scene) {
-    super(scene.physics.world, scene, {
-      classType: Projectile,
-      maxSize: 200, // Limit total projectiles to prevent memory issues
-      runChildUpdate: true
-    })
+  constructor(scene: Phaser.Scene, poolSize: number = 500) {
+    super(scene.physics.world, scene)
+
+    this.maxProjectiles = poolSize
+
+    // Pre-create all projectiles for the pool
+    for (let i = 0; i < poolSize; i++) {
+      const projectile = new Projectile(scene, -1000, -1000)
+
+      // Deactivate for pool
+      projectile.setActive(false)
+      projectile.setVisible(false)
+      if (projectile.body) {
+        projectile.body.enable = false
+      }
+
+      this.add(projectile, false) // false = already added to scene in constructor
+      this.pool.push(projectile)
+    }
   }
 
   setEnemyGroup(enemyGroup: any): void {
     this.enemyGroupRef = enemyGroup
+    // Update all projectiles in pool with enemy group reference
+    this.pool.forEach(p => p.setEnemyGroup(enemyGroup))
   }
 
   fireProjectile(
@@ -549,12 +586,19 @@ export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
       maxOrbitDistance?: number
     }
   ): Projectile | null {
-    // Get projectile from pool
-    const projectile = this.get(x, y)
+    // Find inactive projectile from pool
+    const projectile = this.pool.find(p => !p.active)
+    const activeCount = this.pool.filter(p => p.active).length
 
     if (!projectile) {
-      // Pool is full
+      // Pool is full - log for debugging
+      console.warn(`[ProjectileGroup] Pool exhausted! Active: ${activeCount}/${this.maxProjectiles}`)
       return null
+    }
+
+    // Log when pool usage is high (over 80%)
+    if (activeCount > this.maxProjectiles * 0.8) {
+      console.warn(`[ProjectileGroup] High usage: ${activeCount}/${this.maxProjectiles} active`)
     }
 
     // Initialize the projectile
@@ -577,6 +621,26 @@ export class ProjectileGroup extends Phaser.Physics.Arcade.Group {
     }
 
     return projectile
+  }
+
+  // Get active projectile count for debugging
+  getActiveCount(): number {
+    return this.pool.filter(p => p.active).length
+  }
+
+  // Update all active projectiles
+  update(delta: number) {
+    let activeCount = 0
+    this.pool.forEach(projectile => {
+      if (projectile.active) {
+        activeCount++
+        projectile.update(delta)
+      }
+    })
+    // Debug: log if we have stuck projectiles (over 90% usage)
+    if (activeCount > this.maxProjectiles * 0.9) {
+      console.error(`[ProjectileGroup] CRITICAL: ${activeCount}/${this.maxProjectiles} active projectiles - likely leak!`)
+    }
   }
 
   // Fire multiple projectiles in a spread pattern

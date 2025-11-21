@@ -49,6 +49,7 @@ export enum BuildingType {
   DISCOUNT = 'DISCOUNT',
   GREED = 'GREED',
   LUCKY = 'LUCKY',
+  CHEST_LEVEL_BONUS = 'CHEST_LEVEL_BONUS',
 }
 
 export interface BuildingConfig {
@@ -488,6 +489,15 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingConfig> = {
     baseCost: 200,
     costMultiplier: 1.8,
   },
+  [BuildingType.CHEST_LEVEL_BONUS]: {
+    name: 'Chest Level Bonus',
+    type: BuildingType.CHEST_LEVEL_BONUS,
+    description: 'Bronze chests give 2 upgrades, Silver give 4, Gold give 6',
+    icon: '⇈',
+    maxLevel: 1,
+    baseCost: 5000,
+    costMultiplier: 2.0,
+  },
 }
 
 export interface BuildingState {
@@ -610,7 +620,7 @@ export class Building {
         }
       case BuildingType.CRIT_CHANCE:
         return {
-          critChance: 0.02 * this.level, // 2% per level
+          critChance: 2 * this.level, // 2% per level (flat addition)
         }
       case BuildingType.BURNING_AMPLIFY:
         return {
@@ -725,6 +735,10 @@ export class Building {
       case BuildingType.LUCKY:
         return {
           lucky: 0.1 * this.level, // 10% per level
+        }
+      case BuildingType.CHEST_LEVEL_BONUS:
+        return {
+          chestLevelBonus: this.level > 0 ? 1 : 0, // Unlocked if level > 0
         }
       default:
         return {}

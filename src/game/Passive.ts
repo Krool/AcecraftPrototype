@@ -330,8 +330,8 @@ export class PickupRadiusPassive extends Passive {
 // Critical Systems Implementation
 export class CriticalSystemsPassive extends Passive {
   applyModifiers(modifiers: WeaponModifiers): void {
-    // +10% crit chance per level
-    modifiers.critChance += 0.1 * this.level
+    // +10% crit chance per level (flat addition)
+    modifiers.critChance += 10 * this.level
     // +25% crit damage per level
     modifiers.critDamage += 0.25 * this.level
   }

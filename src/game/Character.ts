@@ -504,8 +504,8 @@ export class SwarmCharacter extends Character {
 // Tempest Implementation
 export class TempestCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // +20% crit chance on Nature damage (lightning weapons)
-    modifiers.critChance += TEMPEST.CRIT_CHANCE_BONUS / 100
+    // +20% crit chance on Nature damage is handled dynamically in GameScene
+    // per-projectile based on damage type
   }
 }
 
@@ -661,9 +661,9 @@ export class WardenCharacter extends Character {
 // Phantom Implementation
 export class PhantomCharacter extends Character {
   applyInnateAbility(modifiers: WeaponModifiers, playerStats: PlayerStats): void {
-    // Headshots deal 3x damage, +100% crit on snipers
+    // Headshots deal 3x damage, +100% crit on snipers - flat addition
     // This will be handled in sniper rifle weapon logic
-    modifiers.critChance += PHANTOM.CRIT_CHANCE_BONUS / 100 // 100% crit chance for snipers
+    modifiers.critChance += PHANTOM.CRIT_CHANCE_BONUS // 100% crit chance for snipers
     modifiers.critDamage += PHANTOM.CRIT_DAMAGE_BONUS // Additional 1.5x for "headshots" = 3x total
   }
 }
