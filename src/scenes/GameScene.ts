@@ -18,6 +18,8 @@ import { gameProgression } from '../game/GameProgression'
 import { MobileDetection } from '../utils/MobileDetection'
 import { RunStatistics, WeaponDPSData } from '../game/RunStatistics'
 import { PLAYER, WAVE_SPAWNING, COMBAT, ALLIES, FROST_HASTE, CHESTS, LAYOUT } from '../constants'
+import { networkSystem, MessageType } from '../systems/NetworkSystem'
+import { partySystem, PartySlot } from '../systems/PartySystem'
 
 // XP requirements for each level (index 0 = level 1→2, index 1 = level 2→3, etc.)
 // Curve accelerates significantly starting at level 6, much steeper in late game
@@ -53,7 +55,18 @@ export default class GameScene extends Phaser.Scene {
   private gameState!: GameState
   private player!: Phaser.GameObjects.Text
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys
+  private wasd!: any
   private playerSpeed: number = 300
+
+  // Coop mode properties
+  private isCoopMode: boolean = false
+  private isHost: boolean = false
+  private player2?: Phaser.GameObjects.Text
+  private player2Body?: Phaser.Physics.Arcade.Body
+  private player2Speed: number = 300
+  private partnerSlot?: PartySlot
+  private lastNetworkSync: number = 0
+  private networkSyncRate: number = 50 // 20Hz sync rate
   private projectiles!: ProjectileGroup
   private enemies!: EnemyGroup
   private allies!: AllyGroup
@@ -77,10 +90,17 @@ export default class GameScene extends Phaser.Scene {
   private levelText!: Phaser.GameObjects.Text
   private health: number = PLAYER.DEFAULT_HEALTH
   private maxHealth: number = PLAYER.DEFAULT_HEALTH
+  private player2Health: number = PLAYER.DEFAULT_HEALTH
+  private player2MaxHealth: number = PLAYER.DEFAULT_HEALTH
+  private player1Down: boolean = false
+  private player2Down: boolean = false
   private pendingHealAmount: number = 0 // Fractional healing accumulator for Vampiric Fire
   private healthText!: Phaser.GameObjects.Text
   private healthBarBackground!: Phaser.GameObjects.Rectangle
   private healthBarFill!: Phaser.GameObjects.Rectangle
+  private player2HealthBarBackground!: Phaser.GameObjects.Rectangle
+  private player2HealthBarFill!: Phaser.GameObjects.Rectangle
+  private player2HealthText!: Phaser.GameObjects.Text
   private xpBarBackground!: Phaser.GameObjects.Rectangle
   private xpBarFill!: Phaser.GameObjects.Rectangle
   private isPaused: boolean = false
@@ -144,6 +164,8 @@ export default class GameScene extends Phaser.Scene {
   private totalDamageDealt: number = 0
   private killCount: number = 0
   private bossesKilled: number = 0
+  private bossDeathAnimationInProgress: boolean = false
+  private preBossPickupRadius: number = 0
   private runStartTime: number = 0
   private pauseStartTime: number = 0
   private totalPausedTime: number = 0
@@ -180,6 +202,7 @@ export default class GameScene extends Phaser.Scene {
   private creditsCollectedText!: Phaser.GameObjects.Text
   private lastEngineTrailTime: number = 0
   private lastHitTime: number = 0
+  private lastHitTimePlayer2: number = 0
   private gameOverUI: Phaser.GameObjects.GameObject[] = []
 
   // Guaranteed chest system
@@ -201,6 +224,7 @@ export default class GameScene extends Phaser.Scene {
 
   // New weapon/passive/character system
   private weapons: Weapon[] = []
+  private player2Weapons: Weapon[] = [] // Coop partner weapons
   private passives: Passive[] = []
   private character!: Character
   private characterColor!: string
@@ -257,6 +281,14 @@ export default class GameScene extends Phaser.Scene {
     // Initialize game state
     this.gameState = GameState.getInstance()
 
+    // Check for coop mode
+    this.isCoopMode = this.registry.get('isCoopMode') || false
+    if (this.isCoopMode) {
+      this.isHost = networkSystem.isHost
+      this.partnerSlot = partySystem.getOtherPlayerSlot() || undefined
+      console.log('[GameScene] Starting in coop mode, isHost:', this.isHost)
+    }
+
     // Start random background music (lazy loaded on-demand)
     const randomTrack = Phaser.Math.Between(1, 20)
     if (this.bgMusic) {
@@ -291,9 +323,12 @@ export default class GameScene extends Phaser.Scene {
     this.totalDamageDealt = 0
     this.killCount = 0
     this.bossesKilled = 0
+    this.bossDeathAnimationInProgress = false
+    this.preBossPickupRadius = 0
     this.runStartTime = 0
     this.pauseStartTime = 0
     this.lastHitTime = 0
+    this.lastHitTimePlayer2 = 0
     this.frameDropCount = 0
     this.severeFrameDropCount = 0
     this.slowUpdateCount = 0
@@ -332,6 +367,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Clear weapons and passives arrays
     this.weapons = []
+    this.player2Weapons = []
     this.passives = []
 
     // Reset weapon modifiers and player stats to defaults
@@ -361,8 +397,8 @@ export default class GameScene extends Phaser.Scene {
     // Add level-specific background
     this.createLevelBackground(levelIndex)
 
-    // Add scrolling star field with level-specific theme
-    this.createStarField(levelIndex)
+    // Defer star field creation to reduce initial frame drops
+    this.time.delayedCall(100, () => this.createStarField(levelIndex))
 
     // Create UI containers
     // Top container (semi-transparent dark)
@@ -388,6 +424,14 @@ export default class GameScene extends Phaser.Scene {
 
     // Setup keyboard controls
     this.cursors = this.input.keyboard!.createCursorKeys()
+    this.wasd = this.input.keyboard!.addKeys('W,A,S,D')
+
+    // Setup gamepad controls
+    if (this.input.gamepad) {
+      this.input.gamepad.once('connected', (pad: Phaser.Input.Gamepad.Gamepad) => {
+        console.log('Gamepad connected')
+      })
+    }
 
     // Add backtick (`) key to toggle performance monitor (common debug key)
     this.input.keyboard!.on('keydown-BACKTICK', () => {
@@ -550,6 +594,11 @@ export default class GameScene extends Phaser.Scene {
       this.physics.pause()
       this.starFieldTweens.forEach(tween => tween.pause())
 
+      // In coop mode, sync pause to partner
+      if (this.isCoopMode) {
+        networkSystem.send(MessageType.STATE_SYNC, { type: 'pause' })
+      }
+
       // Show confirmation dialog
       this.showMenuConfirmation()
     })
@@ -688,8 +737,8 @@ export default class GameScene extends Phaser.Scene {
     // Create projectile group (no pooling - creates/destroys as needed)
     this.projectiles = new ProjectileGroup(this)
 
-    // Create enemy group with large pool to support hundreds of enemies
-    this.enemies = new EnemyGroup(this, 200, 150)
+    // Create enemy group with smaller initial pool (grows dynamically as needed)
+    this.enemies = new EnemyGroup(this, 50, 150)
 
     // Create ally group for squadron support
     this.allies = new AllyGroup(this, 20, 10)
@@ -738,18 +787,121 @@ export default class GameScene extends Phaser.Scene {
     playerBody.setSize(collisionSize, collisionSize)
     playerBody.setCircle(characterConfig.collisionRadius) // Use circular collision for better hit detection
 
+    // Create player2 for coop mode
+    if (this.isCoopMode && this.partnerSlot) {
+      const partner2Config = CHARACTER_CONFIGS[this.partnerSlot.character]
+      this.player2 = this.add.text(
+        this.cameras.main.centerX + 80, // Offset from player1
+        this.cameras.main.height - 100,
+        partner2Config.symbol,
+        {
+          fontFamily: 'Courier New',
+          fontSize: '72px',
+          color: partner2Config.color,
+        }
+      )
+        .setOrigin(0.5)
+        .setDepth(25)
+        .setScale(partner2Config.scale)
+
+      // Enable physics on player2
+      this.physics.add.existing(this.player2)
+      this.player2Body = this.player2.body as Phaser.Physics.Arcade.Body
+      this.player2Body.setCollideWorldBounds(true)
+      const collision2Size = partner2Config.collisionRadius * 2
+      this.player2Body.setSize(collision2Size, collision2Size)
+      this.player2Body.setCircle(partner2Config.collisionRadius)
+
+      // Set player2 speed from partner's character config
+      this.player2Speed = partner2Config.speed
+
+      // Set player2 health (use default for now)
+      this.player2Health = PLAYER.DEFAULT_HEALTH
+      this.player2MaxHealth = PLAYER.DEFAULT_HEALTH
+      this.player1Down = false
+      this.player2Down = false
+
+      // Create player2 health bar
+      const healthBarWidth = 60
+      const healthBarHeight = 12
+      this.player2HealthBarBackground = this.add.rectangle(
+        0, 0,
+        healthBarWidth,
+        healthBarHeight,
+        0x550000
+      ).setOrigin(0.5, 0).setDepth(50).setVisible(false)
+
+      this.player2HealthBarFill = this.add.rectangle(
+        0, 0,
+        healthBarWidth - 2,
+        healthBarHeight - 2,
+        0x00ff00
+      ).setOrigin(0, 0).setDepth(51).setVisible(false)
+
+      this.player2HealthText = this.add.text(0, 0, '100', {
+        fontFamily: 'Courier New',
+        fontSize: '12px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0.5).setDepth(52).setVisible(false)
+      this.player2HealthText.setStroke('#000000', 2)
+
+      // Add collision detection for player2 with power-ups
+      this.physics.add.overlap(
+        this.player2,
+        this.powerUps,
+        this.handlePowerUpCollection as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+        undefined,
+        this
+      )
+
+      // Add collision detection for player2 with enemy projectiles
+      this.physics.add.overlap(
+        this.player2,
+        this.enemyProjectiles,
+        this.handleEnemyProjectileHit as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+        undefined,
+        this
+      )
+
+      // Add collision detection for player2 with enemies
+      this.physics.add.overlap(
+        this.player2,
+        this.enemies,
+        this.handlePlayerEnemyCollision as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+        (playerObj, enemObj) => {
+          const enem = enemObj as any
+          return enem.body && enem.body.enable && enem.active
+        },
+        this
+      )
+
+      // Setup network handlers for coop
+      this.setupCoopNetworkHandlers()
+
+      // Initialize player2's starting weapon
+      const player2StartingWeaponType = partner2Config.startingWeapon
+      const player2StartingWeapon = WeaponFactory.create(this, player2StartingWeaponType, this.projectiles)
+      this.player2Weapons.push(player2StartingWeapon)
+    }
+
     // Now link enemy projectiles and player reference to enemies
     this.enemies.setProjectileGroup(this.enemyProjectiles)
     this.enemies.setPlayerReference(this.player)
 
-    // Create XP drop group (start small, grows dynamically)
+    // Set player2 reference for coop enemy targeting
+    if (this.isCoopMode && this.player2) {
+      this.enemies.setPlayer2Reference(this.player2)
+    }
+
+    // Create XP drop group (smaller initial pool to reduce frame drops)
     this.xpDrops = new XPDropGroup(this, 50)
 
-    // Create credit drop group (start small, grows dynamically)
-    this.creditDrops = new CreditDropGroup(this, 30)
+    // Create credit drop group (smaller initial pool to reduce frame drops)
+    this.creditDrops = new CreditDropGroup(this, 50)
 
     // Create power-up group (start small, grows dynamically)
-    this.powerUps = new PowerUpGroup(this, 20)
+    this.powerUps = new PowerUpGroup(this, 50)
 
     // Campaign manager already initialized earlier for background creation
 
@@ -2882,26 +3034,56 @@ export default class GameScene extends Phaser.Scene {
         this.player.setColor(this.characterColor)
         this.player.setScale(1)
       }
+
+      // Player2 invulnerability visual effect in coop mode
+      if (this.isCoopMode && this.player2 && !this.player2Down) {
+        const timeSinceHit2 = time - this.lastHitTimePlayer2
+        const hasIFrames2 = timeSinceHit2 < this.playerStats.invulnFrames
+
+        if (hasIFrames2) {
+          // Flash effect for player2
+          const colorIndex = Math.floor(time / 50) % 7
+          this.player2.setColor(this.RAINBOW_COLORS[colorIndex])
+          const glowPhase = Math.sin(time / 100) * 0.05 + 1
+          this.player2.setScale(glowPhase)
+        } else if (this.partnerSlot) {
+          // Restore player2 color
+          const partner2Config = CHARACTER_CONFIGS[this.partnerSlot.character]
+          this.player2.setColor(partner2Config.color)
+          this.player2.setScale(partner2Config.scale)
+        }
+      }
     }
 
     // BASTION: Block movement if fired weapons last frame (turret mode)
     const isBastionFiring = this.character.getConfig().type === 'BASTION' && this.bastionFiredLastFrame
 
-    // Only allow player movement if not paused and not Bastion firing
-    if (!this.isPaused && !isBastionFiring) {
-      // Keyboard controls
-      if (this.cursors.left.isDown) {
+    // Only allow player movement if not paused, not Bastion firing, and not down
+    if (!this.isPaused && !isBastionFiring && !this.player1Down) {
+      // Gamepad input
+      const pad = this.input.gamepad?.pad1
+      const stickX = pad ? pad.leftStick.x : 0
+      const stickY = pad ? pad.leftStick.y : 0
+      const deadZone = 0.1
+
+      // Horizontal movement
+      if (this.cursors.left.isDown || this.wasd.A.isDown) {
         playerBody.setVelocityX(-this.playerSpeed)
-      } else if (this.cursors.right.isDown) {
+      } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
         playerBody.setVelocityX(this.playerSpeed)
+      } else if (Math.abs(stickX) > deadZone) {
+        playerBody.setVelocityX(stickX * this.playerSpeed)
       } else if (!this.input.activePointer.isDown) {
         playerBody.setVelocityX(0)
       }
 
-      if (this.cursors.up.isDown) {
+      // Vertical movement
+      if (this.cursors.up.isDown || this.wasd.W.isDown) {
         playerBody.setVelocityY(-this.playerSpeed)
-      } else if (this.cursors.down.isDown) {
+      } else if (this.cursors.down.isDown || this.wasd.S.isDown) {
         playerBody.setVelocityY(this.playerSpeed)
+      } else if (Math.abs(stickY) > deadZone) {
+        playerBody.setVelocityY(stickY * this.playerSpeed)
       } else if (!this.input.activePointer.isDown) {
         playerBody.setVelocityY(0)
       }
@@ -2914,6 +3096,10 @@ export default class GameScene extends Phaser.Scene {
     // Create engine trail particles (only if not paused)
     if (!this.isPaused && time - this.lastEngineTrailTime > 50) {
       this.createEngineTrail()
+      // Also create engine trail for player2 in coop mode
+      if (this.isCoopMode && this.player2) {
+        this.createEngineTrailForPlayer(this.player2)
+      }
       this.lastEngineTrailTime = time
     }
 
@@ -2944,44 +3130,61 @@ export default class GameScene extends Phaser.Scene {
       if (this.playerStats.healthRegen > 0) {
         const regenAmount = (this.playerStats.healthRegen * cappedDelta) / 1000 // Convert to per-second
         this.health = Math.floor(Math.min(this.maxHealth, this.health + regenAmount))
+
+        // Apply regen to player2 in coop
+        if (this.isCoopMode && this.player2 && !this.player2Down) {
+          this.player2Health = Math.floor(Math.min(this.player2MaxHealth, this.player2Health + regenAmount))
+        }
       }
 
-      // Fire all equipped weapons
-      this.bastionFiredLastFrame = false // Reset Bastion firing tracker
+      // Fire all equipped weapons (skip if player1 is down in coop)
+      if (!this.player1Down) {
+        this.bastionFiredLastFrame = false // Reset Bastion firing tracker
 
-      // Cache character type to avoid repeated getConfig() calls
-      const isHavoc = this.character.getConfig().type === 'HAVOC'
+        // Cache character type to avoid repeated getConfig() calls
+        const isHavoc = this.character.getConfig().type === 'HAVOC'
 
-      this.weapons.forEach(weapon => {
-        // Only create modified weaponModifiers if needed (avoid object spread GC pressure)
-        let weaponModifiers = this.weaponModifiers
+        this.weapons.forEach(weapon => {
+          // Only create modified weaponModifiers if needed (avoid object spread GC pressure)
+          let weaponModifiers = this.weaponModifiers
 
-        // Havoc: Minigun never stops firing (near-instant fire rate)
-        if (isHavoc && weapon.getConfig().type === 'MINIGUN') {
-          // Only create spread when modification is needed
-          weaponModifiers = { ...this.weaponModifiers }
-          weaponModifiers.fireRateMultiplier *= 0.01 // 99% faster = continuous fire
-        }
+          // Havoc: Minigun never stops firing (near-instant fire rate)
+          if (isHavoc && weapon.getConfig().type === 'MINIGUN') {
+            // Only create spread when modification is needed
+            weaponModifiers = { ...this.weaponModifiers }
+            weaponModifiers.fireRateMultiplier *= 0.01 // 99% faster = continuous fire
+          }
 
-        if (weapon.canFire(time, weaponModifiers)) {
-          weapon.fire(this.player.x, this.player.y - 30, weaponModifiers)
-          weapon.setLastFireTime(time)
+          if (weapon.canFire(time, weaponModifiers)) {
+            weapon.fire(this.player.x, this.player.y - 30, weaponModifiers)
+            weapon.setLastFireTime(time)
 
-          // Track for Bastion turret mode
-          if (this.character.getConfig().type === 'BASTION') {
-            this.bastionFiredLastFrame = true
-            if (this.character instanceof BastionCharacter) {
-              this.character.setFiring(true)
+            // Track for Bastion turret mode
+            if (this.character.getConfig().type === 'BASTION') {
+              this.bastionFiredLastFrame = true
+              if (this.character instanceof BastionCharacter) {
+                this.character.setFiring(true)
+              }
             }
           }
-        }
-      })
+        })
 
-      // Update Bastion firing state if didn't fire
-      if (!this.bastionFiredLastFrame && this.character.getConfig().type === 'BASTION') {
-        if (this.character instanceof BastionCharacter) {
-          this.character.setFiring(false)
+        // Update Bastion firing state if didn't fire
+        if (!this.bastionFiredLastFrame && this.character.getConfig().type === 'BASTION') {
+          if (this.character instanceof BastionCharacter) {
+            this.character.setFiring(false)
+          }
         }
+      } // End player1Down check
+
+      // Fire player2 weapons in coop mode (only if not down)
+      if (this.isCoopMode && this.player2 && this.player2.active && !this.player2Down) {
+        this.player2Weapons.forEach(weapon => {
+          if (weapon.canFire(time, this.weaponModifiers)) {
+            weapon.fire(this.player2!.x, this.player2!.y - 30, this.weaponModifiers)
+            weapon.setLastFireTime(time)
+          }
+        })
       }
     }
 
@@ -2991,6 +3194,10 @@ export default class GameScene extends Phaser.Scene {
       if (time - this.lastPoolLogTime > 10000) {
         const poolStatus = this.enemies.getPoolStatus()
         console.log(`[Pool Health Check] Active: ${poolStatus.active}/${this.enemies.getChildren().length}, Inactive: ${poolStatus.inactive}, Body Disabled: ${poolStatus.bodyDisabled}`)
+
+        // Log projectile pool status
+        const projActive = this.projectiles.getActiveCount()
+        console.log(`[Projectile Pool] Active: ${projActive}/200`)
 
         // Periodic sync of cached count to prevent drift (performance optimization)
         this.cachedActiveEnemyCount = poolStatus.active
@@ -3076,12 +3283,8 @@ export default class GameScene extends Phaser.Scene {
         if (waveDuration > WAVE_TIMEOUT) {
           console.warn(`Wave failsafe triggered! Wave has been running for ${waveDuration / 1000}s. Active enemies: ${activeEnemyCount}`)
 
-          // Force clear any remaining enemies
-          this.enemies.getChildren().forEach((enemy: any) => {
-            if (enemy.active) {
-              enemy.destroy()
-            }
-          })
+          // Force clear any remaining enemies using proper pool reset
+          this.enemies.resetPool()
 
           // Start next wave
           this.waveInProgress = false
@@ -3112,8 +3315,8 @@ export default class GameScene extends Phaser.Scene {
       // Update wave UI
       this.updateWaveUI()
 
-      // Check for win condition (all waves complete)
-      if (this.waveSystem.isComplete() && activeEnemyCount === 0) {
+      // Check for win condition (all waves complete, and boss animation finished)
+      if (this.waveSystem.isComplete() && activeEnemyCount === 0 && !this.bossDeathAnimationInProgress) {
         this.levelWon()
       }
 
@@ -3124,6 +3327,7 @@ export default class GameScene extends Phaser.Scene {
       this.enemies.update(time, cappedDelta)
       this.allies.update(time, cappedDelta, this.player.x, this.player.y, this.enemies)
       this.enemyProjectiles.update(cappedDelta)
+      this.projectiles.update(cappedDelta)
 
       // Check for ally respawns
       this.allyRespawnTimers.forEach((respawnTime, allyKey) => {
@@ -3154,10 +3358,17 @@ export default class GameScene extends Phaser.Scene {
       })
 
       // Update XP drops (pass player's pickup radius from stats)
+      // In coop mode, update for both players so both can collect
       this.xpDrops.update(this.player.x, this.player.y, this.playerStats.pickupRadius)
+      if (this.isCoopMode && this.player2) {
+        this.xpDrops.update(this.player2.x, this.player2.y, this.playerStats.pickupRadius)
+      }
 
       // Update credit drops
       this.creditDrops.update(this.player.x, this.player.y, this.playerStats.pickupRadius)
+      if (this.isCoopMode && this.player2) {
+        this.creditDrops.update(this.player2.x, this.player2.y, this.playerStats.pickupRadius)
+      }
 
       this.powerUps.update()
 
@@ -3181,6 +3392,9 @@ export default class GameScene extends Phaser.Scene {
 
       // Update power-up timers
       this.updatePowerUpTimers(time)
+
+      // Sync player position in coop mode
+      this.syncPlayerPosition()
 
       // Update buff display only when power-up state changes (performance optimization)
       const currentPowerUpState = `${this.hasShield}-${this.hasRapidFirePowerUp}-${this.hasMagnet}-${this.hasOverdrive}`
@@ -3350,6 +3564,16 @@ export default class GameScene extends Phaser.Scene {
         this.powerUps.spawnPowerUp(data.x + chestOffsetX, data.y + chestOffsetY, PowerUpType.CHEST)
         this.chestsSpawnedThisRun++
       }
+
+      // Check if this is the final boss of the level (boss on final wave, last enemy)
+      const currentWave = this.waveSystem.getCurrentWave()
+      const totalWaves = this.waveSystem.getTotalWaves()
+      const remainingEnemies = this.enemies.getChildren().filter((e: any) => e.active).length
+
+      if (isBoss && currentWave === totalWaves && remainingEnemies === 0) {
+        // Final boss death - trigger epic animation
+        this.triggerFinalBossDeathAnimation(data.x, data.y)
+      }
     } else {
       // Normal enemy drops: 60% chance to drop XP (performance optimization)
       // When it drops, XP value is increased to compensate (1.67x)
@@ -3425,10 +3649,15 @@ export default class GameScene extends Phaser.Scene {
         if (powerUp && powerUp.getPowerUpType() === PowerUpType.CHEST) {
           this.chestsSpawnedThisRun++
 
-          // If we exceeded max chests, destroy this one and spawn a different power-up
+          // If we exceeded max chests, deactivate this one and spawn a different power-up
           if (this.chestsSpawnedThisRun > this.maxChestsPerRun) {
             powerUp.setActive(false)
             powerUp.setVisible(false)
+            powerUp.setPosition(-1000, -1000)
+            if (powerUp.body) {
+              powerUp.body.setVelocity(0, 0)
+              powerUp.body.enable = false
+            }
             this.chestsSpawnedThisRun--
 
             // Spawn a different random power-up (non-chest)
@@ -3744,16 +3973,29 @@ export default class GameScene extends Phaser.Scene {
     this.levelText.setText(`${this.level}`)
     this.updateXPDisplay()
 
-    // Pause game and show upgrades
-    this.isPaused = true
-    this.pauseStartTime = this.time.now
-    this.physics.pause()
-    // Pause star field
-    this.starFieldTweens.forEach(tween => tween.pause())
-    this.showUpgradeOptions()
+    // In coop mode, don't pause the game - show upgrades as overlay while game continues
+    if (this.isCoopMode) {
+      this.showUpgradeOptions()
+    } else {
+      // Pause game and show upgrades (single player)
+      this.isPaused = true
+      this.pauseStartTime = this.time.now
+      this.physics.pause()
+      // Pause star field
+      this.starFieldTweens.forEach(tween => tween.pause())
+      this.showUpgradeOptions()
+    }
   }
 
   private resumeGame() {
+    // In coop mode, game was never paused - just handle pending level ups
+    if (this.isCoopMode) {
+      if (this.pendingLevelUps > 0) {
+        this.levelUp()
+      }
+      return
+    }
+
     // Track paused time before unpausing
     if (this.pauseStartTime > 0) {
       const pausedDuration = this.time.now - this.pauseStartTime
@@ -3889,6 +4131,62 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
+  private createEngineTrailForPlayer(player: Phaser.GameObjects.Text) {
+    // Get partner's character config for engine count
+    const partnerSlot = this.registry.get('partyState')?.slots?.find(
+      (slot: any) => !slot.isEmpty && slot.peerId !== this.registry.get('partyState')?.slots[this.registry.get('partyState')?.localSlotIndex]?.peerId
+    )
+    const partnerCharType = partnerSlot?.character || 'VULCAN'
+    const partnerConfig = CHARACTER_CONFIGS[partnerCharType as CharacterType]
+    const engineCount = partnerConfig?.engineCount || 2
+
+    const shipWidth = player.displayWidth
+    const shipHeight = player.displayHeight
+
+    let enginePositions: number[] = []
+    switch (engineCount) {
+      case 1:
+        enginePositions = [0]
+        break
+      case 2:
+        enginePositions = [-0.35, 0.35]
+        break
+      case 3:
+        enginePositions = [-0.4, 0, 0.4]
+        break
+      case 4:
+        enginePositions = [-0.45, -0.15, 0.15, 0.45]
+        break
+      default:
+        enginePositions = [-0.35, 0.35]
+    }
+
+    const engineOffsets = enginePositions.map(fraction => fraction * shipWidth)
+
+    engineOffsets.forEach(offset => {
+      const trail = this.add.text(
+        player.x + offset,
+        player.y + (shipHeight / 2),
+        '·',
+        {
+          fontFamily: 'Courier New',
+          fontSize: '60px',
+          color: partnerConfig?.color || '#00ccff',
+        }
+      ).setOrigin(0.5).setDepth(9).setAlpha(0.6)
+
+      this.tweens.add({
+        targets: trail,
+        y: trail.y + 40,
+        alpha: 0,
+        scale: 0.5,
+        duration: 400,
+        ease: 'Cubic.easeOut',
+        onComplete: () => trail.destroy()
+      })
+    })
+  }
+
   private createCriticalHitBurst(x: number, y: number) {
     // Create 8-10 sparkle particles that burst outward from the hit point
     const sparkleCount = Phaser.Math.Between(8, 10)
@@ -3960,6 +4258,116 @@ export default class GameScene extends Phaser.Scene {
         onComplete: () => confetti.destroy()
       })
     }
+  }
+
+  private triggerFinalBossDeathAnimation(x: number, y: number) {
+    // Set flag to delay victory screen
+    this.bossDeathAnimationInProgress = true
+
+    // Apply magnet buff - massively increase pickup radius
+    this.preBossPickupRadius = this.playerStats.pickupRadius
+    this.playerStats.pickupRadius = this.preBossPickupRadius * 5
+
+    // Screen shake
+    this.cameras.main.shake(500, 0.02)
+
+    // Create multiple explosions in sequence
+    const explosionCount = 8
+    for (let i = 0; i < explosionCount; i++) {
+      this.time.delayedCall(i * 150, () => {
+        const offsetX = Phaser.Math.Between(-80, 80)
+        const offsetY = Phaser.Math.Between(-80, 80)
+        this.createExplosionEffect(x + offsetX, y + offsetY)
+
+        // Additional screen shake for each explosion
+        this.cameras.main.shake(100, 0.01)
+      })
+    }
+
+    // Create expanding shockwave
+    const shockwave = this.add.circle(x, y, 10, 0xffffff, 0.8).setDepth(100)
+    this.tweens.add({
+      targets: shockwave,
+      radius: 300,
+      alpha: 0,
+      duration: 1000,
+      ease: 'Cubic.easeOut',
+      onComplete: () => shockwave.destroy()
+    })
+
+    // Create "BOSS DEFEATED" text
+    const defeatText = this.add.text(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY - 50,
+      'BOSS DEFEATED!',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '48px',
+        color: '#ffff00',
+        fontStyle: 'bold',
+      }
+    ).setOrigin(0.5).setDepth(150).setAlpha(0).setScale(0.5)
+
+    // Animate the text
+    this.tweens.add({
+      targets: defeatText,
+      alpha: 1,
+      scale: 1.2,
+      duration: 500,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: defeatText,
+          scale: 1,
+          duration: 200,
+          ease: 'Cubic.easeOut'
+        })
+      }
+    })
+
+    // Create particle burst
+    const particleColors = ['#ff0000', '#ff6600', '#ffff00', '#00ff00', '#00ffff', '#ff00ff']
+    for (let i = 0; i < 30; i++) {
+      const angle = (i / 30) * Math.PI * 2
+      const speed = 200 + Math.random() * 150
+      const color = Phaser.Utils.Array.GetRandom(particleColors)
+
+      const particle = this.add.text(x, y, '✦', {
+        fontFamily: 'Courier New',
+        fontSize: '16px',
+        color: color,
+      }).setOrigin(0.5).setDepth(101)
+
+      this.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * speed,
+        y: y + Math.sin(angle) * speed,
+        alpha: 0,
+        scale: 0.3,
+        duration: 1500,
+        ease: 'Cubic.easeOut',
+        onComplete: () => particle.destroy()
+      })
+    }
+
+    // After animation completes (3 seconds), reset pickup radius and allow victory
+    this.time.delayedCall(3000, () => {
+      // Fade out the defeat text
+      this.tweens.add({
+        targets: defeatText,
+        alpha: 0,
+        y: defeatText.y - 30,
+        duration: 500,
+        ease: 'Cubic.easeIn',
+        onComplete: () => defeatText.destroy()
+      })
+
+      // Reset pickup radius
+      this.playerStats.pickupRadius = this.preBossPickupRadius
+
+      // Allow victory screen to appear
+      this.bossDeathAnimationInProgress = false
+    })
   }
 
   private displayUnlockedShips(newlyUnlockedShips: CharacterType[], baseY: number): number {
@@ -6613,8 +7021,14 @@ export default class GameScene extends Phaser.Scene {
         // Don't destroy on bounce - projectile continues
         return
       } else {
-        // No bounces left - destroy projectile
-        projectile.destroy()
+        // No bounces left - deactivate projectile for pool reuse
+        projectile.setActive(false)
+        projectile.setVisible(false)
+        projectile.setPosition(-1000, -1000)
+        if (projectile.body) {
+          projectile.body.setVelocity(0, 0)
+          projectile.body.enable = false
+        }
         return
       }
     }
@@ -6650,15 +7064,27 @@ export default class GameScene extends Phaser.Scene {
         this.damageZones.push(zone)
       }
 
-      // Earth projectiles always destroy on hit (don't pierce)
-      projectile.destroy()
+      // Earth projectiles always deactivate on hit (don't pierce)
+      projectile.setActive(false)
+      projectile.setVisible(false)
+      projectile.setPosition(-1000, -1000)
+      if (projectile.body) {
+        projectile.body.setVelocity(0, 0)
+        projectile.body.enable = false
+      }
       return
     }
 
-    // Check if projectile should be destroyed (based on pierce)
+    // Check if projectile should be deactivated (based on pierce)
     const shouldDestroy = projectile.onHit()
     if (shouldDestroy) {
-      projectile.destroy()
+      projectile.setActive(false)
+      projectile.setVisible(false)
+      projectile.setPosition(-1000, -1000)
+      if (projectile.body) {
+        projectile.body.setVelocity(0, 0)
+        projectile.body.enable = false
+      }
     }
   }
 
@@ -6764,6 +7190,52 @@ export default class GameScene extends Phaser.Scene {
 
     // Check if enemy is still active
     if (!enemy.active) {
+      return
+    }
+
+    // In coop mode, handle player2 damage separately
+    if (this.isCoopMode && playerObj === this.player2) {
+      // Skip if player2 is already down
+      if (this.player2Down) return
+
+      // Check invulnerability frames for player2 (including shield)
+      const timeSinceHit2 = this.time.now - this.lastHitTimePlayer2
+      const hasIFrames2 = timeSinceHit2 < this.playerStats.invulnFrames
+      if (hasIFrames2 || this.hasShield) {
+        return // Still invulnerable
+      }
+
+      // Damage player2
+      const enemyType = enemy.getType ? enemy.getType() : null
+      const isBoss = this.isBossType(enemyType)
+      const isMiniBoss = this.isMiniBossType(enemyType)
+      const collisionDamage = (isBoss || isMiniBoss) ? 30 : 10
+      this.player2Health -= collisionDamage
+      soundManager.play(SoundType.PLAYER_HIT)
+
+      // Set last hit time for player2 invulnerability
+      this.lastHitTimePlayer2 = this.time.now
+
+      // Contact damage to enemy from player2
+      if (isBoss || isMiniBoss) {
+        const maxHealth = enemy.getMaxHealth ? enemy.getMaxHealth() : 100
+        const contactDamage = Math.max(10, Math.floor(maxHealth * 0.05))
+        enemy.takeDamage(contactDamage)
+      } else {
+        enemy.takeDamage(999)
+      }
+
+      // Update health display
+      this.updateHealthDisplay()
+
+      // Check if player2 is down
+      if (this.player2Health <= 0) {
+        this.player2Down = true
+        this.player2!.setAlpha(0.3)
+        if (this.player1Down) {
+          this.gameOver()
+        }
+      }
       return
     }
 
@@ -6894,20 +7366,37 @@ export default class GameScene extends Phaser.Scene {
         const bonuses2 = this.gameState.getTotalBonuses()
         const baseHealPercent = 0.2
         const healPercent = baseHealPercent * (1 + (bonuses2.healthPackValue || 0))
-        const healAmount = Math.floor(this.maxHealth * healPercent)
-        const oldHealth = this.health
-        this.health = Math.floor(Math.min(this.maxHealth, this.health + healAmount))
-        const actualHealAmount = this.health - oldHealth
+
+        // Determine which player to heal based on who collected it
+        const isPlayer2Heal = this.isCoopMode && playerObj === this.player2
+        const targetMaxHealth = isPlayer2Heal ? this.player2MaxHealth : this.maxHealth
+        const healAmount = Math.floor(targetMaxHealth * healPercent)
+
+        let actualHealAmount = 0
+        let healTargetX = this.player.x
+        let healTargetY = this.player.y
+
+        if (isPlayer2Heal) {
+          const oldHealth2 = this.player2Health
+          this.player2Health = Math.floor(Math.min(this.player2MaxHealth, this.player2Health + healAmount))
+          actualHealAmount = this.player2Health - oldHealth2
+          healTargetX = this.player2!.x
+          healTargetY = this.player2!.y
+        } else {
+          const oldHealth = this.health
+          this.health = Math.floor(Math.min(this.maxHealth, this.health + healAmount))
+          actualHealAmount = this.health - oldHealth
+        }
 
         // Only show visual feedback and text if health actually changed
         if (actualHealAmount > 0) {
           // Visual feedback - flash green
           this.cameras.main.flash(200, 0, 255, 0)
 
-          // Show healing text
+          // Show healing text at the correct player's position
           const healText = this.add.text(
-            this.player.x,
-            this.player.y - 40,
+            healTargetX,
+            healTargetY - 40,
             `+${actualHealAmount}`,
             {
               fontFamily: 'Courier New',
@@ -7138,7 +7627,16 @@ export default class GameScene extends Phaser.Scene {
 
     // Check for game over
     if (this.health <= 0) {
-      this.gameOver()
+      // In coop mode, only game over when both players are down
+      if (this.isCoopMode) {
+        this.player1Down = true
+        this.player.setAlpha(0.3)
+        if (this.player2Down) {
+          this.gameOver()
+        }
+      } else {
+        this.gameOver()
+      }
     }
   }
 
@@ -7176,6 +7674,38 @@ export default class GameScene extends Phaser.Scene {
         this.healthBarFill.setFillStyle(0xffaa00) // Orange
       } else {
         this.healthBarFill.setFillStyle(0xff0000) // Red
+      }
+    }
+
+    // Update player2 health bar in coop mode
+    if (this.isCoopMode && this.player2 && this.player2HealthBarBackground) {
+      const healthPercent2 = this.player2Health / this.player2MaxHealth
+      const isHurt2 = this.player2Health < this.player2MaxHealth
+
+      this.player2HealthBarBackground.setVisible(isHurt2 && !this.player2Down)
+      this.player2HealthBarFill.setVisible(isHurt2 && !this.player2Down)
+      this.player2HealthText.setVisible(isHurt2 && !this.player2Down)
+
+      if (isHurt2) {
+        const player2Y = this.player2.y + 35
+        const player2X = this.player2.x
+        const healthBarHeight = 12
+
+        this.player2HealthBarBackground.setPosition(player2X, player2Y)
+        this.player2HealthBarFill.setPosition(player2X - 29, player2Y + 1)
+        this.player2HealthText.setPosition(player2X, player2Y + healthBarHeight / 2)
+        this.player2HealthText.setText(`${Math.floor(this.player2Health)}`)
+
+        const healthBarMaxWidth = 56
+        this.player2HealthBarFill.width = healthBarMaxWidth * healthPercent2
+
+        if (healthPercent2 > 0.6) {
+          this.player2HealthBarFill.setFillStyle(0x00ff00)
+        } else if (healthPercent2 > 0.3) {
+          this.player2HealthBarFill.setFillStyle(0xffaa00)
+        } else {
+          this.player2HealthBarFill.setFillStyle(0xff0000)
+        }
       }
     }
   }
@@ -7440,17 +7970,39 @@ export default class GameScene extends Phaser.Scene {
       if (enemy.active) {
         enemy.setActive(false)
         enemy.setVisible(false)
+        enemy.setPosition(-1000, -1000)
         if (enemy.body) {
+          enemy.body.setVelocity(0, 0)
           enemy.body.enable = false
         }
       }
     })
 
-    // Clear enemy projectiles
-    this.enemyProjectiles.clear(false, false)
+    // Deactivate all enemy projectiles to preserve pool
+    this.enemyProjectiles.getChildren().forEach((proj: any) => {
+      if (proj.active) {
+        proj.setActive(false)
+        proj.setVisible(false)
+        proj.setPosition(-1000, -1000)
+        if (proj.body) {
+          proj.body.setVelocity(0, 0)
+          proj.body.enable = false
+        }
+      }
+    })
 
-    // Clear player projectiles
-    this.projectiles.clear(false, false)
+    // Deactivate all player projectiles to preserve pool
+    this.projectiles.getChildren().forEach((proj: any) => {
+      if (proj.active) {
+        proj.setActive(false)
+        proj.setVisible(false)
+        proj.setPosition(-1000, -1000)
+        if (proj.body) {
+          proj.body.setVelocity(0, 0)
+          proj.body.enable = false
+        }
+      }
+    })
 
     // Reset wave state to continue where we left off
     this.waveInProgress = true
@@ -7764,6 +8316,57 @@ export default class GameScene extends Phaser.Scene {
 
     if (!projectile.active) return
 
+    // In coop mode, handle player2 damage separately
+    if (this.isCoopMode && playerObj === this.player2) {
+      // Skip if player2 is already down
+      if (this.player2Down) {
+        const projectileBody = projectile.body as Phaser.Physics.Arcade.Body
+        projectile.setActive(false)
+        projectile.setVisible(false)
+        projectile.setPosition(-1000, -1000)
+        projectileBody.setVelocity(0, 0)
+        projectileBody.enable = false
+        return
+      }
+
+      // Check invulnerability frames for player2 (including shield)
+      const timeSinceHit2 = this.time.now - this.lastHitTimePlayer2
+      const hasIFrames2 = timeSinceHit2 < this.playerStats.invulnFrames
+      if (hasIFrames2 || this.hasShield) {
+        return // Still invulnerable
+      }
+
+      // Damage player2
+      const damage = projectile.getDamage()
+      this.player2Health -= damage
+      soundManager.play(SoundType.PLAYER_HIT)
+
+      // Set last hit time for player2 invulnerability
+      this.lastHitTimePlayer2 = this.time.now
+
+      // Destroy projectile
+      const projectileBody = projectile.body as Phaser.Physics.Arcade.Body
+      projectile.setActive(false)
+      projectile.setVisible(false)
+      projectile.setPosition(-1000, -1000)
+      projectileBody.setVelocity(0, 0)
+      projectileBody.enable = false
+
+      // Update health display
+      this.updateHealthDisplay()
+
+      // Check if player2 is down
+      if (this.player2Health <= 0) {
+        this.player2Down = true
+        this.player2!.setAlpha(0.3)
+        // Check game over (both players down)
+        if (this.player1Down) {
+          this.gameOver()
+        }
+      }
+      return
+    }
+
     // Check invulnerability frames
     const timeSinceHit = this.time.now - this.lastHitTime
     if (timeSinceHit < this.playerStats.invulnFrames) {
@@ -7789,13 +8392,37 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private handleEnemyExplosion(data: { x: number; y: number; radius: number; damage: number }) {
-    // Check if player is in explosion radius
+    // Check if player1 is in explosion radius
     const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, data.x, data.y)
 
     if (distance <= data.radius) {
       this.takeDamage(data.damage)
       // Screen shake
       this.cameras.main.shake(300, 0.015)
+    }
+
+    // Check if player2 is in explosion radius (coop mode)
+    if (this.isCoopMode && this.player2 && !this.player2Down) {
+      const distance2 = Phaser.Math.Distance.Between(this.player2.x, this.player2.y, data.x, data.y)
+      if (distance2 <= data.radius) {
+        // Check invuln frames for player2 (including shield)
+        const timeSinceHit2 = this.time.now - this.lastHitTimePlayer2
+        const hasIFrames2 = timeSinceHit2 < this.playerStats.invulnFrames
+        if (!hasIFrames2 && !this.hasShield) {
+          this.player2Health -= data.damage
+          this.lastHitTimePlayer2 = this.time.now
+          soundManager.play(SoundType.PLAYER_HIT)
+          this.updateHealthDisplay()
+
+          if (this.player2Health <= 0) {
+            this.player2Down = true
+            this.player2.setAlpha(0.3)
+            if (this.player1Down) {
+              this.gameOver()
+            }
+          }
+        }
+      }
     }
   }
 
@@ -8016,8 +8643,14 @@ export default class GameScene extends Phaser.Scene {
       noButton.destroy()
       noText.destroy()
 
-      // Resume game
-      this.resumeGame()
+      // In coop mode, sync resume to partner
+      if (this.isCoopMode) {
+        networkSystem.send(MessageType.STATE_SYNC, { type: 'resume' })
+        this.resumeFromMenu()
+      } else {
+        // Resume game
+        this.resumeGame()
+      }
     })
   }
 
@@ -8108,9 +8741,14 @@ export default class GameScene extends Phaser.Scene {
       const damage = projectile.getDamage ? projectile.getDamage() : 10
       ally.takeDamage(damage)
 
-      // Deactivate projectile
+      // Deactivate projectile for pool reuse
       projectile.setActive(false)
       projectile.setVisible(false)
+      projectile.setPosition(-1000, -1000)
+      if (projectile.body) {
+        projectile.body.setVelocity(0, 0)
+        projectile.body.enable = false
+      }
     }
   }
 
@@ -8450,6 +9088,7 @@ export default class GameScene extends Phaser.Scene {
       if (!soundManager.isMuted()) {
         this.bgMusic.play()
       }
+      this.showTrackName(trackName)
 
       // Start lazy loading other tracks in background
       this.lazyLoadRemainingTracks(trackNumber)
@@ -8468,6 +9107,7 @@ export default class GameScene extends Phaser.Scene {
         if (!soundManager.isMuted()) {
           this.bgMusic.play()
         }
+        this.showTrackName(trackName)
 
         // Start lazy loading other tracks in background
         this.lazyLoadRemainingTracks(trackNumber)
@@ -8481,6 +9121,31 @@ export default class GameScene extends Phaser.Scene {
 
       this.load.start()
     }
+  }
+
+  private showTrackName(trackName: string) {
+    const text = this.add.text(
+      this.cameras.main.width - 10,
+      this.cameras.main.height - 120,
+      `♪ ${trackName}`,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '14px',
+        color: '#00ffaa',
+        align: 'right',
+        stroke: '#000000',
+        strokeThickness: 3
+      }
+    ).setOrigin(1, 1).setDepth(1000).setAlpha(0)
+
+    this.tweens.add({
+      targets: text,
+      alpha: 1,
+      duration: 1000,
+      hold: 3000,
+      yoyo: true,
+      onComplete: () => text.destroy()
+    })
   }
 
   private lazyLoadRemainingTracks(excludeTrack: number) {
@@ -8567,6 +9232,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Clear arrays
     this.weapons = []
+    this.player2Weapons = []
     this.passives = []
     this.frostHasteExpireTimes = []
     this.damageTrackingWindow = []
@@ -8616,6 +9282,88 @@ export default class GameScene extends Phaser.Scene {
     this.events.off('pause')
     this.events.off('resume')
     this.input.off('pointerdown')
+  }
+
+  // Coop network methods
+  private setupCoopNetworkHandlers() {
+    // Handle incoming player input updates
+    networkSystem.on(MessageType.INPUT, (data: any, senderId?: string) => {
+      if (senderId === networkSystem.localPlayerId) return
+
+      // Update partner's velocity based on their input (use partner's character speed)
+      // Don't allow movement if player2 is down
+      if (this.player2 && this.player2Body && !this.player2Down) {
+        this.player2Body.setVelocity(
+          data.moveX * this.player2Speed,
+          data.moveY * this.player2Speed
+        )
+      } else if (this.player2Body && this.player2Down) {
+        this.player2Body.setVelocity(0, 0)
+      }
+    })
+
+    // Handle state sync from partner
+    networkSystem.on(MessageType.STATE_SYNC, (data: any) => {
+      if (data.type === 'player_position' && this.player2 && this.player2Body) {
+        // Smoothly interpolate to the synced position
+        const dx = data.x - this.player2.x
+        const dy = data.y - this.player2.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+
+        // If too far off, snap to position; otherwise smooth interpolate
+        if (dist > 100) {
+          this.player2.setPosition(data.x, data.y)
+        } else if (dist > 5) {
+          // Gradual correction
+          this.player2.x += dx * 0.3
+          this.player2.y += dy * 0.3
+        }
+
+        // Also set velocity from sync
+        if (data.vx !== undefined && data.vy !== undefined) {
+          this.player2Body.setVelocity(data.vx, data.vy)
+        }
+      } else if (data.type === 'pause' && !this.isPaused) {
+        // Partner paused the game
+        this.isPaused = true
+        this.pauseStartTime = this.time.now
+        this.physics.pause()
+        this.starFieldTweens.forEach(tween => tween.pause())
+        this.showMenuConfirmation()
+      } else if (data.type === 'resume' && this.isPaused) {
+        // Partner resumed the game
+        this.resumeFromMenu()
+      }
+    })
+  }
+
+  private resumeFromMenu() {
+    if (this.pauseStartTime > 0) {
+      const pausedDuration = this.time.now - this.pauseStartTime
+      this.totalPausedTime += pausedDuration
+      this.pauseStartTime = 0
+    }
+    this.isPaused = false
+    this.physics.resume()
+    this.starFieldTweens.forEach(tween => tween.resume())
+  }
+
+  private syncPlayerPosition() {
+    if (!this.isCoopMode) return
+
+    const now = Date.now()
+    if (now - this.lastNetworkSync < this.networkSyncRate) return
+    this.lastNetworkSync = now
+
+    // Send local player position
+    const playerBody = this.player.body as Phaser.Physics.Arcade.Body
+    networkSystem.send(MessageType.STATE_SYNC, {
+      type: 'player_position',
+      x: this.player.x,
+      y: this.player.y,
+      vx: playerBody.velocity.x,
+      vy: playerBody.velocity.y
+    })
   }
 }
 

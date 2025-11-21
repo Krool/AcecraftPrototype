@@ -729,6 +729,7 @@ export class Enemy extends Phaser.GameObjects.Text {
   private zigzagTime: number = 0
   private circleAngle: number = 0
   private playerRef: Phaser.GameObjects.GameObject | null = null
+  private player2Ref: Phaser.GameObjects.GameObject | null = null
   private enemyProjectiles: EnemyProjectileGroup | null = null
   private isCharging: boolean = false
   private healPulseTime: number = 0
@@ -805,6 +806,29 @@ export class Enemy extends Phaser.GameObjects.Text {
     this.playerRef = player
   }
 
+  setPlayer2Reference(player2: Phaser.GameObjects.GameObject | null) {
+    this.player2Ref = player2
+  }
+
+  // Get the nearest player for targeting (supports coop mode)
+  private getNearestPlayer(): Phaser.GameObjects.Text | null {
+    if (!this.playerRef) return null
+
+    const player1 = this.playerRef as Phaser.GameObjects.Text
+
+    // If no player2, return player1
+    if (!this.player2Ref) return player1
+
+    const player2 = this.player2Ref as Phaser.GameObjects.Text
+
+    // Calculate distances
+    const dist1 = Phaser.Math.Distance.Between(this.x, this.y, player1.x, player1.y)
+    const dist2 = Phaser.Math.Distance.Between(this.x, this.y, player2.x, player2.y)
+
+    // Return nearest player
+    return dist1 <= dist2 ? player1 : player2
+  }
+
   setProjectileGroup(projectiles: EnemyProjectileGroup) {
     this.enemyProjectiles = projectiles
   }
@@ -828,6 +852,11 @@ export class Enemy extends Phaser.GameObjects.Text {
       console.error('[Enemy] Cannot spawn - scene is undefined')
       this.setActive(false)
       this.setVisible(false)
+      this.setPosition(-1000, -1000)
+      if (this.body) {
+        this.body.setVelocity(0, 0)
+        this.body.enable = false
+      }
       return
     }
 
@@ -861,6 +890,11 @@ export class Enemy extends Phaser.GameObjects.Text {
           console.error(`[Enemy] setText failed for ${type}, enemy corrupted:`, e)
           this.setActive(false)
           this.setVisible(false)
+          this.setPosition(-1000, -1000)
+          if (this.body) {
+            this.body.setVelocity(0, 0)
+            this.body.enable = false
+          }
           return
         }
       }
@@ -929,6 +963,7 @@ export class Enemy extends Phaser.GameObjects.Text {
       console.error(`[Enemy] No physics body found for enemy type ${this.enemyType}`)
       this.setActive(false)
       this.setVisible(false)
+      this.setPosition(-1000, -1000)
       return
     }
 
@@ -986,9 +1021,9 @@ export class Enemy extends Phaser.GameObjects.Text {
         this.body.setVelocity(this.speed * this.patrolDirection, this.speed * 0.5)
         break
       case 'charge':
-        if (this.playerRef) {
-          const player = this.playerRef as Phaser.GameObjects.Text
-          const angle = Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y)
+        const chargeTarget = this.getNearestPlayer()
+        if (chargeTarget) {
+          const angle = Phaser.Math.Angle.Between(this.x, this.y, chargeTarget.x, chargeTarget.y)
           this.body.setVelocity(
             Math.cos(angle) * this.speed,
             Math.sin(angle) * this.speed
@@ -1547,12 +1582,12 @@ export class Enemy extends Phaser.GameObjects.Text {
         break
 
       case 'circle':
-        if (this.playerRef) {
+        const circleTarget = this.getNearestPlayer()
+        if (circleTarget) {
           this.circleAngle += cappedDelta * 0.002
-          const player = this.playerRef as Phaser.GameObjects.Text
           const radius = 150
-          const targetX = player.x + Math.cos(this.circleAngle) * radius
-          const targetY = player.y + Math.sin(this.circleAngle) * radius
+          const targetX = circleTarget.x + Math.cos(this.circleAngle) * radius
+          const targetY = circleTarget.y + Math.sin(this.circleAngle) * radius
 
           const dx = targetX - this.x
           const dy = targetY - this.y
@@ -1561,9 +1596,9 @@ export class Enemy extends Phaser.GameObjects.Text {
         break
 
       case 'charge':
-        if (!this.isCharging && this.playerRef) {
-          const player = this.playerRef as Phaser.GameObjects.Text
-          const angle = Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y)
+        const chargeTarget2 = this.getNearestPlayer()
+        if (!this.isCharging && chargeTarget2) {
+          const angle = Phaser.Math.Angle.Between(this.x, this.y, chargeTarget2.x, chargeTarget2.y)
           this.body.setVelocity(
             Math.cos(angle) * this.speed,
             Math.sin(angle) * this.speed
@@ -1709,9 +1744,10 @@ export class Enemy extends Phaser.GameObjects.Text {
   }
 
   private shoot() {
-    if (!this.enemyProjectiles || !this.playerRef) return
+    if (!this.enemyProjectiles) return
 
-    const player = this.playerRef as Phaser.GameObjects.Text
+    const player = this.getNearestPlayer()
+    if (!player) return
 
     if (this.behavior.specialAbility === 'spread_fire') {
       // Tank shoots 3 projectiles in a spread
@@ -1735,9 +1771,9 @@ export class Enemy extends Phaser.GameObjects.Text {
 
       this.setColor('#ffffff')
       this.colorResetTimer = this.scene.time.delayedCall(500, () => {
-        if (this.active && this.playerRef) {
-          const player = this.playerRef as Phaser.GameObjects.Text
-          this.enemyProjectiles?.fireAtTarget(this.x, this.y + 20, player.x, player.y, 300, 20)
+        const delayedTarget = this.getNearestPlayer()
+        if (this.active && delayedTarget) {
+          this.enemyProjectiles?.fireAtTarget(this.x, this.y + 20, delayedTarget.x, delayedTarget.y, 300, 20)
           this.setColor(this.originalColor)
         }
         this.colorResetTimer = null
@@ -2065,6 +2101,8 @@ export class EnemyGroup extends Phaser.Physics.Arcade.Group {
   private pool: Enemy[] = []
   private maxEnemies: number
   private enemyProjectiles: EnemyProjectileGroup | null = null
+  private playerRef: Phaser.GameObjects.GameObject | null = null
+  private player2Ref: Phaser.GameObjects.GameObject | null = null
 
   constructor(scene: Phaser.Scene, poolSize: number = 100, maxActive: number = 50) {
     super(scene.physics.world, scene)
@@ -2095,7 +2133,13 @@ export class EnemyGroup extends Phaser.Physics.Arcade.Group {
   }
 
   setPlayerReference(player: Phaser.GameObjects.GameObject) {
+    this.playerRef = player
     this.pool.forEach(enemy => enemy.setPlayerReference(player))
+  }
+
+  setPlayer2Reference(player2: Phaser.GameObjects.GameObject | null) {
+    this.player2Ref = player2
+    this.pool.forEach(enemy => enemy.setPlayer2Reference(player2))
   }
 
   setProjectileGroup(projectiles: EnemyProjectileGroup) {
@@ -2110,7 +2154,35 @@ export class EnemyGroup extends Phaser.Physics.Arcade.Group {
       return null
     }
 
-    const enemy = this.pool.find(e => !e.active)
+    let enemy = this.pool.find(e => !e.active)
+
+    // If no inactive enemy found, grow the pool dynamically
+    if (!enemy && this.pool.length < 300) { // Cap at 300 to prevent memory issues
+      const scene = this.scene
+      enemy = new Enemy(scene, 0, 0, EnemyType.DRONE)
+      scene.add.existing(enemy)
+      scene.physics.add.existing(enemy)
+      this.add(enemy, false)
+      this.pool.push(enemy)
+
+      if (enemy.body) {
+        enemy.body.setSize(1, 1)
+        enemy.body.enable = false
+      }
+
+      // Set references for the new enemy
+      if (this.playerRef) {
+        enemy.setPlayerReference(this.playerRef)
+      }
+      if (this.player2Ref) {
+        enemy.setPlayer2Reference(this.player2Ref)
+      }
+      if (this.enemyProjectiles) {
+        enemy.setProjectileGroup(this.enemyProjectiles)
+      }
+
+      console.log(`[EnemyGroup] Pool grew to ${this.pool.length} enemies`)
+    }
 
     if (enemy) {
       // Verify enemy has valid scene reference before spawning

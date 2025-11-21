@@ -3,13 +3,37 @@ import { GameState } from '../game/GameState'
 import { BuildingType } from '../game/Building'
 import { CAMPAIGN_LEVELS } from '../game/Campaign'
 import { soundManager, SoundType } from '../game/SoundManager'
-import { CHARACTER_CONFIGS } from '../game/Character'
+import { CHARACTER_CONFIGS, CharacterType } from '../game/Character'
 import { gameProgression } from '../game/GameProgression'
+import { partySystem, PartyState } from '../systems/PartySystem'
+
+// Default 3-character names - real words, clever arrangements
+const DEFAULT_NAMES = [
+  'ACE', 'MAX', 'REX', 'SKY', 'JET', 'ZAP', 'NEO', 'RAY', 'KAI', 'ZEN',
+  'ASH', 'FOX', 'OWL', 'BEE', 'ELF', 'GEM', 'ICE', 'OAK', 'SUN', 'VIP',
+  'AXE', 'BOW', 'CAP', 'DOC', 'EGO', 'FLY', 'GUN', 'HEX', 'INK', 'JAM',
+  'KEY', 'LUX', 'MOB', 'NUT', 'ORB', 'POP', 'QUE', 'RIP', 'SLY', 'TOP',
+  'URN', 'VEX', 'WAX', 'YAK', 'ZIT', 'APE', 'BAT', 'COW', 'DOG', 'EMU',
+  'PRO', 'MVP', 'CPU', 'RAM', 'USB', 'LED', 'LCD', 'GPS', 'VHS', 'DVD',
+  'WIZ', 'SPY', 'COP', 'DUO', 'TRI', 'UNO', 'DOS', 'SIX', 'TEN', 'NIL',
+  'YEP', 'NAH', 'MEH', 'OOF', 'LOL', 'WOW', 'YAY', 'BOO', 'EEK', 'AWW',
+  'RED', 'BLU', 'GRN', 'YEL', 'PNK', 'GLD', 'SLV', 'BLK', 'WHT', 'TAN',
+  'HOT', 'ICY', 'WET', 'DRY', 'BIG', 'LIL', 'OLD', 'NEW', 'RAW', 'FIT'
+]
 
 export default class MainMenuScene extends Phaser.Scene {
   private gameState!: GameState
   private levelSelectionOverlay?: Phaser.GameObjects.Container
   private isLevelSelectionOpen: boolean = false
+  private partyContainer?: Phaser.GameObjects.Container
+  private partySlots: Phaser.GameObjects.Container[] = []
+  private inviteCodeText?: Phaser.GameObjects.Text
+  private partyStatusText?: Phaser.GameObjects.Text
+  private joinOverlay?: Phaser.GameObjects.Container
+  private joinInput: string = ''
+  private nameOverlay?: Phaser.GameObjects.Container
+  private nameInput: string = ''
+  private playerName: string = ''
 
   constructor() {
     super('MainMenuScene')
@@ -228,7 +252,7 @@ export default class MainMenuScene extends Phaser.Scene {
       buttonWidth,
       buttonHeight,
       0x2a2a4a
-    ).setInteractive({ useHandCursor: true })
+    ).setInteractive({ useHandCursor: true }).setName('campaignButton')
 
     const campaignIcon = this.add.text(
       this.cameras.main.centerX - 150 * scaleFactor,
@@ -239,7 +263,7 @@ export default class MainMenuScene extends Phaser.Scene {
         fontSize: `${Math.floor(48 * scaleFactor)}px`,
         color: '#00ff00',
       }
-    ).setOrigin(0.5)
+    ).setOrigin(0.5).setName('campaignIcon')
 
     const campaignText = this.add.text(
       this.cameras.main.centerX + 20 * scaleFactor,
@@ -251,7 +275,7 @@ export default class MainMenuScene extends Phaser.Scene {
         color: '#00ff00',
         align: 'center',
       }
-    ).setOrigin(0.5)
+    ).setOrigin(0.5).setName('campaignText')
 
     campaignButton.on('pointerover', () => {
       campaignButton.setFillStyle(0x3a3a6a)
@@ -267,90 +291,16 @@ export default class MainMenuScene extends Phaser.Scene {
       // If only 1 level is unlocked, skip level selection and start directly
       const unlockedLevels = this.gameState.getUnlockedLevels()
       if (unlockedLevels === 1) {
-        // Fade out before transitioning
-        this.cameras.main.fadeOut(200, 0, 0, 0)
-        this.cameras.main.once('camerafadeoutcomplete', () => {
-          this.scene.start('LoadingScene', { levelIndex: 0 })
-        })
+        this.launchGame(0)
       } else {
         this.showLevelSelection()
       }
     })
 
-    // Co-op Button (2nd position - moved up from 5th)
-    const coopButtonY = startY + (buttonHeight + buttonSpacing)
-
-    const coopButton = this.add.rectangle(
-      this.cameras.main.centerX,
-      coopButtonY,
-      buttonWidth,
-      buttonHeight,
-      0x2a2a4a
-    ).setInteractive({ useHandCursor: true })
-
-    const coopIcon = this.add.text(
-      this.cameras.main.centerX - 150 * scaleFactor,
-      coopButtonY,
-      '👥',
-      {
-        fontFamily: 'Courier New',
-        fontSize: `${Math.floor(48 * scaleFactor)}px`,
-        color: '#ff00ff',
-      }
-    ).setOrigin(0.5)
-
-    const coopButtonText = this.add.text(
-      this.cameras.main.centerX + 20 * scaleFactor,
-      coopButtonY,
-      'CO-OP',
-      {
-        fontFamily: 'Courier New',
-        fontSize: `${Math.floor(24 * scaleFactor)}px`,
-        color: '#ff00ff',
-        align: 'center',
-      }
-    ).setOrigin(0.5)
-
-    coopButton.on('pointerover', () => {
-      coopButton.setFillStyle(0x3a3a6a)
-    })
-
-    coopButton.on('pointerout', () => {
-      coopButton.setFillStyle(0x2a2a4a)
-    })
-
-    coopButton.on('pointerdown', () => {
-      soundManager.play(SoundType.BUTTON_CLICK)
-      // Show floating "Coming Soon" text
-      const comingSoonText = this.add.text(
-        this.cameras.main.centerX,
-        coopButtonY,
-        'Synchronous Co-op Coming Soon!',
-        {
-          fontFamily: 'Courier New',
-          fontSize: `${Math.floor(18 * scaleFactor)}px`,
-          color: '#ffff00',
-          fontStyle: 'bold',
-        }
-      ).setOrigin(0.5).setDepth(1000)
-
-      // Animate it floating up and fading out
-      this.tweens.add({
-        targets: comingSoonText,
-        y: coopButtonY - 100 * scaleFactor,
-        alpha: 0,
-        duration: 2000,
-        ease: 'Cubic.easeOut',
-        onComplete: () => {
-          comingSoonText.destroy()
-        }
-      })
-    })
-
-    // Build Button (3rd position - moved down from 2nd)
+    // Build Button (2nd position)
     const buildButton = this.add.rectangle(
       this.cameras.main.centerX,
-      startY + (buttonHeight + buttonSpacing) * 2,
+      startY + (buttonHeight + buttonSpacing),
       buttonWidth,
       buttonHeight,
       0x2a2a4a
@@ -358,7 +308,7 @@ export default class MainMenuScene extends Phaser.Scene {
 
     const buildIcon = this.add.text(
       this.cameras.main.centerX - 150 * scaleFactor,
-      startY + (buttonHeight + buttonSpacing) * 2,
+      startY + (buttonHeight + buttonSpacing),
       '⚙',
       {
         fontFamily: 'Courier New',
@@ -369,7 +319,7 @@ export default class MainMenuScene extends Phaser.Scene {
 
     const buildText = this.add.text(
       this.cameras.main.centerX + 20 * scaleFactor,
-      startY + (buttonHeight + buttonSpacing) * 2,
+      startY + (buttonHeight + buttonSpacing),
       'RESEARCH',
       {
         fontFamily: 'Courier New',
@@ -392,8 +342,8 @@ export default class MainMenuScene extends Phaser.Scene {
       this.scene.start('BuildingMenuScene')
     })
 
-    // Red dot indicator for affordableupgrades
-    const buildButtonY = startY + (buttonHeight + buttonSpacing) * 2
+    // Red dot indicator for affordable upgrades
+    const buildButtonY = startY + (buttonHeight + buttonSpacing)
     const upgradeDot = this.add.circle(
       this.cameras.main.centerX + buttonWidth / 2 - 10,
       buildButtonY - buttonHeight / 2 + 10,
@@ -402,10 +352,10 @@ export default class MainMenuScene extends Phaser.Scene {
     ).setVisible(this.hasAffordableUpgrades())
     upgradeDot.setName('upgradeDot')
 
-    // Hangar Button (4th position - moved down from 3rd)
+    // Hangar Button (3rd position)
     const hangarButton = this.add.rectangle(
       this.cameras.main.centerX,
-      startY + (buttonHeight + buttonSpacing) * 3,
+      startY + (buttonHeight + buttonSpacing) * 2,
       buttonWidth,
       buttonHeight,
       0x2a2a4a
@@ -413,7 +363,7 @@ export default class MainMenuScene extends Phaser.Scene {
 
     const hangarIcon = this.add.text(
       this.cameras.main.centerX - 150 * scaleFactor,
-      startY + (buttonHeight + buttonSpacing) * 3,
+      startY + (buttonHeight + buttonSpacing) * 2,
       '◈',
       {
         fontFamily: 'Courier New',
@@ -424,7 +374,7 @@ export default class MainMenuScene extends Phaser.Scene {
 
     const hangarText = this.add.text(
       this.cameras.main.centerX + 20 * scaleFactor,
-      startY + (buttonHeight + buttonSpacing) * 3,
+      startY + (buttonHeight + buttonSpacing) * 2,
       'HANGAR',
       {
         fontFamily: 'Courier New',
@@ -448,7 +398,7 @@ export default class MainMenuScene extends Phaser.Scene {
     })
 
     // Red dot indicator for affordable ships
-    const hangarButtonY = startY + (buttonHeight + buttonSpacing) * 3
+    const hangarButtonY = startY + (buttonHeight + buttonSpacing) * 2
     const hangarDot = this.add.circle(
       this.cameras.main.centerX + buttonWidth / 2 - 10,
       hangarButtonY - buttonHeight / 2 + 10,
@@ -457,8 +407,8 @@ export default class MainMenuScene extends Phaser.Scene {
     ).setVisible(this.hasAffordableShips())
     hangarDot.setName('hangarDot')
 
-    // Stats Button (5th position - moved down from 4th)
-    const statsButtonY = startY + (buttonHeight + buttonSpacing) * 4
+    // Stats Button (4th position)
+    const statsButtonY = startY + (buttonHeight + buttonSpacing) * 3
 
     const statsButton = this.add.rectangle(
       this.cameras.main.centerX,
@@ -502,6 +452,23 @@ export default class MainMenuScene extends Phaser.Scene {
     statsButton.on('pointerdown', () => {
       soundManager.play(SoundType.BUTTON_CLICK)
       this.scene.start('StatsScene')
+    })
+
+    // Party Panel
+    this.createPartyPanel(scaleFactor)
+
+    // Setup party event handlers
+    partySystem.on('partyUpdated', (state: PartyState) => {
+      this.updatePartyUI(state)
+    })
+
+    partySystem.on('gameStart', () => {
+      this.startCoopGame()
+    })
+
+    partySystem.on('disconnected', () => {
+      // When disconnected (host left), automatically re-host
+      this.autoHostParty()
     })
 
     // Stats display at bottom
@@ -719,12 +686,7 @@ export default class MainMenuScene extends Phaser.Scene {
         levelBg.on('pointerdown', () => {
           soundManager.play(SoundType.BUTTON_CLICK)
           this.closeLevelSelection()
-
-          // Fade out before transitioning
-          this.cameras.main.fadeOut(200, 0, 0, 0)
-          this.cameras.main.once('camerafadeoutcomplete', () => {
-            this.scene.start('LoadingScene', { levelIndex: index })
-          })
+          this.launchGame(index)
         })
       }
 
@@ -803,5 +765,608 @@ export default class MainMenuScene extends Phaser.Scene {
 
     // If not all characters are unlocked and player can afford one, return true
     return unlockedCharacters.length < totalCharacters && credits >= SHIP_COST
+  }
+
+  private createPartyPanel(scaleFactor: number) {
+    this.partyContainer = this.add.container(0, 0)
+
+    // Clear old slots on scene restart
+    this.partySlots = []
+
+    // Slot sizes - 32% bigger than original (40 * 1.32 = 53)
+    const slotSize = 53
+    const slotSpacing = 11
+    const margin = 8
+
+    // Slots have origin 0.5, so offset by half size to position left/top edge at margin
+    const slot1X = margin + slotSize / 2
+    const slot1Y = margin + slotSize / 2
+
+    // Create slot 1 (local player) - will have gold border
+    const slot1 = this.createPartySlot(slot1X, slot1Y, slotSize, 0, scaleFactor * 1.32)
+    this.partySlots.push(slot1)
+    this.partyContainer.add(slot1)
+
+    // Create slot 2 (partner) - positioned after slot 1
+    const slot2X = slot1X + slotSize + slotSpacing
+    const slot2 = this.createPartySlot(slot2X, slot1Y, slotSize, 1, scaleFactor * 1.32)
+    this.partySlots.push(slot2)
+    this.partyContainer.add(slot2)
+
+    // Join button to the right of slots - 25% bigger than base
+    const joinBtnX = slot2X + slotSize / 2 + 10
+    const joinBtnY = slot1Y - 4
+
+    const joinButton = this.add.text(joinBtnX, joinBtnY, 'JOIN', {
+      fontFamily: 'Courier New',
+      fontSize: `${Math.floor(20 * scaleFactor)}px`,
+      color: '#00ffff',
+      backgroundColor: '#1a1a2e',
+      padding: { x: 15, y: 10 }
+    }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true })
+
+    joinButton.on('pointerover', () => joinButton.setColor('#88ffff'))
+    joinButton.on('pointerout', () => joinButton.setColor('#00ffff'))
+    joinButton.on('pointerdown', () => {
+      soundManager.play(SoundType.BUTTON_CLICK)
+      this.showJoinOverlay()
+    })
+    this.partyContainer.add(joinButton)
+
+    // Invite code below join button (no label, just 6 chars) - 25% bigger
+    this.inviteCodeText = this.add.text(joinBtnX, joinBtnY + 32, '------', {
+      fontFamily: 'Courier New',
+      fontSize: `${Math.floor(18 * scaleFactor)}px`,
+      color: '#888888',
+    }).setOrigin(0, 0.5)
+    this.partyContainer.add(this.inviteCodeText)
+
+    // Auto-host on scene start
+    this.autoHostParty()
+
+    // Initialize UI with current state
+    this.updatePartyUI(partySystem.getState())
+  }
+
+  private async autoHostParty() {
+    // Automatically create a party when entering the menu
+    if (!partySystem.isInParty()) {
+      try {
+        // Pick a random default name
+        this.playerName = DEFAULT_NAMES[Math.floor(Math.random() * DEFAULT_NAMES.length)]
+        await partySystem.hostParty(this.playerName)
+      } catch (error) {
+        console.error('Failed to auto-host party:', error)
+      }
+    }
+  }
+
+  private createPartySlot(x: number, y: number, size: number, slotIndex: number, scaleFactor: number): Phaser.GameObjects.Container {
+    const container = this.add.container(x, y)
+
+    // Slot background
+    const bg = this.add.rectangle(0, 0, size, size, 0x2a2a4a)
+      .setStrokeStyle(2, 0x444444)
+      .setName('bg')
+    container.add(bg)
+
+    // Make slot 0 (player's slot) clickable for name editing
+    if (slotIndex === 0) {
+      bg.setInteractive({ useHandCursor: true })
+      bg.on('pointerover', () => bg.setFillStyle(0x3a3a6a))
+      bg.on('pointerout', () => bg.setFillStyle(0x2a2a4a))
+      bg.on('pointerdown', () => {
+        soundManager.play(SoundType.BUTTON_CLICK)
+        this.showNameOverlay()
+      })
+    }
+
+    // Ship icon (empty by default)
+    const shipIcon = this.add.text(0, 0, '?', {
+      fontFamily: 'Courier New',
+      fontSize: `${Math.floor(24 * scaleFactor)}px`,
+      color: '#444444',
+    }).setOrigin(0.5).setName('shipIcon')
+    container.add(shipIcon)
+
+    // Player initials below slot (3 chars)
+    const nameText = this.add.text(0, size / 2 + 8, '---', {
+      fontFamily: 'Courier New',
+      fontSize: `${Math.floor(10 * scaleFactor)}px`,
+      color: '#666666',
+    }).setOrigin(0.5).setName('nameText')
+    container.add(nameText)
+
+    return container
+  }
+
+  private updatePartyUI(state: PartyState) {
+    if (!this.partyContainer) return
+
+    // Update each slot
+    state.slots.forEach((slot, index) => {
+      const slotContainer = this.partySlots[index]
+      if (!slotContainer) return
+
+      const shipIcon = slotContainer.getByName('shipIcon') as Phaser.GameObjects.Text
+      const nameText = slotContainer.getByName('nameText') as Phaser.GameObjects.Text
+      const bg = slotContainer.getByName('bg') as Phaser.GameObjects.Rectangle
+
+      if (slot.isEmpty) {
+        shipIcon.setText('?')
+        shipIcon.setColor('#444444')
+        nameText.setText('---')
+        nameText.setColor('#666666')
+        bg.setStrokeStyle(2, 0x444444)
+      } else {
+        const charConfig = CHARACTER_CONFIGS[slot.character]
+        shipIcon.setText(charConfig?.symbol || '?')
+        shipIcon.setColor(charConfig?.color || '#ffffff')
+        nameText.setText(slot.name)
+        nameText.setColor('#ffffff')
+
+        // Gold border for player's own slot, green for partner
+        const isLocalPlayer = slot.peerId === partySystem.getState().slots[state.localSlotIndex]?.peerId &&
+                              state.localSlotIndex === index
+        if (isLocalPlayer) {
+          bg.setStrokeStyle(3, 0xffaa00) // Gold border, thicker
+        } else {
+          bg.setStrokeStyle(2, 0x00ff00) // Green border for partner
+        }
+      }
+    })
+
+    // Update invite code display
+    if (this.inviteCodeText) {
+      if (state.isInParty && state.inviteCode) {
+        this.inviteCodeText.setText(state.inviteCode)
+        this.inviteCodeText.setColor('#00ffff')
+      } else {
+        this.inviteCodeText.setText('------')
+        this.inviteCodeText.setColor('#888888')
+      }
+    }
+
+    // Update campaign button state based on host/client
+    this.updateCampaignButtonState()
+  }
+
+  private updateCampaignButtonState() {
+    // Find campaign button and disable if client
+    const campaignButton = this.children.getByName('campaignButton') as Phaser.GameObjects.Rectangle
+    const campaignText = this.children.getByName('campaignText') as Phaser.GameObjects.Text
+    const campaignIcon = this.children.getByName('campaignIcon') as Phaser.GameObjects.Text
+
+    if (partySystem.isInParty() && !partySystem.isHost()) {
+      // Client - disable campaign button
+      if (campaignButton) {
+        campaignButton.disableInteractive()
+        campaignButton.setFillStyle(0x1a1a2a)
+      }
+      if (campaignText) {
+        campaignText.setColor('#666666')
+      }
+      if (campaignIcon) {
+        campaignIcon.setColor('#666666')
+      }
+    } else {
+      // Host or solo - enable campaign button
+      if (campaignButton) {
+        campaignButton.setInteractive({ useHandCursor: true })
+        campaignButton.setFillStyle(0x2a2a4a)
+      }
+      if (campaignText) {
+        campaignText.setColor('#00ff00')
+      }
+      if (campaignIcon) {
+        campaignIcon.setColor('#00ff00')
+      }
+    }
+  }
+
+  private showJoinOverlay() {
+    if (this.joinOverlay) return
+
+    this.joinInput = ''
+    const centerX = this.cameras.main.centerX
+    const centerY = this.cameras.main.centerY
+
+    this.joinOverlay = this.add.container(0, 0).setDepth(1000)
+
+    // Full screen background - interactive to block clicks to main menu
+    const bg = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x0a0a1e)
+      .setOrigin(0, 0)
+      .setInteractive()
+    this.joinOverlay.add(bg)
+
+    // Title
+    const title = this.add.text(centerX, 100, 'JOIN PARTY', {
+      fontFamily: 'Courier New',
+      fontSize: '32px',
+      color: '#00ffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5)
+    this.joinOverlay.add(title)
+
+    // Instructions
+    const instructions = this.add.text(centerX, 180, 'Enter 6-digit invite code:', {
+      fontFamily: 'Courier New',
+      fontSize: '18px',
+      color: '#888888',
+    }).setOrigin(0.5)
+    this.joinOverlay.add(instructions)
+
+    // Input display - large and prominent
+    const inputDisplay = this.add.text(centerX, 280, '______', {
+      fontFamily: 'Courier New',
+      fontSize: '48px',
+      color: '#ffaa00',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setName('inputDisplay')
+    this.joinOverlay.add(inputDisplay)
+
+    // Status/error message
+    const statusText = this.add.text(centerX, 360, '', {
+      fontFamily: 'Courier New',
+      fontSize: '16px',
+      color: '#ff6666',
+    }).setOrigin(0.5).setName('statusText')
+    this.joinOverlay.add(statusText)
+
+    // Cancel button
+    const cancelBtn = this.add.rectangle(centerX, centerY + 150, 200, 50, 0x4a2a2a)
+      .setStrokeStyle(2, 0xff6666)
+      .setInteractive({ useHandCursor: true })
+    this.joinOverlay.add(cancelBtn)
+
+    const cancelText = this.add.text(centerX, centerY + 150, 'CANCEL', {
+      fontFamily: 'Courier New',
+      fontSize: '20px',
+      color: '#ff6666',
+    }).setOrigin(0.5)
+    this.joinOverlay.add(cancelText)
+
+    cancelBtn.on('pointerover', () => {
+      cancelBtn.setFillStyle(0x6a3a3a)
+      cancelText.setColor('#ff8888')
+    })
+    cancelBtn.on('pointerout', () => {
+      cancelBtn.setFillStyle(0x4a2a2a)
+      cancelText.setColor('#ff6666')
+    })
+    cancelBtn.on('pointerdown', () => {
+      soundManager.play(SoundType.BUTTON_CLICK)
+      this.closeJoinOverlay()
+    })
+
+    // Help text at bottom
+    const helpText = this.add.text(centerX, this.cameras.main.height - 80, 'Press ESC to cancel', {
+      fontFamily: 'Courier New',
+      fontSize: '12px',
+      color: '#666666',
+    }).setOrigin(0.5)
+    this.joinOverlay.add(helpText)
+
+    // Keyboard input
+    this.input.keyboard?.on('keydown', this.handleJoinKeyInput, this)
+  }
+
+  private handleJoinKeyInput(event: KeyboardEvent) {
+    if (!this.joinOverlay) return
+
+    const key = event.key.toUpperCase()
+
+    if (key === 'ESCAPE') {
+      this.closeJoinOverlay()
+      return
+    }
+
+    if (key === 'BACKSPACE') {
+      this.joinInput = this.joinInput.slice(0, -1)
+      // Clear any error message when editing
+      this.setJoinStatus('', '#888888')
+    } else if (key.length === 1 && /[A-Z0-9]/.test(key) && this.joinInput.length < 6) {
+      this.joinInput += key
+      // Clear any error message when editing
+      this.setJoinStatus('', '#888888')
+    }
+
+    // Update display
+    const inputDisplay = this.joinOverlay.getByName('inputDisplay') as Phaser.GameObjects.Text
+    if (inputDisplay) {
+      inputDisplay.setText(this.joinInput.padEnd(6, '_'))
+    }
+
+    // Auto-submit when 6 characters entered
+    if (this.joinInput.length === 6) {
+      this.submitJoinCode()
+    }
+  }
+
+  private setJoinStatus(message: string, color: string) {
+    if (!this.joinOverlay) return
+    const statusText = this.joinOverlay.getByName('statusText') as Phaser.GameObjects.Text
+    if (statusText) {
+      statusText.setText(message)
+      statusText.setColor(color)
+    }
+  }
+
+  private async submitJoinCode() {
+    if (this.joinInput.length !== 6) return
+
+    // Show connecting status
+    this.setJoinStatus('Joining party...', '#ffaa00')
+
+    // Save current party state in case join fails
+    const wasInParty = partySystem.isInParty()
+    const oldInviteCode = partySystem.getInviteCode()
+
+    try {
+      const playerName = 'PLR' // Placeholder - will be set properly later
+      await partySystem.joinParty(this.joinInput, playerName)
+
+      // Success - close overlay and update UI
+      this.setJoinStatus('Connected!', '#00ff00')
+
+      // Brief delay to show success message
+      this.time.delayedCall(500, () => {
+        this.closeJoinOverlay()
+      })
+    } catch (error) {
+      console.error('Failed to join party:', error)
+
+      // Show error message
+      this.setJoinStatus('Failed to connect. Check code.', '#ff6666')
+
+      // Clear input for retry
+      this.joinInput = ''
+      const inputDisplay = this.joinOverlay?.getByName('inputDisplay') as Phaser.GameObjects.Text
+      if (inputDisplay) {
+        inputDisplay.setText('______')
+      }
+
+      // If we were in a party before, re-host
+      if (wasInParty) {
+        try {
+          await partySystem.hostParty('PLR')
+        } catch (hostError) {
+          console.error('Failed to re-host party:', hostError)
+        }
+      }
+    }
+  }
+
+  private closeJoinOverlay() {
+    if (this.joinOverlay) {
+      this.input.keyboard?.off('keydown', this.handleJoinKeyInput, this)
+      this.joinOverlay.destroy()
+      this.joinOverlay = undefined
+    }
+  }
+
+  private showNameOverlay() {
+    if (this.nameOverlay) return
+
+    this.nameInput = this.playerName
+    const centerX = this.cameras.main.centerX
+    const centerY = this.cameras.main.centerY
+
+    this.nameOverlay = this.add.container(0, 0).setDepth(1000)
+
+    // Full screen background - interactive to block clicks
+    const bg = this.add.rectangle(0, 0, this.cameras.main.width, this.cameras.main.height, 0x0a0a1e, 0.95)
+      .setOrigin(0, 0)
+      .setInteractive()
+    this.nameOverlay.add(bg)
+
+    // Title
+    const title = this.add.text(centerX, centerY - 100, 'SET NAME', {
+      fontFamily: 'Courier New',
+      fontSize: '32px',
+      color: '#ffaa00',
+      fontStyle: 'bold',
+    }).setOrigin(0.5)
+    this.nameOverlay.add(title)
+
+    // Instructions
+    const instructions = this.add.text(centerX, centerY - 50, 'Enter 3 characters:', {
+      fontFamily: 'Courier New',
+      fontSize: '16px',
+      color: '#888888',
+    }).setOrigin(0.5)
+    this.nameOverlay.add(instructions)
+
+    // Input display
+    const inputDisplay = this.add.text(centerX, centerY + 20, this.nameInput.padEnd(3, '_'), {
+      fontFamily: 'Courier New',
+      fontSize: '64px',
+      color: '#ffaa00',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setName('inputDisplay')
+    this.nameOverlay.add(inputDisplay)
+
+    // Buttons container
+    const buttonY = centerY + 120
+
+    // Random button
+    const randomBtn = this.add.rectangle(centerX - 110, buttonY, 80, 40, 0x2a2a4a)
+      .setStrokeStyle(2, 0xffaa00)
+      .setInteractive({ useHandCursor: true })
+    this.nameOverlay.add(randomBtn)
+
+    const randomText = this.add.text(centerX - 110, buttonY, '🎲', {
+      fontFamily: 'Courier New',
+      fontSize: '20px',
+      color: '#ffaa00',
+    }).setOrigin(0.5)
+    this.nameOverlay.add(randomText)
+
+    randomBtn.on('pointerover', () => {
+      randomBtn.setFillStyle(0x3a3a6a)
+      randomText.setColor('#ffcc44')
+    })
+    randomBtn.on('pointerout', () => {
+      randomBtn.setFillStyle(0x2a2a4a)
+      randomText.setColor('#ffaa00')
+    })
+    randomBtn.on('pointerdown', () => {
+      soundManager.play(SoundType.BUTTON_CLICK)
+      this.nameInput = DEFAULT_NAMES[Math.floor(Math.random() * DEFAULT_NAMES.length)]
+      const inputDisplay = this.nameOverlay?.getByName('inputDisplay') as Phaser.GameObjects.Text
+      if (inputDisplay) {
+        inputDisplay.setText(this.nameInput)
+      }
+    })
+
+    // OK button
+    const okBtn = this.add.rectangle(centerX, buttonY, 80, 40, 0x2a4a2a)
+      .setStrokeStyle(2, 0x00ff00)
+      .setInteractive({ useHandCursor: true })
+    this.nameOverlay.add(okBtn)
+
+    const okText = this.add.text(centerX, buttonY, 'OK', {
+      fontFamily: 'Courier New',
+      fontSize: '18px',
+      color: '#00ff00',
+    }).setOrigin(0.5)
+    this.nameOverlay.add(okText)
+
+    okBtn.on('pointerover', () => {
+      okBtn.setFillStyle(0x3a6a3a)
+      okText.setColor('#88ff88')
+    })
+    okBtn.on('pointerout', () => {
+      okBtn.setFillStyle(0x2a4a2a)
+      okText.setColor('#00ff00')
+    })
+    okBtn.on('pointerdown', () => {
+      soundManager.play(SoundType.BUTTON_CLICK)
+      this.submitName()
+    })
+
+    // Cancel button
+    const cancelBtn = this.add.rectangle(centerX + 110, buttonY, 80, 40, 0x4a2a2a)
+      .setStrokeStyle(2, 0xff6666)
+      .setInteractive({ useHandCursor: true })
+    this.nameOverlay.add(cancelBtn)
+
+    const cancelText = this.add.text(centerX + 110, buttonY, 'X', {
+      fontFamily: 'Courier New',
+      fontSize: '18px',
+      color: '#ff6666',
+    }).setOrigin(0.5)
+    this.nameOverlay.add(cancelText)
+
+    cancelBtn.on('pointerover', () => {
+      cancelBtn.setFillStyle(0x6a3a3a)
+      cancelText.setColor('#ff8888')
+    })
+    cancelBtn.on('pointerout', () => {
+      cancelBtn.setFillStyle(0x4a2a2a)
+      cancelText.setColor('#ff6666')
+    })
+    cancelBtn.on('pointerdown', () => {
+      soundManager.play(SoundType.BUTTON_CLICK)
+      this.closeNameOverlay()
+    })
+
+    // Help text
+    const helpText = this.add.text(centerX, this.cameras.main.height - 80, 'Press ENTER to confirm, ESC to cancel', {
+      fontFamily: 'Courier New',
+      fontSize: '12px',
+      color: '#666666',
+    }).setOrigin(0.5)
+    this.nameOverlay.add(helpText)
+
+    // Keyboard input
+    this.input.keyboard?.on('keydown', this.handleNameKeyInput, this)
+  }
+
+  private handleNameKeyInput(event: KeyboardEvent) {
+    if (!this.nameOverlay) return
+
+    const key = event.key.toUpperCase()
+
+    if (key === 'ESCAPE') {
+      this.closeNameOverlay()
+      return
+    }
+
+    if (key === 'ENTER') {
+      this.submitName()
+      return
+    }
+
+    if (key === 'BACKSPACE') {
+      this.nameInput = this.nameInput.slice(0, -1)
+    } else if (key.length === 1 && /[A-Z0-9]/.test(key) && this.nameInput.length < 3) {
+      this.nameInput += key
+    }
+
+    // Update display
+    const inputDisplay = this.nameOverlay.getByName('inputDisplay') as Phaser.GameObjects.Text
+    if (inputDisplay) {
+      inputDisplay.setText(this.nameInput.padEnd(3, '_'))
+    }
+  }
+
+  private submitName() {
+    if (this.nameInput.length === 0) return
+
+    // Pad to 3 characters if needed
+    this.playerName = this.nameInput.padEnd(3, '_').substring(0, 3)
+
+    // Update party system with new name
+    // For now, we need to re-host with the new name
+    if (partySystem.isHost()) {
+      partySystem.leaveParty()
+      partySystem.hostParty(this.playerName).catch(err => {
+        console.error('Failed to update name:', err)
+      })
+    }
+
+    this.closeNameOverlay()
+  }
+
+  private closeNameOverlay() {
+    if (this.nameOverlay) {
+      this.input.keyboard?.off('keydown', this.handleNameKeyInput, this)
+      this.nameOverlay.destroy()
+      this.nameOverlay = undefined
+    }
+  }
+
+  private launchGame(levelIndex: number) {
+    // If host with partner, notify client
+    if (partySystem.isInParty() && partySystem.isHost() && partySystem.getPlayerCount() >= 2) {
+      partySystem.startGame()
+    }
+
+    // Store coop mode info in registry
+    if (partySystem.isInParty() && partySystem.getPlayerCount() >= 2) {
+      this.registry.set('isCoopMode', true)
+      this.registry.set('partyState', partySystem.getState())
+    } else {
+      this.registry.set('isCoopMode', false)
+    }
+
+    // Fade out and start game
+    this.cameras.main.fadeOut(200, 0, 0, 0)
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start('LoadingScene', { levelIndex })
+    })
+  }
+
+  private startCoopGame() {
+    // Called when client receives game start from host
+    this.registry.set('isCoopMode', true)
+    this.registry.set('partyState', partySystem.getState())
+
+    // Fade out and start game
+    this.cameras.main.fadeOut(200, 0, 0, 0)
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start('LoadingScene', { levelIndex: 0 })
+    })
   }
 }
