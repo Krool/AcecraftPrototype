@@ -205,6 +205,14 @@ export default class GameScene extends Phaser.Scene {
   private lastHitTimePlayer2: number = 0
   private gameOverUI: Phaser.GameObjects.GameObject[] = []
 
+  // Revival system
+  private reviveProgress: number = 0
+  private reviveTimeRequired: number = 3000 // 3 seconds to revive
+  private reviveRange: number = 80 // pixels
+  private reviveTimerBg?: Phaser.GameObjects.Rectangle
+  private reviveTimerFill?: Phaser.GameObjects.Rectangle
+  private reviveTimerText?: Phaser.GameObjects.Text
+
   // Guaranteed chest system
   private chestsSpawnedThisRun: number = 0
   private readonly maxChestsPerRun: number = 5 // Increased from 4 to allow mini-boss + milestone + occasional random
@@ -3127,6 +3135,11 @@ export default class GameScene extends Phaser.Scene {
         if (this.isCoopMode && this.player2 && !this.player2Down) {
           this.player2Health = Math.floor(Math.min(this.player2MaxHealth, this.player2Health + regenAmount))
         }
+      }
+
+      // Revival system in coop mode
+      if (this.isCoopMode && this.player2) {
+        this.updateRevivalSystem(cappedDelta)
       }
 
       // Fire all equipped weapons (skip if player1 is down in coop)
@@ -7622,6 +7635,109 @@ export default class GameScene extends Phaser.Scene {
         this.gameOver()
       }
     }
+  }
+
+  private updateRevivalSystem(delta: number) {
+    // Check if exactly one player is down
+    const onePlayerDown = (this.player1Down && !this.player2Down) || (!this.player1Down && this.player2Down)
+
+    if (!onePlayerDown) {
+      // Both up or both down - hide timer and reset
+      this.hideReviveTimer()
+      this.reviveProgress = 0
+      return
+    }
+
+    // Determine which player is down and which is the reviver
+    const downPlayer = this.player1Down ? this.player : this.player2!
+    const reviverPlayer = this.player1Down ? this.player2! : this.player
+
+    // Calculate distance between players
+    const dx = downPlayer.x - reviverPlayer.x
+    const dy = downPlayer.y - reviverPlayer.y
+    const distance = Math.sqrt(dx * dx + dy * dy)
+
+    // Check if within revival range
+    if (distance <= this.reviveRange) {
+      // Increment progress
+      this.reviveProgress += delta
+      this.showReviveTimer(downPlayer.x, downPlayer.y, this.reviveProgress / this.reviveTimeRequired)
+
+      // Check if revival complete
+      if (this.reviveProgress >= this.reviveTimeRequired) {
+        this.reviveDownedPlayer(this.player1Down ? 1 : 2)
+        this.reviveProgress = 0
+        this.hideReviveTimer()
+      }
+    } else {
+      // Out of range - reset progress
+      this.reviveProgress = 0
+      this.hideReviveTimer()
+    }
+  }
+
+  private showReviveTimer(x: number, y: number, progress: number) {
+    const timerY = y - 50
+
+    // Create timer UI if it doesn't exist
+    if (!this.reviveTimerBg) {
+      this.reviveTimerBg = this.add.rectangle(x, timerY, 52, 10, 0x000000)
+        .setStrokeStyle(1, 0xffffff)
+        .setDepth(100)
+      this.reviveTimerFill = this.add.rectangle(x - 24, timerY, 0, 6, 0x00ff00)
+        .setOrigin(0, 0.5)
+        .setDepth(101)
+      this.reviveTimerText = this.add.text(x, timerY - 15, 'REVIVING...', {
+        fontFamily: 'Courier New',
+        fontSize: '12px',
+        color: '#00ff00',
+      }).setOrigin(0.5).setDepth(101)
+    }
+
+    // Update position and fill
+    this.reviveTimerBg.setPosition(x, timerY).setVisible(true)
+    this.reviveTimerFill!.setPosition(x - 24, timerY).setVisible(true)
+    this.reviveTimerFill!.width = 48 * Math.min(1, progress)
+    this.reviveTimerText!.setPosition(x, timerY - 15).setVisible(true)
+  }
+
+  private hideReviveTimer() {
+    if (this.reviveTimerBg) {
+      this.reviveTimerBg.setVisible(false)
+      this.reviveTimerFill?.setVisible(false)
+      this.reviveTimerText?.setVisible(false)
+    }
+  }
+
+  private reviveDownedPlayer(playerNum: number) {
+    if (playerNum === 1) {
+      this.player1Down = false
+      this.health = Math.floor(this.maxHealth * 0.25)
+      this.player.setAlpha(1)
+      // Flash green to indicate revival
+      this.player.setColor('#00ff00')
+      this.time.delayedCall(500, () => {
+        this.player.setColor(this.characterColor)
+      })
+    } else {
+      this.player2Down = false
+      this.player2Health = Math.floor(this.player2MaxHealth * 0.25)
+      this.player2!.setAlpha(1)
+      // Flash green to indicate revival
+      this.player2!.setColor('#00ff00')
+      this.time.delayedCall(500, () => {
+        const partnerCharacter = this.registry.get('partyState')?.slots?.find(
+          (slot: any) => !slot.isEmpty && slot.peerId !== this.registry.get('partyState')?.slots[this.registry.get('partyState')?.localSlotIndex]?.peerId
+        )?.character
+        if (partnerCharacter) {
+          const config = CHARACTER_CONFIGS[partnerCharacter]
+          this.player2!.setColor(config.color)
+        }
+      })
+    }
+
+    // Play revival sound
+    soundManager.play(SoundType.POWERUP_PICKUP)
   }
 
   private updateHealthDisplay() {

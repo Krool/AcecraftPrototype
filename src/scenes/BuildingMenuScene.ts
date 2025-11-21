@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import { GameState } from '../game/GameState'
 import { BuildingType, BUILDING_CONFIGS } from '../game/Building'
 import { soundManager, SoundType } from '../game/SoundManager'
+import { partySystem } from '../systems/PartySystem'
 
 interface SkillNode {
   id: BuildingType
@@ -29,6 +30,9 @@ export default class BuildingMenuScene extends Phaser.Scene {
 
   // Track interactive objects for cleanup
   private interactiveObjects: Phaser.GameObjects.GameObject[] = []
+
+  // Game start handler for coop
+  private gameStartHandler?: () => void
 
   // Define all skill trees
   private skillTrees: Record<TreeType, SkillTree> = {
@@ -239,6 +243,26 @@ export default class BuildingMenuScene extends Phaser.Scene {
 
     // Display current tree
     this.displayTree()
+
+    // Setup game start handler for coop (in case host starts while we're here)
+    this.gameStartHandler = () => {
+      if (this.scene.isActive()) {
+        this.startCoopGame()
+      }
+    }
+    partySystem.on('gameStart', this.gameStartHandler)
+  }
+
+  private startCoopGame() {
+    // Called when host starts game while we're in research
+    this.registry.set('isCoopMode', true)
+    this.registry.set('partyState', partySystem.getState())
+
+    // Fade out and start game
+    this.cameras.main.fadeOut(200, 0, 0, 0)
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start('LoadingScene', { levelIndex: 0 })
+    })
   }
 
   private createTreeTabs() {
@@ -901,6 +925,11 @@ export default class BuildingMenuScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    // Clean up party event handler
+    if (this.gameStartHandler) {
+      partySystem.off('gameStart', this.gameStartHandler)
+    }
+
     // Clean up all event listeners
     this.interactiveObjects.forEach(obj => {
       if (obj && obj.active) {

@@ -22,6 +22,9 @@ export default class HangarScene extends Phaser.Scene {
   private interactiveObjects: Phaser.GameObjects.GameObject[] = []
   private inputListeners: { event: string, handler: Function }[] = []
 
+  // Game start handler for coop
+  private gameStartHandler?: () => void
+
   constructor() {
     super('HangarScene')
   }
@@ -164,6 +167,26 @@ export default class HangarScene extends Phaser.Scene {
 
     // Set up scrolling for list
     this.setupScrolling()
+
+    // Setup game start handler for coop (in case host starts while we're here)
+    this.gameStartHandler = () => {
+      if (this.scene.isActive()) {
+        this.startCoopGame()
+      }
+    }
+    partySystem.on('gameStart', this.gameStartHandler)
+  }
+
+  private startCoopGame() {
+    // Called when host starts game while we're in hangar
+    this.registry.set('isCoopMode', true)
+    this.registry.set('partyState', partySystem.getState())
+
+    // Fade out and start game
+    this.cameras.main.fadeOut(200, 0, 0, 0)
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start('LoadingScene', { levelIndex: 0 })
+    })
   }
 
   private createShipList() {
@@ -998,6 +1021,11 @@ export default class HangarScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    // Clean up party event handler
+    if (this.gameStartHandler) {
+      partySystem.off('gameStart', this.gameStartHandler)
+    }
+
     // Clean up all game object event listeners
     this.interactiveObjects.forEach(obj => {
       if (obj && obj.active) {
