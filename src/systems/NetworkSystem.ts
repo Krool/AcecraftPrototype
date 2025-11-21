@@ -30,6 +30,10 @@ export enum MessageType {
   WAVE_COMPLETE = 'wave_complete',
   LEVEL_UP = 'level_up',
   WEAPON_ACQUIRED = 'weapon_acquired',
+
+  // Game end screen actions
+  GAME_OVER_MENU = 'game_over_menu',
+  VICTORY_CONTINUE = 'victory_continue',
 }
 
 export interface NetworkMessage {

@@ -8050,9 +8050,27 @@ export default class GameScene extends Phaser.Scene {
 
     // Main menu handler
     mainMenuButton.on('pointerdown', () => {
-      this.scene.stop('GameScene')
-      this.scene.start('MainMenuScene')
+      if (this.isCoopMode) {
+        if (networkSystem.isHost) {
+          // Host clicked - notify client and go to menu
+          networkSystem.send(MessageType.GAME_OVER_MENU, {})
+          this.scene.stop('GameScene')
+          this.scene.start('MainMenuScene')
+        }
+        // Client can't click this - they follow host
+      } else {
+        this.scene.stop('GameScene')
+        this.scene.start('MainMenuScene')
+      }
     })
+
+    // In coop mode, show different text for client
+    if (this.isCoopMode && !networkSystem.isHost) {
+      mainMenuText.setText('WAITING FOR HOST...')
+      mainMenuText.setColor('#888888')
+      mainMenuButton.disableInteractive()
+      mainMenuButton.setFillStyle(0x1a1a2a)
+    }
   }
 
   private revivePlayer() {
@@ -8403,9 +8421,27 @@ export default class GameScene extends Phaser.Scene {
 
     // Continue handler
     continueButton.on('pointerdown', () => {
-      this.scene.stop('GameScene')
-      this.scene.start('MainMenuScene')
+      if (this.isCoopMode) {
+        if (networkSystem.isHost) {
+          // Host clicked - notify client and continue
+          networkSystem.send(MessageType.VICTORY_CONTINUE, {})
+          this.scene.stop('GameScene')
+          this.scene.start('MainMenuScene')
+        }
+        // Client can't click this - they follow host
+      } else {
+        this.scene.stop('GameScene')
+        this.scene.start('MainMenuScene')
+      }
     })
+
+    // In coop mode, show different text for client
+    if (this.isCoopMode && !networkSystem.isHost) {
+      continueText.setText('WAITING FOR HOST...')
+      continueText.setColor('#888888')
+      continueButton.disableInteractive()
+      continueButton.setFillStyle(0x1a2a1a)
+    }
   }
 
   private handleEnemyProjectileHit(
@@ -9434,6 +9470,20 @@ export default class GameScene extends Phaser.Scene {
         // Partner resumed the game
         this.resumeFromMenu()
       }
+    })
+
+    // Handle game over menu action from host
+    networkSystem.on(MessageType.GAME_OVER_MENU, () => {
+      // Host clicked main menu - follow them
+      this.scene.stop('GameScene')
+      this.scene.start('MainMenuScene')
+    })
+
+    // Handle victory continue action from host
+    networkSystem.on(MessageType.VICTORY_CONTINUE, () => {
+      // Host clicked continue - follow them
+      this.scene.stop('GameScene')
+      this.scene.start('MainMenuScene')
     })
   }
 
