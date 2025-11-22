@@ -37,7 +37,7 @@ export default class MainMenuScene extends Phaser.Scene {
 
   // Party event handler references for cleanup
   private partyUpdatedHandler?: (state: PartyState) => void
-  private gameStartHandler?: () => void
+  private gameStartHandler?: (data: { levelIndex: number }) => void
   private disconnectedHandler?: () => void
 
   constructor() {
@@ -480,9 +480,9 @@ export default class MainMenuScene extends Phaser.Scene {
         this.updatePartyUI(state)
       }
     }
-    this.gameStartHandler = () => {
+    this.gameStartHandler = (data: { levelIndex: number }) => {
       if (this.scene.isActive()) {
-        this.startCoopGame()
+        this.startCoopGame(data.levelIndex)
       }
     }
     this.disconnectedHandler = () => {
@@ -878,16 +878,18 @@ export default class MainMenuScene extends Phaser.Scene {
       .setName('bg')
     container.add(bg)
 
-    // Make slot 0 (player's slot) clickable for name editing
-    if (slotIndex === 0) {
-      bg.setInteractive({ useHandCursor: true })
-      bg.on('pointerover', () => bg.setFillStyle(0x3a3a6a))
-      bg.on('pointerout', () => bg.setFillStyle(0x2a2a4a))
-      bg.on('pointerdown', () => {
+    // Make slot interactive for name editing (will be enabled for local player's slot)
+    bg.setInteractive({ useHandCursor: true })
+    bg.on('pointerover', () => bg.setFillStyle(0x3a3a6a))
+    bg.on('pointerout', () => bg.setFillStyle(0x2a2a4a))
+    bg.on('pointerdown', () => {
+      // Only allow editing if this is the local player's slot
+      const state = partySystem.getState()
+      if (state.localSlotIndex === slotIndex) {
         soundManager.play(SoundType.BUTTON_CLICK)
         this.showNameOverlay()
-      })
-    }
+      }
+    })
 
     // Ship icon (empty by default)
     const shipIcon = this.add.text(0, 0, '?', {
@@ -1362,9 +1364,9 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   private launchGame(levelIndex: number) {
-    // If host with partner, notify client
+    // If host with partner, notify client with level index
     if (partySystem.isInParty() && partySystem.isHost() && partySystem.getPlayerCount() >= 2) {
-      partySystem.startGame()
+      partySystem.startGame(levelIndex)
     }
 
     // Store coop mode info in registry
@@ -1382,7 +1384,7 @@ export default class MainMenuScene extends Phaser.Scene {
     })
   }
 
-  private startCoopGame() {
+  private startCoopGame(levelIndex: number = 0) {
     // Called when client receives game start from host
     this.registry.set('isCoopMode', true)
     this.registry.set('partyState', partySystem.getState())
@@ -1390,7 +1392,7 @@ export default class MainMenuScene extends Phaser.Scene {
     // Fade out and start game
     this.cameras.main.fadeOut(200, 0, 0, 0)
     this.cameras.main.once('camerafadeoutcomplete', () => {
-      this.scene.start('LoadingScene', { levelIndex: 0 })
+      this.scene.start('LoadingScene', { levelIndex })
     })
   }
 }

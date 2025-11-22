@@ -61,8 +61,8 @@ class PartySystem {
     })
 
     // Handle game start
-    networkSystem.on(MessageType.GAME_START, () => {
-      this.emit('gameStart', {})
+    networkSystem.on(MessageType.GAME_START, (data: any) => {
+      this.emit('gameStart', { levelIndex: data?.levelIndex || 0 })
     })
 
     // Handle state sync messages (including character/name changes from clients)
@@ -304,12 +304,12 @@ class PartySystem {
   /**
    * Start the game (host only)
    */
-  startGame() {
+  startGame(levelIndex: number = 0) {
     if (!networkSystem.isHost) return
     if (this.getPlayerCount() < 2) return
 
-    networkSystem.send(MessageType.GAME_START, {})
-    this.emit('gameStart', {})
+    networkSystem.send(MessageType.GAME_START, { levelIndex })
+    this.emit('gameStart', { levelIndex })
   }
 
   /**

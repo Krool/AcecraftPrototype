@@ -94,6 +94,7 @@ export default class GameScene extends Phaser.Scene {
   private player2MaxHealth: number = PLAYER.DEFAULT_HEALTH
   private player1Down: boolean = false
   private player2Down: boolean = false
+  private partnerHasShield: boolean = false // Track if coop partner has shield active
   private pendingHealAmount: number = 0 // Fractional healing accumulator for Vampiric Fire
   private healthText!: Phaser.GameObjects.Text
   private healthBarBackground!: Phaser.GameObjects.Rectangle
@@ -106,6 +107,7 @@ export default class GameScene extends Phaser.Scene {
   private isPaused: boolean = false
   private upgradeContainer!: Phaser.GameObjects.Container
   private pendingLevelUps: number = 0 // Queue of pending level ups to show
+  private isShowingUpgradeOptions: boolean = false // Prevent multiple upgrade screens
 
   // Reroll system
   private rerollsRemaining: number = 0
@@ -234,6 +236,8 @@ export default class GameScene extends Phaser.Scene {
   private weapons: Weapon[] = []
   private player2Weapons: Weapon[] = [] // Coop partner weapons
   private passives: Passive[] = []
+  private player2Passives: Passive[] = [] // Coop partner passives
+  private player2Allies!: AllyGroup // Coop partner allies
   private character!: Character
   private characterColor!: string
   private bastionFiredLastFrame: boolean = false // Track if Bastion fired weapons last frame
@@ -299,11 +303,16 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Start random background music (lazy loaded on-demand)
-    const randomTrack = Phaser.Math.Between(1, 20)
     if (this.bgMusic) {
       this.bgMusic.stop()
     }
-    this.loadAndPlayMusic(randomTrack)
+
+    // In coop mode, music sync happens after network handlers are set up
+    // In solo mode, just pick random track now
+    if (!this.isCoopMode) {
+      const randomTrack = Phaser.Math.Between(1, 20)
+      this.loadAndPlayMusic(randomTrack)
+    }
 
     // Reset all game state variables (important for scene restart)
     this.totalXP = 0
@@ -378,6 +387,10 @@ export default class GameScene extends Phaser.Scene {
     this.weapons = []
     this.player2Weapons = []
     this.passives = []
+    this.player2Passives = []
+    if (this.player2Allies) {
+      this.player2Allies.clearAll()
+    }
 
     // Reset weapon modifiers and player stats to defaults
     this.weaponModifiers = { ...DEFAULT_MODIFIERS }
@@ -753,6 +766,10 @@ export default class GameScene extends Phaser.Scene {
     this.allies = new AllyGroup(this, 20, 10)
     this.allies.setProjectileGroup(this.projectiles)
 
+    // Create ally group for coop partner
+    this.player2Allies = new AllyGroup(this, 20, 10)
+    this.player2Allies.setProjectileGroup(this.projectiles)
+
     // Give projectiles access to enemy group for homing missiles
     this.projectiles.setEnemyGroup(this.enemies)
 
@@ -829,6 +846,7 @@ export default class GameScene extends Phaser.Scene {
       this.player2MaxHealth = PLAYER.DEFAULT_HEALTH
       this.player1Down = false
       this.player2Down = false
+      this.partnerHasShield = false
 
       // Create player2 health bar
       const healthBarWidth = 60
@@ -887,6 +905,19 @@ export default class GameScene extends Phaser.Scene {
 
       // Setup network handlers for coop
       this.setupCoopNetworkHandlers()
+
+      // Host picks music track and broadcasts to client
+      if (networkSystem.isHost) {
+        const randomTrack = Phaser.Math.Between(1, 20)
+        this.loadAndPlayMusic(randomTrack)
+        // Small delay to ensure client handlers are ready
+        this.time.delayedCall(500, () => {
+          networkSystem.send(MessageType.STATE_SYNC, {
+            type: 'music_sync',
+            track: randomTrack
+          })
+        })
+      }
 
       // Initialize player2's starting weapon
       const player2StartingWeaponType = partner2Config.startingWeapon
@@ -1616,6 +1647,14 @@ export default class GameScene extends Phaser.Scene {
           // Mark this evolution recipe as discovered
           const recipeKey = `${availableEvolution.baseWeapon}_${availableEvolution.requiredPassive}`
           this.discoveredEvolutions.add(recipeKey)
+
+          // Sync evolution to partner
+          if (this.isCoopMode) {
+            networkSystem.send(MessageType.EVOLUTION_TRIGGERED, {
+              evolutionName: availableEvolution.evolution,
+              baseWeaponType: availableEvolution.baseWeapon
+            })
+          }
         }
       })
     }
@@ -1653,6 +1692,13 @@ export default class GameScene extends Phaser.Scene {
           effect: () => {
             weapon.levelUp()
             this.modifiersNeedRecalculation = true
+            // Sync weapon level-up to partner
+            if (this.isCoopMode) {
+              networkSystem.send(MessageType.WEAPON_LEVELED, {
+                weaponName: config.name,
+                newLevel: weapon.getLevel()
+              })
+            }
           }
         })
       }
@@ -1717,6 +1763,12 @@ export default class GameScene extends Phaser.Scene {
               this.weapons.push(newWeapon)
               this.initializeWeaponTracking(newWeapon.getConfig().name)
               this.modifiersNeedRecalculation = true
+              // Sync new weapon to partner
+              if (this.isCoopMode) {
+                networkSystem.send(MessageType.WEAPON_ACQUIRED, {
+                  weaponType: type
+                })
+              }
             }
           })
         }
@@ -1749,6 +1801,13 @@ export default class GameScene extends Phaser.Scene {
           effect: () => {
             passive.levelUp()
             this.modifiersNeedRecalculation = true
+            // Sync passive level-up to partner
+            if (this.isCoopMode) {
+              networkSystem.send(MessageType.PASSIVE_LEVELED, {
+                passiveType: config.type,
+                newLevel: passive.getLevel()
+              })
+            }
           }
         })
       }
@@ -1812,6 +1871,12 @@ export default class GameScene extends Phaser.Scene {
               const newPassive = PassiveFactory.create(this, type)
               this.passives.push(newPassive)
               this.modifiersNeedRecalculation = true
+              // Sync new passive to partner
+              if (this.isCoopMode) {
+                networkSystem.send(MessageType.PASSIVE_ACQUIRED, {
+                  passiveType: type
+                })
+              }
             }
           })
         }
@@ -2066,7 +2131,29 @@ export default class GameScene extends Phaser.Scene {
     )
   }
 
+  // Helper to spawn enemy with network sync
+  private spawnEnemyWithSync(x: number, y: number, type: EnemyType, wave: number, isGolden: boolean = false): Enemy | null {
+    const enemy = this.enemies.spawnEnemy(x, y, type, wave)
+    if (enemy) {
+      if (isGolden) enemy.setGolden(true)
+      this.cachedActiveEnemyCount++
+
+      // Send spawn message to client in coop mode
+      if (this.isCoopMode && networkSystem.isHost) {
+        networkSystem.send(MessageType.SPAWN_ENEMY, {
+          x, y, type, wave, isGolden
+        })
+      }
+    }
+    return enemy
+  }
+
   private spawnEnemyBasedOnDifficulty(x: number, y: number) {
+    // In coop mode, only host spawns enemies
+    if (this.isCoopMode && !networkSystem.isHost) {
+      return
+    }
+
     // Enemy spawn probabilities based on campaign level AND survival time
     const rand = Math.random() * 100
     let type: EnemyType
@@ -2186,6 +2273,17 @@ export default class GameScene extends Phaser.Scene {
     // Update cached active enemy count if spawn was successful (performance optimization)
     if (enemy) {
       this.cachedActiveEnemyCount++
+
+      // Send spawn message to client in coop mode
+      if (this.isCoopMode && networkSystem.isHost) {
+        networkSystem.send(MessageType.SPAWN_ENEMY, {
+          x: x,
+          y: y,
+          type: type,
+          wave: currentWave,
+          isGolden: isGolden
+        })
+      }
     }
 
     // Track health spawned for debug metrics (use scaled health)
@@ -2298,6 +2396,16 @@ export default class GameScene extends Phaser.Scene {
     this.pendingDelayedSpawns = 0 // Reset delayed spawn counter for new wave
     this.waveStartTime = this.time.now // Track when wave started for failsafe
     this.waveStartPausedTime = this.totalPausedTime // Track paused time at wave start
+
+    // Broadcast wave start to client in coop mode
+    if (this.isCoopMode && networkSystem.isHost) {
+      networkSystem.send(MessageType.WAVE_START, {
+        waveNumber: this.waveSystem.getCurrentWave(),
+        totalWaves: this.waveSystem.getTotalWaves(),
+        isBoss: waveData.isBoss,
+        isMiniBoss: waveData.isMiniBoss
+      })
+    }
 
     // Show/hide boss health bar
     if (waveData.isBoss || waveData.isMiniBoss) {
@@ -2450,6 +2558,11 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private spawnWaveFormation(formation: any, enemyType: EnemyType): number {
+    // In coop mode, only host spawns enemies
+    if (this.isCoopMode && !networkSystem.isHost) {
+      return 0
+    }
+
     // Add random offsets to prevent multiple formations from spawning at exact same positions
     const centerXOffset = Phaser.Math.Between(-60, 60) // Random horizontal offset
     const yOffset = Phaser.Math.Between(-30, 30) // Random vertical offset
@@ -2478,6 +2591,23 @@ export default class GameScene extends Phaser.Scene {
       return false
     }
 
+    // Helper function to spawn enemy and broadcast to clients
+    const spawnAndBroadcast = (spawnX: number, spawnY: number, isGolden: boolean): boolean => {
+      const enemy = this.enemies.spawnEnemy(spawnX, spawnY, enemyType, currentWave)
+      if (enemy) {
+        if (isGolden) enemy.setGolden(true)
+        spawnedCount++
+        this.cachedActiveEnemyCount++
+        if (this.isCoopMode && networkSystem.isHost) {
+          networkSystem.send(MessageType.SPAWN_ENEMY, {
+            x: spawnX, y: spawnY, type: enemyType, wave: currentWave, isGolden
+          })
+        }
+        return true
+      }
+      return false
+    }
+
     switch (formation.type) {
       case 'single':
         const count = formation.count || 1
@@ -2493,6 +2623,12 @@ export default class GameScene extends Phaser.Scene {
             spawnedCount++
             spawnedEnemies.push(enemy)
             this.cachedActiveEnemyCount++
+            // Send spawn message to client
+            if (this.isCoopMode) {
+              networkSystem.send(MessageType.SPAWN_ENEMY, {
+                x: spawnX, y, type: enemyType, wave: currentWave, isGolden: isGoldenVariant
+              })
+            }
           }
         }
 
@@ -2503,56 +2639,22 @@ export default class GameScene extends Phaser.Scene {
       case 'line':
         for (let i = -4; i <= 4; i++) {
           const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(spawnX, y, checkGoldenChance())
         }
         break
 
       case 'v':
         for (let i = -2; i <= 2; i++) {
-          const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y, checkGoldenChance())
         }
         for (let i = -3; i <= 3; i++) {
-          const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 40, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y - 40, checkGoldenChance())
         }
         for (let i = -2; i <= 2; i++) {
-          const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 80, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y - 80, checkGoldenChance())
         }
         for (let i = -1; i <= 1; i++) {
-          const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y - 120, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y - 120, checkGoldenChance())
         }
         break
 
@@ -2561,28 +2663,14 @@ export default class GameScene extends Phaser.Scene {
           const angle = (i / 10) * Math.PI * 2
           const offsetX = Math.cos(angle) * 80
           const offsetY = Math.sin(angle) * 40
-          const spawnX = this.clampSpawnX(centerX + offsetX)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + offsetX), y + offsetY, checkGoldenChance())
         }
         break
 
       case 'wave':
         for (let i = -5; i <= 5; i++) {
           const waveOffset = Math.sin((i / 5) * Math.PI) * 30
-          const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y + waveOffset, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y + waveOffset, checkGoldenChance())
         }
         break
 
@@ -2600,14 +2688,7 @@ export default class GameScene extends Phaser.Scene {
           { x: 0, y: spacing * 1.5 },      // Bottom
         ]
         for (const point of diamondPoints) {
-          const spawnX = this.clampSpawnX(centerX + point.x)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y + point.y, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + point.x), y + point.y, checkGoldenChance())
         }
         break
 
@@ -2615,23 +2696,9 @@ export default class GameScene extends Phaser.Scene {
         // X formation (two diagonal lines)
         for (let i = -3; i <= 3; i++) {
           // Top-left to bottom-right diagonal
-          const spawnX1 = this.clampSpawnX(centerX + i * spacing * 0.7)
-          const isGoldenVariant1 = checkGoldenChance()
-          const enemy1 = this.enemies.spawnEnemy(spawnX1, y + i * spacing * 0.7, enemyType, currentWave)
-          if (enemy1) {
-            if (isGoldenVariant1) enemy1.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing * 0.7), y + i * spacing * 0.7, checkGoldenChance())
           // Top-right to bottom-left diagonal
-          const spawnX2 = this.clampSpawnX(centerX - i * spacing * 0.7)
-          const isGoldenVariant2 = checkGoldenChance()
-          const enemy2 = this.enemies.spawnEnemy(spawnX2, y + i * spacing * 0.7, enemyType, currentWave)
-          if (enemy2) {
-            if (isGoldenVariant2) enemy2.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX - i * spacing * 0.7), y + i * spacing * 0.7, checkGoldenChance())
         }
         break
 
@@ -2643,14 +2710,7 @@ export default class GameScene extends Phaser.Scene {
           const radius = spacing * 2
           const offsetX = Math.sin(angle) * radius
           const offsetY = -Math.cos(angle) * radius * 0.3
-          const spawnX = this.clampSpawnX(centerX + offsetX)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + offsetX), y + offsetY, checkGoldenChance())
         }
         break
 
@@ -2658,26 +2718,12 @@ export default class GameScene extends Phaser.Scene {
         // Cross/Plus formation (horizontal + vertical lines)
         // Horizontal line
         for (let i = -3; i <= 3; i++) {
-          const spawnX = this.clampSpawnX(centerX + i * spacing)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y, checkGoldenChance())
         }
         // Vertical line (skip center since it's already spawned)
         for (let i = -2; i <= 2; i++) {
           if (i !== 0) {
-            const spawnX = this.clampSpawnX(centerX)
-            const isGoldenVariant = checkGoldenChance()
-            const enemy = this.enemies.spawnEnemy(spawnX, y + i * spacing, enemyType, currentWave)
-            if (enemy) {
-              if (isGoldenVariant) enemy.setGolden(true)
-              spawnedCount++
-              this.cachedActiveEnemyCount++
-            }
+            spawnAndBroadcast(this.clampSpawnX(centerX), y + i * spacing, checkGoldenChance())
           }
         }
         break
@@ -2688,14 +2734,7 @@ export default class GameScene extends Phaser.Scene {
           const rowWidth = row + 1
           for (let i = 0; i < rowWidth; i++) {
             const offsetX = (i - (rowWidth - 1) / 2) * spacing
-            const spawnX = this.clampSpawnX(centerX + offsetX)
-            const isGoldenVariant = checkGoldenChance()
-            const enemy = this.enemies.spawnEnemy(spawnX, y + row * spacing * 0.8, enemyType, currentWave)
-            if (enemy) {
-              if (isGoldenVariant) enemy.setGolden(true)
-              spawnedCount++
-              this.cachedActiveEnemyCount++
-            }
+            spawnAndBroadcast(this.clampSpawnX(centerX + offsetX), y + row * spacing * 0.8, checkGoldenChance())
           }
         }
         break
@@ -2703,27 +2742,13 @@ export default class GameScene extends Phaser.Scene {
       case 'inverted-v':
         // Inverted V formation (upside down V)
         for (let i = -2; i <= 2; i++) {
-          const spawnX = this.clampSpawnX(centerX + i * spacing)
           const offsetY = Math.abs(i) * spacing * 0.6
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y + offsetY, checkGoldenChance())
         }
         for (let i = -3; i <= 3; i++) {
           if (Math.abs(i) >= 2) {
-            const spawnX = this.clampSpawnX(centerX + i * spacing)
             const offsetY = (Math.abs(i) - 1) * spacing * 0.6
-            const isGoldenVariant = checkGoldenChance()
-            const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
-            if (enemy) {
-              if (isGoldenVariant) enemy.setGolden(true)
-              spawnedCount++
-              this.cachedActiveEnemyCount++
-            }
+            spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y + offsetY, checkGoldenChance())
           }
         }
         break
@@ -2731,14 +2756,7 @@ export default class GameScene extends Phaser.Scene {
       case 'column':
         // Vertical column formation
         for (let i = 0; i < 7; i++) {
-          const spawnX = this.clampSpawnX(centerX)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y + i * spacing * 0.8, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX), y + i * spacing * 0.8, checkGoldenChance())
         }
         break
 
@@ -2748,14 +2766,7 @@ export default class GameScene extends Phaser.Scene {
         for (let i = 0; i < scatterCount; i++) {
           const randomX = Phaser.Math.Between(-spacing * 2, spacing * 2)
           const randomY = Phaser.Math.Between(-spacing, spacing)
-          const spawnX = this.clampSpawnX(centerX + randomX)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y + randomY, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + randomX), y + randomY, checkGoldenChance())
         }
         break
 
@@ -2765,14 +2776,7 @@ export default class GameScene extends Phaser.Scene {
           for (let col = 0; col < 3; col++) {
             const offsetX = (col - 1) * spacing
             const offsetY = (row - 1) * spacing * 0.8
-            const spawnX = this.clampSpawnX(centerX + offsetX)
-            const isGoldenVariant = checkGoldenChance()
-            const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
-            if (enemy) {
-              if (isGoldenVariant) enemy.setGolden(true)
-              spawnedCount++
-              this.cachedActiveEnemyCount++
-            }
+            spawnAndBroadcast(this.clampSpawnX(centerX + offsetX), y + offsetY, checkGoldenChance())
           }
         }
         break
@@ -2785,14 +2789,7 @@ export default class GameScene extends Phaser.Scene {
           const radius = (i / spiralPoints) * spacing * 2
           const offsetX = Math.cos(angle) * radius
           const offsetY = Math.sin(angle) * radius * 0.5
-          const spawnX = this.clampSpawnX(centerX + offsetX)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y + offsetY, enemyType, currentWave)
-          if (enemy) {
-            if (isGoldenVariant) enemy.setGolden(true)
-            spawnedCount++
-            this.cachedActiveEnemyCount++
-          }
+          spawnAndBroadcast(this.clampSpawnX(centerX + offsetX), y + offsetY, checkGoldenChance())
         }
         break
     }
@@ -2855,10 +2852,17 @@ export default class GameScene extends Phaser.Scene {
           const queen = spawnedEnemies[0]
           const eggPos = [{ x: -60, y: -40 }, { x: 60, y: -40 }, { x: -60, y: 40 }, { x: 60, y: 40 }]
           eggPos.forEach(pos => {
-            const egg = this.enemies.spawnEnemy(this.clampSpawnX(centerX + pos.x), y + pos.y, EnemyType.HIVE_EGG, currentWave)
+            const spawnX = this.clampSpawnX(centerX + pos.x)
+            const spawnY = y + pos.y
+            const egg = this.enemies.spawnEnemy(spawnX, spawnY, EnemyType.HIVE_EGG, currentWave)
             if (egg) {
               queen.addChildEnemy(egg)
               this.cachedActiveEnemyCount++
+              if (this.isCoopMode && networkSystem.isHost) {
+                networkSystem.send(MessageType.SPAWN_ENEMY, {
+                  x: spawnX, y: spawnY, type: EnemyType.HIVE_EGG, wave: currentWave, isGolden: false
+                })
+              }
             }
           })
         }
@@ -2869,10 +2873,17 @@ export default class GameScene extends Phaser.Scene {
           const boss = spawnedEnemies[0]
           for (let i = 0; i < 6; i++) {
             const angle = (i / 6) * Math.PI * 2
-            const shield = this.enemies.spawnEnemy(this.clampSpawnX(centerX + Math.cos(angle) * 80), y + Math.sin(angle) * 80, EnemyType.ORBITAL_SHIELD, currentWave)
+            const spawnX = this.clampSpawnX(centerX + Math.cos(angle) * 80)
+            const spawnY = y + Math.sin(angle) * 80
+            const shield = this.enemies.spawnEnemy(spawnX, spawnY, EnemyType.ORBITAL_SHIELD, currentWave)
             if (shield) {
               boss.addOrbitalShield(shield)
               this.cachedActiveEnemyCount++
+              if (this.isCoopMode && networkSystem.isHost) {
+                networkSystem.send(MessageType.SPAWN_ENEMY, {
+                  x: spawnX, y: spawnY, type: EnemyType.ORBITAL_SHIELD, wave: currentWave, isGolden: false
+                })
+              }
             }
           }
         }
@@ -2882,10 +2893,17 @@ export default class GameScene extends Phaser.Scene {
         if (spawnedEnemies.length >= 1 && spawnedEnemies[0]) {
           const boss = spawnedEnemies[0]
             ;[-100, 0, 100].forEach(offsetX => {
-              const turret = this.enemies.spawnEnemy(this.clampSpawnX(centerX + offsetX), y + 60, EnemyType.SIEGE_TURRET, currentWave)
+              const spawnX = this.clampSpawnX(centerX + offsetX)
+              const spawnY = y + 60
+              const turret = this.enemies.spawnEnemy(spawnX, spawnY, EnemyType.SIEGE_TURRET, currentWave)
               if (turret) {
                 boss.addChildEnemy(turret)
                 this.cachedActiveEnemyCount++
+                if (this.isCoopMode && networkSystem.isHost) {
+                  networkSystem.send(MessageType.SPAWN_ENEMY, {
+                    x: spawnX, y: spawnY, type: EnemyType.SIEGE_TURRET, wave: currentWave, isGolden: false
+                  })
+                }
               }
             })
         }
@@ -2896,10 +2914,17 @@ export default class GameScene extends Phaser.Scene {
           const boss = spawnedEnemies[0]
           for (let i = 0; i < 6; i++) {
             const angle = (i / 6) * Math.PI * 2
-            const port = this.enemies.spawnEnemy(this.clampSpawnX(centerX + Math.cos(angle) * 100), y + Math.sin(angle) * 100, EnemyType.WEAPON_PORT, currentWave)
+            const spawnX = this.clampSpawnX(centerX + Math.cos(angle) * 100)
+            const spawnY = y + Math.sin(angle) * 100
+            const port = this.enemies.spawnEnemy(spawnX, spawnY, EnemyType.WEAPON_PORT, currentWave)
             if (port) {
               boss.addChildEnemy(port)
               this.cachedActiveEnemyCount++
+              if (this.isCoopMode && networkSystem.isHost) {
+                networkSystem.send(MessageType.SPAWN_ENEMY, {
+                  x: spawnX, y: spawnY, type: EnemyType.WEAPON_PORT, wave: currentWave, isGolden: false
+                })
+              }
             }
           }
         }
@@ -2924,6 +2949,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Update boss health bar if boss wave is active
+    // In coop, client receives boss health via STATE_SYNC - don't update locally
     const waveData = this.waveSystem.getWaveData()
     if (waveData && (waveData.isBoss || waveData.isMiniBoss)) {
       // Keep health bar visible during entire boss wave
@@ -2931,28 +2957,32 @@ export default class GameScene extends Phaser.Scene {
       this.bossHealthBar.setVisible(true)
       this.bossHealthText.setVisible(true)
 
-      // Use cached boss reference (set when boss spawns, cleared when dies)
-      // Only search if cache is invalid
-      if (!this.cachedBoss || !this.cachedBoss.active) {
-        this.cachedBoss = this.enemies.getChildren().find((e: any) => {
-          const enemy = e as Enemy
-          const enemyType = enemy.getType ? enemy.getType() : null
-          return enemy.active && (this.isBossType(enemyType) || this.isMiniBossType(enemyType))
-        }) as Enemy | null
-      }
+      // Host calculates boss health locally, client receives via network
+      if (!this.isCoopMode || networkSystem.isHost) {
+        // Use cached boss reference (set when boss spawns, cleared when dies)
+        // Only search if cache is invalid
+        if (!this.cachedBoss || !this.cachedBoss.active) {
+          this.cachedBoss = this.enemies.getChildren().find((e: any) => {
+            const enemy = e as Enemy
+            const enemyType = enemy.getType ? enemy.getType() : null
+            return enemy.active && (this.isBossType(enemyType) || this.isMiniBossType(enemyType))
+          }) as Enemy | null
+        }
 
-      if (this.cachedBoss && this.cachedBoss.getHealth && this.cachedBoss.getMaxHealth) {
-        const bossHealth = this.cachedBoss.getHealth() ?? 0
-        const bossMaxHealth = this.cachedBoss.getMaxHealth() ?? 1
-        const healthPercent = Math.max(0, bossHealth / bossMaxHealth)
-        const bossBarWidth = 400
-        this.bossHealthBar.width = bossBarWidth * healthPercent
-        const bossName = this.cachedBoss.getName() || (waveData.isBoss ? 'BOSS' : 'MINI-BOSS')
-        this.bossHealthText.setText(`${bossName} - ${Math.ceil(bossHealth)} / ${bossMaxHealth}`)
-      } else {
-        // Boss not found yet or already defeated, show waiting message
-        this.bossHealthText.setText(waveData.isBoss ? 'BOSS INCOMING...' : 'MINI-BOSS INCOMING...')
+        if (this.cachedBoss && this.cachedBoss.getHealth && this.cachedBoss.getMaxHealth) {
+          const bossHealth = this.cachedBoss.getHealth() ?? 0
+          const bossMaxHealth = this.cachedBoss.getMaxHealth() ?? 1
+          const healthPercent = Math.max(0, bossHealth / bossMaxHealth)
+          const bossBarWidth = 400
+          this.bossHealthBar.width = bossBarWidth * healthPercent
+          const bossName = this.cachedBoss.getName() || (waveData.isBoss ? 'BOSS' : 'MINI-BOSS')
+          this.bossHealthText.setText(`${bossName} - ${Math.ceil(bossHealth)} / ${bossMaxHealth}`)
+        } else {
+          // Boss not found yet or already defeated, show waiting message
+          this.bossHealthText.setText(waveData.isBoss ? 'BOSS INCOMING...' : 'MINI-BOSS INCOMING...')
+        }
       }
+      // Client receives boss health updates via STATE_SYNC handler
     } else {
       // Hide health bar when not in boss wave
       this.bossHealthBarBg.setVisible(false)
@@ -3039,9 +3069,11 @@ export default class GameScene extends Phaser.Scene {
       if (this.isCoopMode && this.player2 && !this.player2Down) {
         const timeSinceHit2 = time - this.lastHitTimePlayer2
         const hasIFrames2 = timeSinceHit2 < this.playerStats.invulnFrames
+        // Include partner's shield state for visual
+        const isPartnerInvulnerable = hasIFrames2 || this.partnerHasShield
 
-        if (hasIFrames2) {
-          // Flash effect for player2
+        if (isPartnerInvulnerable) {
+          // Flash effect for player2 (i-frames or shield)
           const colorIndex = Math.floor(time / 50) % 7
           this.player2.setColor(this.RAINBOW_COLORS[colorIndex])
           const glowPhase = Math.sin(time / 100) * 0.05 + 1
@@ -3206,16 +3238,19 @@ export default class GameScene extends Phaser.Scene {
       const activeEnemyCount = this.cachedActiveEnemyCount
 
       // Start first wave if not started yet
-      if (this.waveSystem.getCurrentWave() === 0 && !this.waveInProgress && !this.waveStartPending) {
+      // In coop mode, only host starts waves - client receives via WAVE_START
+      if ((!this.isCoopMode || networkSystem.isHost) && this.waveSystem.getCurrentWave() === 0 && !this.waveInProgress && !this.waveStartPending) {
         this.startNextWave()
       }
 
       // Check if all enemies are cleared and wave is in progress
       // Add grace period: don't check for completion until at least 2 seconds after wave starts
       // Also ensure all delayed formations have been spawned before completing the wave
+      // In coop mode, only host advances waves - client receives via WAVE_START
       const pausedDuringWave = this.totalPausedTime - this.waveStartPausedTime
       const timeSinceWaveStart = time - this.waveStartTime - pausedDuringWave
-      if (this.waveInProgress && activeEnemyCount === 0 && this.currentWaveEnemyCount > 0 && timeSinceWaveStart > 2000 && this.pendingDelayedSpawns === 0) {
+      const shouldCheckWaveCompletion = !this.isCoopMode || networkSystem.isHost
+      if (shouldCheckWaveCompletion && this.waveInProgress && activeEnemyCount === 0 && this.currentWaveEnemyCount > 0 && timeSinceWaveStart > 2000 && this.pendingDelayedSpawns === 0) {
         console.log(`Wave ${this.waveSystem.getCurrentWave()} complete! Time: ${timeSinceWaveStart}ms, Enemies spawned: ${this.currentWaveEnemyCount}`)
         // Wave cleared! Apply wave heal bonus
         const bonuses = this.gameState.getTotalBonuses()
@@ -3261,6 +3296,14 @@ export default class GameScene extends Phaser.Scene {
         this.currentWaveEnemyCount = 0
         this.pendingDelayedSpawns = 0 // Reset delayed spawn counter
         this.consecutiveFailedWaves = 0 // Reset failure counter on successful wave completion
+
+        // Broadcast wave complete to client in coop mode
+        if (this.isCoopMode && networkSystem.isHost) {
+          networkSystem.send(MessageType.WAVE_COMPLETE, {
+            waveNumber: this.waveSystem.getCurrentWave()
+          })
+        }
+
         this.waveStartPending = true
         this.time.delayedCall(1000, () => {
           this.startNextWave()
@@ -3277,7 +3320,7 @@ export default class GameScene extends Phaser.Scene {
         const isBossWave = waveData && (waveData.isBoss || waveData.isMiniBoss)
         const WAVE_TIMEOUT = isBossWave ? 180000 : 45000 // 180 seconds for boss waves, 45 for normal (increased to allow enemies to despawn naturally)
 
-        if (waveDuration > WAVE_TIMEOUT) {
+        if (waveDuration > WAVE_TIMEOUT && shouldCheckWaveCompletion) {
           console.warn(`Wave failsafe triggered! Wave has been running for ${waveDuration / 1000}s. Active enemies: ${activeEnemyCount}`)
 
           // Force clear any remaining enemies using proper pool reset
@@ -3298,11 +3341,10 @@ export default class GameScene extends Phaser.Scene {
       // This handles cases where the wave system got stuck
       // Increased delay to 10 seconds to avoid rapid wave advancement and allow time for enemies to despawn
       // Also check that there are no pending delayed spawns before triggering
-      if (!this.waveInProgress && !this.waveStartPending && activeEnemyCount === 0 && this.pendingDelayedSpawns === 0 && this.waveSystem.getCurrentWave() > 0 && !this.waveSystem.isComplete()) {
-        const pausedDuringWave = this.totalPausedTime - this.waveStartPausedTime
-        const timeSinceWaveStart = time - this.waveStartTime - pausedDuringWave
+      if (shouldCheckWaveCompletion && !this.waveInProgress && !this.waveStartPending && activeEnemyCount === 0 && this.pendingDelayedSpawns === 0 && this.waveSystem.getCurrentWave() > 0 && !this.waveSystem.isComplete()) {
+        const timeSinceWaveStart2 = time - this.waveStartTime - pausedDuringWave
         // Only trigger if it's been at least 10 seconds since last wave start (avoid rapid re-trigger)
-        if (timeSinceWaveStart > 10000) {
+        if (timeSinceWaveStart2 > 10000) {
           console.warn('Wave system stuck - no wave in progress but no enemies. Starting next wave.')
           this.waveStartPending = true
           this.startNextWave()
@@ -3323,6 +3365,10 @@ export default class GameScene extends Phaser.Scene {
     if (!this.isPaused) {
       this.enemies.update(time, cappedDelta)
       this.allies.update(time, cappedDelta, this.player.x, this.player.y, this.enemies)
+      // Update player2 allies in coop mode
+      if (this.isCoopMode && this.player2 && !this.player2Down) {
+        this.player2Allies.update(time, cappedDelta, this.player2.x, this.player2.y, this.enemies)
+      }
       this.enemyProjectiles.update(cappedDelta)
       this.projectiles.update(cappedDelta)
 
@@ -3355,16 +3401,20 @@ export default class GameScene extends Phaser.Scene {
       })
 
       // Update XP drops (pass player's pickup radius from stats)
-      // In coop mode, update for both players so both can collect
-      this.xpDrops.update(this.player.x, this.player.y, this.playerStats.pickupRadius)
-      if (this.isCoopMode && this.player2) {
-        this.xpDrops.update(this.player2.x, this.player2.y, this.playerStats.pickupRadius)
+      // In coop mode, only host processes collection - client just displays
+      if (!this.isCoopMode || networkSystem.isHost) {
+        this.xpDrops.update(this.player.x, this.player.y, this.playerStats.pickupRadius)
+        if (this.isCoopMode && this.player2) {
+          this.xpDrops.update(this.player2.x, this.player2.y, this.playerStats.pickupRadius)
+        }
       }
 
       // Update credit drops
-      this.creditDrops.update(this.player.x, this.player.y, this.playerStats.pickupRadius)
-      if (this.isCoopMode && this.player2) {
-        this.creditDrops.update(this.player2.x, this.player2.y, this.playerStats.pickupRadius)
+      if (!this.isCoopMode || networkSystem.isHost) {
+        this.creditDrops.update(this.player.x, this.player.y, this.playerStats.pickupRadius)
+        if (this.isCoopMode && this.player2) {
+          this.creditDrops.update(this.player2.x, this.player2.y, this.playerStats.pickupRadius)
+        }
       }
 
       this.powerUps.update()
@@ -3479,9 +3529,51 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // Helper methods for synced pickup spawning in coop mode
+  // In coop, only host spawns and broadcasts - client receives via network
+  private spawnXPWithSync(x: number, y: number, value: number) {
+    // Client doesn't spawn - only receives via network handler
+    if (this.isCoopMode && !networkSystem.isHost) return
+
+    this.xpDrops.spawnXP(x, y, value)
+    if (this.isCoopMode && networkSystem.isHost) {
+      networkSystem.send(MessageType.XP_SPAWNED, { x, y, value })
+    }
+  }
+
+  private spawnCreditWithSync(x: number, y: number, amount: number) {
+    // Client doesn't spawn - only receives via network handler
+    if (this.isCoopMode && !networkSystem.isHost) return
+
+    this.creditDrops.spawnCredit(x, y, amount)
+    if (this.isCoopMode && networkSystem.isHost) {
+      networkSystem.send(MessageType.CREDIT_SPAWNED, { x, y, amount })
+    }
+  }
+
+  private spawnPowerUpWithSync(x: number, y: number, type: PowerUpType) {
+    // Client doesn't spawn - only receives via network handler
+    if (this.isCoopMode && !networkSystem.isHost) return
+
+    this.powerUps.spawnPowerUp(x, y, type)
+    if (this.isCoopMode && networkSystem.isHost) {
+      networkSystem.send(MessageType.POWERUP_SPAWNED, { x, y, type })
+    }
+  }
+
   private handleEnemyDied(data: { x: number; y: number; xpValue: number; reachedBottom?: boolean; type?: EnemyType; isGolden?: boolean }) {
     // Update cached active enemy count for performance
     this.cachedActiveEnemyCount = Math.max(0, this.cachedActiveEnemyCount - 1)
+
+    // Broadcast enemy death to client in coop mode
+    if (this.isCoopMode && networkSystem.isHost) {
+      networkSystem.send(MessageType.ENEMY_DIED, {
+        x: data.x,
+        y: data.y,
+        type: data.type,
+        reachedBottom: data.reachedBottom
+      })
+    }
 
     // If enemy reached bottom naturally, don't play sounds or spawn drops
     if (data.reachedBottom) {
@@ -3538,7 +3630,7 @@ export default class GameScene extends Phaser.Scene {
         const radius = 60 + Math.random() * 40 // 60-100 pixel radius
         const offsetX = Math.cos(angle) * radius
         const offsetY = Math.sin(angle) * radius
-        this.xpDrops.spawnXP(data.x + offsetX, data.y + offsetY, Math.floor(multipliedXP / xpDropCount))
+        this.spawnXPWithSync(data.x + offsetX, data.y + offsetY, Math.floor(multipliedXP / xpDropCount))
       }
 
       // Spawn credit items in a circle around boss
@@ -3548,17 +3640,17 @@ export default class GameScene extends Phaser.Scene {
         const offsetX = Math.cos(angle) * radius
         const offsetY = Math.sin(angle) * radius
         const creditAmount = isBoss ? 5 : 3 // Boss credits worth more
-        this.creditDrops.spawnCredit(data.x + offsetX, data.y + offsetY, creditAmount)
+        this.spawnCreditWithSync(data.x + offsetX, data.y + offsetY, creditAmount)
       }
 
       // Always spawn health pack at boss center
-      this.powerUps.spawnPowerUp(data.x, data.y, PowerUpType.HEALTH)
+      this.spawnPowerUpWithSync(data.x, data.y, PowerUpType.HEALTH)
 
       // Mini-bosses always drop a treasure chest (slightly offset from center)
       if (isMiniBoss) {
         const chestOffsetX = Phaser.Math.Between(-20, 20)
         const chestOffsetY = Phaser.Math.Between(-20, 20)
-        this.powerUps.spawnPowerUp(data.x + chestOffsetX, data.y + chestOffsetY, PowerUpType.CHEST)
+        this.spawnPowerUpWithSync(data.x + chestOffsetX, data.y + chestOffsetY, PowerUpType.CHEST)
         this.chestsSpawnedThisRun++
       }
 
@@ -3577,7 +3669,7 @@ export default class GameScene extends Phaser.Scene {
       const dropChance = 0.6
       if (Math.random() < dropChance) {
         const compensatedXP = Math.floor(multipliedXP * (1 / dropChance))
-        this.xpDrops.spawnXP(data.x, data.y, compensatedXP)
+        this.spawnXPWithSync(data.x, data.y, compensatedXP)
       }
     }
 
@@ -3590,7 +3682,7 @@ export default class GameScene extends Phaser.Scene {
         const offsetX = Math.cos(angle) * radius
         const offsetY = Math.sin(angle) * radius
         const creditAmount = 6 // 6 credits per drop, 48 total
-        this.creditDrops.spawnCredit(data.x + offsetX, data.y + offsetY, creditAmount)
+        this.spawnCreditWithSync(data.x + offsetX, data.y + offsetY, creditAmount)
       }
     }
 
@@ -3609,7 +3701,7 @@ export default class GameScene extends Phaser.Scene {
         const radius = 30 + Math.random() * 20
         const offsetX = Math.cos(angle) * radius
         const offsetY = Math.sin(angle) * radius
-        this.powerUps.spawnPowerUp(data.x + offsetX, data.y + offsetY, PowerUpType.HEALTH)
+        this.spawnPowerUpWithSync(data.x + offsetX, data.y + offsetY, PowerUpType.HEALTH)
       } else {
         // Spawn credits normally
         const creditAmount = Math.max(1, Math.floor(data.xpValue / 10))
@@ -3620,7 +3712,7 @@ export default class GameScene extends Phaser.Scene {
         const offsetX = Math.cos(angle) * radius
         const offsetY = Math.sin(angle) * radius
 
-        this.creditDrops.spawnCredit(data.x + offsetX, data.y + offsetY, creditAmount)
+        this.spawnCreditWithSync(data.x + offsetX, data.y + offsetY, creditAmount)
       }
     }
 
@@ -3635,7 +3727,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (shouldSpawnChest) {
       // Spawn guaranteed chest
-      this.powerUps.spawnPowerUp(data.x, data.y, PowerUpType.CHEST)
+      this.spawnPowerUpWithSync(data.x, data.y, PowerUpType.CHEST)
       this.chestsSpawnedThisRun++
     } else {
       // Regular random power-up spawn (3% chance)
@@ -3669,7 +3761,16 @@ export default class GameScene extends Phaser.Scene {
             } else {
               type = PowerUpType.NUKE
             }
-            this.powerUps.spawnPowerUp(data.x, data.y, type)
+            this.spawnPowerUpWithSync(data.x, data.y, type)
+          }
+        } else if (powerUp) {
+          // Broadcast the random power-up type to client
+          if (this.isCoopMode && networkSystem.isHost) {
+            networkSystem.send(MessageType.POWERUP_SPAWNED, {
+              x: data.x,
+              y: data.y,
+              type: powerUp.getPowerUpType()
+            })
           }
         }
       }
@@ -3807,6 +3908,14 @@ export default class GameScene extends Phaser.Scene {
     // Play XP pickup sound
     soundManager.play(SoundType.XP_PICKUP, 0.3)
 
+    // Broadcast to partner in coop mode (host broadcasts to client)
+    if (this.isCoopMode && networkSystem.isHost) {
+      networkSystem.send(MessageType.PICKUP_COLLECTED, {
+        pickupType: 'xp',
+        value: xpValue
+      })
+    }
+
     // OVERDRIVE_REACTOR: Trigger attack speed burst on XP pickup
     const overdrivePassive = this.passives.find(p => p.getConfig().type === PassiveType.OVERDRIVE_REACTOR)
     if (overdrivePassive) {
@@ -3850,6 +3959,14 @@ export default class GameScene extends Phaser.Scene {
   private handleCreditCollected(creditValue: number) {
     // Play credit pickup sound
     soundManager.play(SoundType.CREDIT_PICKUP, 0.4)
+
+    // Broadcast to partner in coop mode (host broadcasts to client)
+    if (this.isCoopMode && networkSystem.isHost) {
+      networkSystem.send(MessageType.PICKUP_COLLECTED, {
+        pickupType: 'credit',
+        value: creditValue
+      })
+    }
 
     // Add credits to game state
     this.gameState.addCredits(creditValue)
@@ -3972,6 +4089,10 @@ export default class GameScene extends Phaser.Scene {
 
     // In coop mode, don't pause the game - show upgrades as overlay while game continues
     if (this.isCoopMode) {
+      // Sync level-up to partner
+      networkSystem.send(MessageType.LEVEL_UP, {
+        newLevel: this.level
+      })
       this.showUpgradeOptions()
     } else {
       // Pause game and show upgrades (single player)
@@ -3985,10 +4106,14 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private resumeGame() {
+    // Reset upgrade options flag
+    this.isShowingUpgradeOptions = false
+
     // In coop mode, game was never paused - just handle pending level ups
     if (this.isCoopMode) {
       if (this.pendingLevelUps > 0) {
-        this.levelUp()
+        this.pendingLevelUps--
+        this.showUpgradeOptions()
       }
       return
     }
@@ -4026,7 +4151,8 @@ export default class GameScene extends Phaser.Scene {
     // Check if there are pending level ups to show
     if (this.pendingLevelUps > 0) {
       // Don't unpause, show next level up instead
-      this.levelUp()
+      this.pendingLevelUps--
+      this.showUpgradeOptions()
     } else {
       // Resume game normally
       this.isPaused = false
@@ -4869,6 +4995,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private showUpgradeOptions() {
+    // If already showing upgrade options, queue this one
+    if (this.isShowingUpgradeOptions) {
+      this.pendingLevelUps++
+      return
+    }
+    this.isShowingUpgradeOptions = true
+
     // Create semi-transparent overlay (exact height to touch bottom UI area)
     const overlayHeight = this.cameras.main.height - 70 // Touch exactly at top of bottom UI (weapon/passive slots)
     const overlay = this.add.rectangle(
@@ -5415,7 +5548,22 @@ export default class GameScene extends Phaser.Scene {
     // Play chest sound based on rarity
     soundManager.playChestSound(upgradeCount)
 
-    // Pause game immediately
+    // In coop mode, don't pause - apply upgrades instantly and broadcast
+    if (this.isCoopMode) {
+      // Broadcast chest opening to partner
+      networkSystem.send(MessageType.CHEST_OPENED, {
+        tierName,
+        tierColor,
+        upgradeCount,
+        goldReward
+      })
+
+      // Apply upgrades immediately without popup
+      this.applyCoopChestRewards(upgradeCount, tierName, tierColor)
+      return
+    }
+
+    // Pause game immediately (solo mode only)
     this.isPaused = true
     this.pauseStartTime = this.time.now
     this.physics.pause()
@@ -5485,6 +5633,91 @@ export default class GameScene extends Phaser.Scene {
           this.playChestOpeningAnimation(chestIcon, chestSymbol, tierColor, tierName, upgradeCount, overlay)
         })
       }
+    })
+  }
+
+  // Apply chest rewards in coop mode without pausing
+  private applyCoopChestRewards(upgradeCount: number, tierName: string, tierColor: string) {
+    // Generate upgrade options - only level-ups for existing items
+    const allUpgrades = this.generateUpgradeOptions()
+
+    // Filter to only level-ups (exclude new weapons/passives/evolutions)
+    let availableLevelUps = allUpgrades.filter(upgrade =>
+      upgrade.name.includes('Level Up')
+    )
+
+    let appliedUpgrades: string[] = []
+    let creditsEarned = 0
+
+    for (let i = 0; i < upgradeCount; i++) {
+      if (availableLevelUps.length === 0) {
+        // No more level-ups available, give 50 credits instead
+        creditsEarned += 50
+        continue
+      }
+
+      // Pick a random upgrade from available pool
+      const randomIndex = Math.floor(Math.random() * availableLevelUps.length)
+      const selectedUpgrade = availableLevelUps[randomIndex]
+
+      // Apply the upgrade immediately
+      selectedUpgrade.effect()
+      appliedUpgrades.push(selectedUpgrade.name)
+
+      // Regenerate upgrades to see if items can still level up
+      const newUpgrades = this.generateUpgradeOptions()
+      availableLevelUps = newUpgrades.filter(upgrade =>
+        upgrade.name.includes('Level Up')
+      )
+    }
+
+    // Award credits if any slots couldn't be filled
+    if (creditsEarned > 0) {
+      this.gameState.addCredits(creditsEarned)
+      this.creditsCollectedThisRun += creditsEarned
+      this.creditBreakdown.pickups += creditsEarned
+      this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
+    }
+
+    // Update slots display
+    this.updateSlotsDisplay()
+
+    // Show floating text indicating chest opened with upgrade names
+    // Format upgrade names (remove "Level Up" suffix for brevity)
+    const upgradeNames = appliedUpgrades.map(name =>
+      name.replace(' Level Up', '').replace(' ‡', '')
+    )
+
+    // Build display text
+    let displayText = `${tierName} CHEST!`
+    if (upgradeNames.length > 0) {
+      displayText += '\n' + upgradeNames.join('\n')
+    }
+    if (creditsEarned > 0) {
+      displayText += `\n+${creditsEarned}¤`
+    }
+
+    const chestText = this.add.text(
+      this.player.x,
+      this.player.y - 60,
+      displayText,
+      {
+        fontFamily: 'Courier New',
+        fontSize: '14px',
+        color: tierColor,
+        stroke: '#000000',
+        strokeThickness: 3,
+        align: 'center'
+      }
+    ).setOrigin(0.5).setDepth(100)
+
+    // Animate floating text (longer duration for more text)
+    this.tweens.add({
+      targets: chestText,
+      y: chestText.y - 60,
+      alpha: 0,
+      duration: 3000,
+      onComplete: () => chestText.destroy()
     })
   }
 
@@ -6674,6 +6907,41 @@ export default class GameScene extends Phaser.Scene {
     projectileObj: Phaser.GameObjects.GameObject,
     enemyObj: Phaser.GameObjects.GameObject
   ) {
+    const proj = projectileObj as any
+
+    // In coop mode, client handles bouncing visually but not damage
+    const isClientInCoop = this.isCoopMode && !networkSystem.isHost
+
+    // Check if this is a bouncing projectile
+    const isBouncing = proj.getType && proj.getType() === ProjectileType.BOUNCING &&
+                       proj.getBounceCount && proj.getBounceCount() > 0
+
+    // Client early return for non-bouncing projectiles
+    if (isClientInCoop && !isBouncing) {
+      // Show damage number for visual feedback (actual damage handled by host)
+      const enemySprite = enemyObj as any
+      if (proj.getDamage) {
+        this.showDamageNumber(enemySprite.x, enemySprite.y, proj.getDamage())
+      }
+      // Flash enemy white for hit feedback
+      if (enemySprite.setColor) {
+        const originalColor = enemySprite.style?.color || '#ffffff'
+        enemySprite.setColor('#ffffff')
+        this.time.delayedCall(50, () => {
+          if (enemySprite.active) {
+            enemySprite.setColor(originalColor)
+          }
+        })
+      }
+      if (proj.onHit && proj.onHit()) {
+        // Projectile should be destroyed on hit
+        proj.setActive(false)
+        proj.setVisible(false)
+        if (proj.body) proj.body.enable = false
+      }
+      return
+    }
+
     const projectile = projectileObj as Phaser.GameObjects.Text & {
       getDamage: () => number
       onHit: () => boolean
@@ -6802,8 +7070,57 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    // Apply damage to enemy
-    const enemyDied = enemy.takeDamage(damage)
+    // Apply damage to enemy (host only in coop - client just handles visuals)
+    let enemyDied = false
+    if (!isClientInCoop) {
+      enemyDied = enemy.takeDamage(damage)
+    }
+
+    // Skip all status effects and special processing for client in coop
+    // Client only needs to handle bouncing visual
+    if (isClientInCoop) {
+      // Jump to bouncing logic
+      const projectileType = proj.getType()
+      if (projectileType === ProjectileType.BOUNCING && proj.getBounceCount() > 0) {
+        // Calculate bounce direction away from enemy
+        const enemySprite = enemyObj as any
+        const angle = Phaser.Math.Angle.Between(enemySprite.x, enemySprite.y, proj.x, proj.y)
+        const speed = Math.sqrt(proj.body.velocity.x ** 2 + proj.body.velocity.y ** 2)
+
+        // Add some randomness to bounce angle
+        const randomOffset = (Math.random() - 0.5) * Math.PI / 3
+        const bounceAngle = angle + randomOffset
+
+        // Apply new velocity in bounce direction
+        proj.body.setVelocity(
+          Math.cos(bounceAngle) * speed * 1.2,
+          Math.sin(bounceAngle) * speed * 1.2
+        )
+
+        // Decrement bounce count
+        proj.decrementBounce()
+
+        // Visual feedback - flash the projectile
+        const originalColor = proj.style?.color || '#ffffff'
+        proj.setColor('#ffff00')
+        this.time.delayedCall(50, () => {
+          if (proj.active) {
+            proj.setColor(originalColor)
+          }
+        })
+        return
+      } else {
+        // No bounces left - deactivate projectile
+        proj.setActive(false)
+        proj.setVisible(false)
+        proj.setPosition(-1000, -1000)
+        if (proj.body) {
+          proj.body.setVelocity(0, 0)
+          proj.body.enable = false
+        }
+        return
+      }
+    }
 
     // TOXIC_ROUNDS: Chance to apply poison on any hit
     const toxicRoundsPassive = this.passives.find(p => p.getConfig().type === PassiveType.TOXIC_ROUNDS)
@@ -7190,6 +7507,23 @@ export default class GameScene extends Phaser.Scene {
       return
     }
 
+    // In coop mode, client doesn't process collision damage - host handles it authoritatively
+    // Client just shows visual feedback
+    if (this.isCoopMode && !networkSystem.isHost) {
+      // Client can still take damage from collisions with their own player
+      if (playerObj === this.player) {
+        // Check invulnerability frames
+        const timeSinceHit = this.time.now - this.lastHitTime
+        if (timeSinceHit < this.playerStats.invulnFrames) {
+          return
+        }
+        // Visual/sound feedback only - actual damage handled by host
+        soundManager.play(SoundType.PLAYER_HIT)
+        this.lastHitTime = this.time.now
+      }
+      return
+    }
+
     // In coop mode, handle player2 damage separately
     if (this.isCoopMode && playerObj === this.player2) {
       // Skip if player2 is already down
@@ -7312,6 +7646,15 @@ export default class GameScene extends Phaser.Scene {
         // Screen flash
         this.cameras.main.flash(300, 255, 255, 0)
 
+        // Broadcast nuke effect to partner in coop
+        if (this.isCoopMode) {
+          networkSystem.send(MessageType.PICKUP_COLLECTED, {
+            type: PowerUpType.NUKE,
+            x: powerUp.x,
+            y: powerUp.y
+          })
+        }
+
         // Kill enemies in batches (10 per frame to reduce lag spikes)
         const ENEMIES_PER_FRAME = 10
         let nukeIndex = 0
@@ -7418,6 +7761,17 @@ export default class GameScene extends Phaser.Scene {
         // Random reward tier
         this.openTreasureChest()
         break
+    }
+
+    // Broadcast power-up collection to partner (so they remove it from their screen)
+    // NUKE is already broadcast above, but we still need to sync removal
+    if (this.isCoopMode) {
+      networkSystem.send(MessageType.PICKUP_COLLECTED, {
+        pickupType: 'powerup',
+        powerUpType: type,
+        x: powerUp.x,
+        y: powerUp.y
+      })
     }
 
     // Collect the power-up
@@ -8889,6 +9243,11 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private handleAllyEnemyCollision(allyObj: Phaser.GameObjects.GameObject, enemObj: Phaser.GameObjects.GameObject) {
+    // In coop mode, only host handles ally collision damage
+    if (this.isCoopMode && !networkSystem.isHost) {
+      return
+    }
+
     const ally = allyObj as any
     const enemy = enemObj as any
 
@@ -9183,6 +9542,65 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // Update player2's allies based on their passives (coop mode only)
+  updatePlayer2Allies() {
+    if (!this.isCoopMode || !this.player2) return
+
+    // Clear existing player2 allies
+    this.player2Allies.clearAll()
+
+    // Get building bonuses for ally stats
+    const bonuses = this.gameState.getTotalBonuses()
+    const allyDamageMultiplier = 1 + (bonuses.allyDamage || 0)
+    const allyFireRateMultiplier = 1 + (bonuses.allyRangedRate || 0)
+
+    let totalAlliesSpawned = 0
+
+    // Count wingman allies from player2's WINGMAN_PROTOCOL passive
+    const wingmanPassive = this.player2Passives.find(p => p.getConfig().type === PassiveType.WINGMAN_PROTOCOL)
+    const wingmanCount = wingmanPassive ? wingmanPassive.getLevel() * 2 : 0
+
+    // Count Gun Buddy allies from player2's weapons
+    const gunBuddyWeapon = this.player2Weapons.find(w => w.getConfig().type === WeaponType.GUN_BUDDY)
+    const gunBuddyCount = gunBuddyWeapon ? gunBuddyWeapon.getLevel() : 0
+
+    const totalAllies = wingmanCount + gunBuddyCount
+
+    // Spawn wingman allies for player2
+    for (let i = 0; i < wingmanCount; i++) {
+      const formation = this.calculateAllyFormation(totalAlliesSpawned, totalAllies)
+      const ally = this.player2Allies.spawnAlly(
+        this.player2.x + formation.x,
+        this.player2.y + formation.y,
+        AllyType.WINGMAN,
+        allyDamageMultiplier,
+        allyFireRateMultiplier
+      )
+
+      if (ally) {
+        ally.setFormationOffset(formation.x, formation.y)
+      }
+      totalAlliesSpawned++
+    }
+
+    // Spawn Gun Buddy allies for player2
+    for (let i = 0; i < gunBuddyCount; i++) {
+      const formation = this.calculateAllyFormation(totalAlliesSpawned, totalAllies)
+      const ally = this.player2Allies.spawnAlly(
+        this.player2.x + formation.x,
+        this.player2.y + formation.y,
+        AllyType.WINGMAN,
+        allyDamageMultiplier,
+        allyFireRateMultiplier * 1.5
+      )
+
+      if (ally) {
+        ally.setFormationOffset(formation.x, formation.y)
+      }
+      totalAlliesSpawned++
+    }
+  }
+
   private getTrackName(trackNumber: number): string {
     const trackNames = [
       'Whispers from a Forgotten Console',
@@ -9370,6 +9788,10 @@ export default class GameScene extends Phaser.Scene {
     this.weapons = []
     this.player2Weapons = []
     this.passives = []
+    this.player2Passives = []
+    if (this.player2Allies) {
+      this.player2Allies.clearAll()
+    }
     this.frostHasteExpireTimes = []
     this.damageTrackingWindow = []
     this.healthTrackingWindow = []
@@ -9459,6 +9881,48 @@ export default class GameScene extends Phaser.Scene {
         if (data.vx !== undefined && data.vy !== undefined) {
           this.player2Body.setVelocity(data.vx, data.vy)
         }
+
+        // Client receives health state from host
+        if (!networkSystem.isHost) {
+          // Update player2 (host) health/down state
+          if (data.health !== undefined) {
+            this.player2Health = data.health
+            this.player2MaxHealth = data.maxHealth || this.player2MaxHealth
+          }
+          if (data.isDown !== undefined) {
+            this.player2Down = data.isDown
+          }
+
+          // Update own (client) health/down state from host's authoritative data
+          if (data.player2Health !== undefined) {
+            this.health = data.player2Health
+            this.maxHealth = data.player2MaxHealth || this.maxHealth
+          }
+          if (data.player2Down !== undefined && data.player2Down && !this.player1Down) {
+            // Host says we're down
+            this.player1Down = true
+            this.player.setAlpha(0.3)
+            const playerBody = this.player.body as Phaser.Physics.Arcade.Body
+            playerBody.setVelocity(0, 0)
+          } else if (data.player2Down === false && this.player1Down) {
+            // We've been revived
+            this.player1Down = false
+            this.player.setAlpha(1)
+          }
+
+          // Update boss health bar from host's authoritative data
+          if (data.bossHealth !== undefined && data.bossMaxHealth !== undefined) {
+            const healthPercent = Math.max(0, data.bossHealth / data.bossMaxHealth)
+            const bossBarWidth = 400
+            this.bossHealthBar.width = bossBarWidth * healthPercent
+            this.bossHealthText.setText(`${data.bossName || 'BOSS'} - ${Math.ceil(data.bossHealth)} / ${data.bossMaxHealth}`)
+          }
+
+          // Update partner shield state for visual sync
+          if (data.hasShield !== undefined) {
+            this.partnerHasShield = data.hasShield
+          }
+        }
       } else if (data.type === 'pause' && !this.isPaused) {
         // Partner paused the game
         this.isPaused = true
@@ -9469,6 +9933,10 @@ export default class GameScene extends Phaser.Scene {
       } else if (data.type === 'resume' && this.isPaused) {
         // Partner resumed the game
         this.resumeFromMenu()
+      } else if (data.type === 'music_sync' && !networkSystem.isHost) {
+        // Client receives music track from host
+        console.log('[Coop] Syncing music to track:', data.track)
+        this.loadAndPlayMusic(data.track)
       }
     })
 
@@ -9484,6 +9952,299 @@ export default class GameScene extends Phaser.Scene {
       // Host clicked continue - follow them
       this.scene.stop('GameScene')
       this.scene.start('MainMenuScene')
+    })
+
+    // Handle weapon acquired from partner
+    networkSystem.on(MessageType.WEAPON_ACQUIRED, (data: any) => {
+      const newWeapon = WeaponFactory.create(this, data.weaponType, this.projectiles)
+      this.player2Weapons.push(newWeapon)
+      console.log('[Coop] Partner acquired weapon:', data.weaponType)
+      // Update player2 allies if they got Gun Buddy
+      if (data.weaponType === WeaponType.GUN_BUDDY) {
+        this.updatePlayer2Allies()
+      }
+    })
+
+    // Handle weapon level-up from partner
+    networkSystem.on(MessageType.WEAPON_LEVELED, (data: any) => {
+      const weapon = this.player2Weapons.find(w => w.getConfig().name === data.weaponName)
+      if (weapon) {
+        weapon.levelUp()
+        console.log('[Coop] Partner leveled up weapon:', data.weaponName, 'to level', data.newLevel)
+        // Update player2 allies if they leveled Gun Buddy
+        if (weapon.getConfig().type === WeaponType.GUN_BUDDY) {
+          this.updatePlayer2Allies()
+        }
+      }
+    })
+
+    // Handle passive acquired from partner
+    networkSystem.on(MessageType.PASSIVE_ACQUIRED, (data: any) => {
+      const newPassive = PassiveFactory.create(this, data.passiveType)
+      this.player2Passives.push(newPassive)
+      console.log('[Coop] Partner acquired passive:', data.passiveType)
+      // Update player2 allies if they got Wingman Protocol
+      if (data.passiveType === PassiveType.WINGMAN_PROTOCOL) {
+        this.updatePlayer2Allies()
+      }
+    })
+
+    // Handle passive level-up from partner
+    networkSystem.on(MessageType.PASSIVE_LEVELED, (data: any) => {
+      const passive = this.player2Passives.find(p => p.getConfig().type === data.passiveType)
+      if (passive) {
+        passive.levelUp()
+        console.log('[Coop] Partner leveled up passive:', data.passiveType, 'to level', data.newLevel)
+        // Update player2 allies if they leveled Wingman Protocol
+        if (data.passiveType === PassiveType.WINGMAN_PROTOCOL) {
+          this.updatePlayer2Allies()
+        }
+      }
+    })
+
+    // Handle evolution triggered from partner
+    networkSystem.on(MessageType.EVOLUTION_TRIGGERED, (data: any) => {
+      // Remove base weapon from player2Weapons
+      const weaponIndex = this.player2Weapons.findIndex(w => w.getConfig().type === data.baseWeaponType)
+      if (weaponIndex !== -1) {
+        this.player2Weapons.splice(weaponIndex, 1)
+      }
+
+      // Create and add the evolved weapon
+      const evolvedWeapon = this.evolutionManager.createEvolvedWeapon(
+        data.evolutionName,
+        this.projectiles
+      )
+      this.player2Weapons.push(evolvedWeapon)
+      console.log('[Coop] Partner evolved weapon:', data.evolutionName)
+    })
+
+    // Handle level-up from partner - show own upgrade options
+    networkSystem.on(MessageType.LEVEL_UP, (data: any) => {
+      console.log('[Coop] Partner leveled up to:', data.newLevel)
+      // When partner levels up, we also level up and get to pick upgrades
+      // This creates a shared progression system
+      this.level = data.newLevel
+      this.totalXP = 0
+      const nextLevelIndex = this.level - 1
+      this.xpToNextLevel = nextLevelIndex < XP_REQUIREMENTS.length
+        ? XP_REQUIREMENTS[nextLevelIndex]
+        : XP_REQUIREMENTS[XP_REQUIREMENTS.length - 1]
+
+      // Update UI
+      this.levelText.setText(`${this.level}`)
+      this.updateXPDisplay()
+
+      // Show our own upgrade options
+      soundManager.play(SoundType.LEVEL_UP)
+      this.createLevelUpBurst()
+      this.showUpgradeOptions()
+    })
+
+    // Handle chest opened by partner - apply rewards to self
+    networkSystem.on(MessageType.CHEST_OPENED, (data: any) => {
+      console.log('[Coop] Partner opened chest:', data.tierName)
+
+      // Award gold
+      if (data.goldReward > 0) {
+        this.gameState.addCredits(data.goldReward)
+        this.creditsCollectedThisRun += data.goldReward
+        this.creditBreakdown.pickups += data.goldReward
+        this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
+      }
+
+      // Play chest sound
+      soundManager.playChestSound(data.upgradeCount)
+
+      // Apply rewards
+      this.applyCoopChestRewards(data.upgradeCount, data.tierName, data.tierColor)
+    })
+
+    // Handle enemy spawn from host (client only)
+    networkSystem.on(MessageType.SPAWN_ENEMY, (data: any) => {
+      if (!networkSystem.isHost) {
+        const currentWave = this.waveSystem.getCurrentWave()
+        const enemy = this.enemies.spawnEnemy(data.x, data.y, data.type, data.wave || currentWave)
+        if (enemy && data.isGolden) {
+          enemy.setGolden(true)
+        }
+        if (enemy) {
+          this.cachedActiveEnemyCount++
+        }
+      }
+    })
+
+    // Handle pickup collected by partner
+    networkSystem.on(MessageType.PICKUP_COLLECTED, (data: any) => {
+      // Power-up collection needs to work both ways (host↔client)
+      // XP/credits only flow host→client
+      if (data.pickupType === 'powerup') {
+        // Find and remove the power-up at this position
+        const powerUps = this.powerUps.getChildren() as any[]
+        let closestPowerUp: any = null
+        let closestDist = 50
+
+        for (const pu of powerUps) {
+          if (!pu.active) continue
+          const dist = Phaser.Math.Distance.Between(pu.x, pu.y, data.x, data.y)
+          if (dist < closestDist) {
+            closestDist = dist
+            closestPowerUp = pu
+          }
+        }
+
+        if (closestPowerUp) {
+          closestPowerUp.collect()
+        }
+
+        // Show NUKE flash effect
+        if (data.powerUpType === PowerUpType.NUKE) {
+          this.cameras.main.flash(300, 255, 255, 0)
+          soundManager.play(SoundType.POWERUP_PICKUP)
+        }
+        return
+      }
+
+      // XP and credit collection only sent from host to client
+      if (!networkSystem.isHost) {
+        // Handle XP collection - remove from pool and award
+        if (data.pickupType === 'xp') {
+          // Remove closest active XP drop from our pool
+          const xpDrops = (this.xpDrops as any).pool as any[]
+          if (xpDrops) {
+            const activeXP = xpDrops.find((xp: any) => xp.active)
+            if (activeXP) {
+              // Kill tweens and cleanup sparkles properly
+              this.tweens.killTweensOf(activeXP)
+              if (activeXP.cleanupSparkles) activeXP.cleanupSparkles()
+              activeXP.setActive(false)
+              activeXP.setVisible(false)
+              activeXP.setPosition(-1000, -1000)
+              activeXP.setScale(1)
+              activeXP.setAlpha(1)
+              if (activeXP.body) activeXP.body.setVelocity(0, 0)
+            }
+          }
+
+          // Award XP to client
+          soundManager.play(SoundType.XP_PICKUP, 0.3)
+          let xpValue = data.value
+          if (this.playerStats.xpMultiplier && this.playerStats.xpMultiplier > 1) {
+            xpValue = Math.floor(xpValue * this.playerStats.xpMultiplier)
+          }
+          this.totalXP += xpValue
+          this.updateXPDisplay()
+        }
+        // Handle credit collection - remove from pool and award
+        else if (data.pickupType === 'credit') {
+          // Remove closest active credit drop from our pool
+          const creditDrops = (this.creditDrops as any).pool as any[]
+          if (creditDrops) {
+            const activeCredit = creditDrops.find((credit: any) => credit.active)
+            if (activeCredit) {
+              // Kill tweens and cleanup sparkles properly
+              this.tweens.killTweensOf(activeCredit)
+              if (activeCredit.cleanupSparkles) activeCredit.cleanupSparkles()
+              activeCredit.setActive(false)
+              activeCredit.setVisible(false)
+              activeCredit.setPosition(-1000, -1000)
+              activeCredit.setScale(1)
+              activeCredit.setAlpha(1)
+              if (activeCredit.body) activeCredit.body.setVelocity(0, 0)
+            }
+          }
+
+          // Award credits to client
+          soundManager.play(SoundType.CREDIT_PICKUP, 0.4)
+          this.gameState.addCredits(data.value)
+          this.creditsCollectedThisRun += data.value
+          this.creditBreakdown.pickups += data.value
+          this.creditsCollectedText.setText(`${this.creditsCollectedThisRun}¤`)
+        }
+      }
+    })
+
+    // Handle wave start from host (client only)
+    networkSystem.on(MessageType.WAVE_START, (data: any) => {
+      if (!networkSystem.isHost) {
+        console.log(`[Coop] Wave ${data.waveNumber}/${data.totalWaves} started`)
+        // Sync wave system state
+        this.waveSystem.setCurrentWave(data.waveNumber)
+        this.waveInProgress = true
+        this.waveStartTime = this.time.now
+        // Update wave UI
+        this.waveText.setText(`Wave ${data.waveNumber}/${data.totalWaves}`)
+
+        // Show/hide boss health bar
+        if (data.isBoss || data.isMiniBoss) {
+          this.bossHealthBarBg.setVisible(true)
+          this.bossHealthBar.setVisible(true)
+          this.bossHealthText.setVisible(true)
+          this.bossHealthText.setText(data.isBoss ? 'BOSS INCOMING...' : 'MINI-BOSS INCOMING...')
+        } else {
+          this.bossHealthBarBg.setVisible(false)
+          this.bossHealthBar.setVisible(false)
+          this.bossHealthText.setVisible(false)
+        }
+      }
+    })
+
+    // Handle enemy death from host (client only)
+    networkSystem.on(MessageType.ENEMY_DIED, (data: any) => {
+      if (!networkSystem.isHost) {
+        // Find the closest enemy at this position and type, then deactivate it
+        const enemies = this.enemies.getChildren() as Enemy[]
+        let closestEnemy: Enemy | null = null
+        // Use larger tolerance for bosses which may have more position variance
+        const isBossType = data.type && (data.type.includes('BOSS') || data.type.includes('boss'))
+        let closestDist = isBossType ? 200 : 100 // Increased tolerance for better matching
+
+        for (const enemy of enemies) {
+          if (!enemy.active) continue
+          if (data.type && enemy.getType && enemy.getType() !== data.type) continue
+
+          const dist = Phaser.Math.Distance.Between(enemy.x, enemy.y, data.x, data.y)
+          if (dist < closestDist) {
+            closestDist = dist
+            closestEnemy = enemy
+          }
+        }
+
+        if (closestEnemy) {
+          closestEnemy.setActive(false)
+          closestEnemy.setVisible(false)
+          if (closestEnemy.body) {
+            (closestEnemy.body as Phaser.Physics.Arcade.Body).enable = false
+          }
+          this.cachedActiveEnemyCount = Math.max(0, this.cachedActiveEnemyCount - 1)
+
+          // Play explosion sound if not reached bottom
+          if (!data.reachedBottom) {
+            soundManager.playEnemyExplode(0.3)
+          }
+        }
+      }
+    })
+
+    // Handle XP spawned from host (client only)
+    networkSystem.on(MessageType.XP_SPAWNED, (data: any) => {
+      if (!networkSystem.isHost) {
+        this.xpDrops.spawnXP(data.x, data.y, data.value)
+      }
+    })
+
+    // Handle credit spawned from host (client only)
+    networkSystem.on(MessageType.CREDIT_SPAWNED, (data: any) => {
+      if (!networkSystem.isHost) {
+        this.creditDrops.spawnCredit(data.x, data.y, data.amount)
+      }
+    })
+
+    // Handle power-up spawned from host (client only)
+    networkSystem.on(MessageType.POWERUP_SPAWNED, (data: any) => {
+      if (!networkSystem.isHost) {
+        this.powerUps.spawnPowerUp(data.x, data.y, data.type)
+      }
     })
   }
 
@@ -9505,15 +10266,46 @@ export default class GameScene extends Phaser.Scene {
     if (now - this.lastNetworkSync < this.networkSyncRate) return
     this.lastNetworkSync = now
 
-    // Send local player position
+    // Send local player position and state
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body
-    networkSystem.send(MessageType.STATE_SYNC, {
-      type: 'player_position',
-      x: this.player.x,
-      y: this.player.y,
-      vx: playerBody.velocity.x,
-      vy: playerBody.velocity.y
-    })
+
+    if (networkSystem.isHost) {
+      // Host sends: own position, own health/down, player2's health/down, and boss health
+      const syncData: any = {
+        type: 'player_position',
+        x: this.player.x,
+        y: this.player.y,
+        vx: playerBody.velocity.x,
+        vy: playerBody.velocity.y,
+        health: this.health,
+        maxHealth: this.maxHealth,
+        isDown: this.player1Down,
+        // Also send player2 (client's) health so they can see it
+        player2Health: this.player2Health,
+        player2MaxHealth: this.player2MaxHealth,
+        player2Down: this.player2Down,
+        // Send shield state for visual sync
+        hasShield: this.hasShield
+      }
+
+      // Include boss health if there's an active boss
+      if (this.cachedBoss && this.cachedBoss.active && this.cachedBoss.getHealth) {
+        syncData.bossHealth = this.cachedBoss.getHealth()
+        syncData.bossMaxHealth = this.cachedBoss.getMaxHealth()
+        syncData.bossName = this.cachedBoss.getName ? this.cachedBoss.getName() : 'BOSS'
+      }
+
+      networkSystem.send(MessageType.STATE_SYNC, syncData)
+    } else {
+      // Client sends: position only (host tracks all health authoritatively)
+      networkSystem.send(MessageType.STATE_SYNC, {
+        type: 'player_position',
+        x: this.player.x,
+        y: this.player.y,
+        vx: playerBody.velocity.x,
+        vy: playerBody.velocity.y
+      })
+    }
   }
 }
 

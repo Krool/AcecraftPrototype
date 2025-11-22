@@ -1615,6 +1615,10 @@ export class WaveSystem {
     return this.currentWave
   }
 
+  setCurrentWave(wave: number): void {
+    this.currentWave = wave
+  }
+
   getTotalWaves(): number {
     return this.totalWaves
   }

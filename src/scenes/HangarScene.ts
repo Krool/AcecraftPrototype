@@ -23,7 +23,7 @@ export default class HangarScene extends Phaser.Scene {
   private inputListeners: { event: string, handler: Function }[] = []
 
   // Game start handler for coop
-  private gameStartHandler?: () => void
+  private gameStartHandler?: (data: { levelIndex: number }) => void
 
   constructor() {
     super('HangarScene')
@@ -169,15 +169,15 @@ export default class HangarScene extends Phaser.Scene {
     this.setupScrolling()
 
     // Setup game start handler for coop (in case host starts while we're here)
-    this.gameStartHandler = () => {
+    this.gameStartHandler = (data: { levelIndex: number }) => {
       if (this.scene.isActive()) {
-        this.startCoopGame()
+        this.startCoopGame(data.levelIndex)
       }
     }
     partySystem.on('gameStart', this.gameStartHandler)
   }
 
-  private startCoopGame() {
+  private startCoopGame(levelIndex: number = 0) {
     // Called when host starts game while we're in hangar
     this.registry.set('isCoopMode', true)
     this.registry.set('partyState', partySystem.getState())
@@ -185,7 +185,7 @@ export default class HangarScene extends Phaser.Scene {
     // Fade out and start game
     this.cameras.main.fadeOut(200, 0, 0, 0)
     this.cameras.main.once('camerafadeoutcomplete', () => {
-      this.scene.start('LoadingScene', { levelIndex: 0 })
+      this.scene.start('LoadingScene', { levelIndex })
     })
   }
 

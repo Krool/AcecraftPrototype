@@ -30,6 +30,17 @@ export enum MessageType {
   WAVE_COMPLETE = 'wave_complete',
   LEVEL_UP = 'level_up',
   WEAPON_ACQUIRED = 'weapon_acquired',
+  PASSIVE_ACQUIRED = 'passive_acquired',
+  WEAPON_LEVELED = 'weapon_leveled',
+  PASSIVE_LEVELED = 'passive_leveled',
+  EVOLUTION_TRIGGERED = 'evolution_triggered',
+  UPGRADE_SELECTED = 'upgrade_selected',
+  CHEST_OPENED = 'chest_opened',
+
+  // Pickup sync
+  XP_SPAWNED = 'xp_spawned',
+  CREDIT_SPAWNED = 'credit_spawned',
+  POWERUP_SPAWNED = 'powerup_spawned',
 
   // Game end screen actions
   GAME_OVER_MENU = 'game_over_menu',
@@ -114,13 +125,13 @@ export class NetworkSystem {
       }
     }
 
-    // Uncomment to use local PeerJS server in development:
-    // if (isLocalhost) {
-    //   config.host = 'localhost'
-    //   config.port = 9000
-    //   config.path = '/'
-    //   config.secure = false
-    // }
+    // Use local PeerJS server in development:
+    if (isLocalhost) {
+      config.host = 'localhost'
+      config.port = 9000
+      config.path = '/'
+      config.secure = false
+    }
 
     return config
   }
