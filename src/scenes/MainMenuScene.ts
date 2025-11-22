@@ -994,12 +994,19 @@ export default class MainMenuScene extends Phaser.Scene {
     }
   }
 
+  private mobileInput?: HTMLInputElement
+
   private showJoinOverlay() {
     if (this.joinOverlay) return
 
     this.joinInput = ''
     const centerX = this.cameras.main.centerX
     const centerY = this.cameras.main.centerY
+
+    // Detect mobile device
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      ('ontouchstart' in window) ||
+      (navigator.maxTouchPoints > 0)
 
     this.joinOverlay = this.add.container(0, 0).setDepth(1000)
 
@@ -1009,47 +1016,54 @@ export default class MainMenuScene extends Phaser.Scene {
       .setInteractive()
     this.joinOverlay.add(bg)
 
+    // Adjust positions for mobile (everything higher up to account for keyboard)
+    const titleY = isMobile ? 60 : 100
+    const instructionsY = isMobile ? 120 : 180
+    const inputY = isMobile ? 180 : 280
+    const statusY = isMobile ? 240 : 360
+    const cancelY = isMobile ? 320 : centerY + 150
+
     // Title
-    const title = this.add.text(centerX, 100, 'JOIN PARTY', {
+    const title = this.add.text(centerX, titleY, 'JOIN PARTY', {
       fontFamily: 'Courier New',
-      fontSize: '32px',
+      fontSize: isMobile ? '24px' : '32px',
       color: '#00ffff',
       fontStyle: 'bold',
     }).setOrigin(0.5)
     this.joinOverlay.add(title)
 
     // Instructions
-    const instructions = this.add.text(centerX, 180, 'Enter 6-digit invite code:', {
+    const instructions = this.add.text(centerX, instructionsY, 'Enter 6-digit invite code:', {
       fontFamily: 'Courier New',
-      fontSize: '18px',
+      fontSize: isMobile ? '14px' : '18px',
       color: '#888888',
     }).setOrigin(0.5)
     this.joinOverlay.add(instructions)
 
     // Input display - large and prominent
-    const inputDisplay = this.add.text(centerX, 280, '______', {
+    const inputDisplay = this.add.text(centerX, inputY, '______', {
       fontFamily: 'Courier New',
-      fontSize: '48px',
+      fontSize: isMobile ? '36px' : '48px',
       color: '#ffaa00',
       fontStyle: 'bold',
     }).setOrigin(0.5).setName('inputDisplay')
     this.joinOverlay.add(inputDisplay)
 
     // Status/error message
-    const statusText = this.add.text(centerX, 360, '', {
+    const statusText = this.add.text(centerX, statusY, '', {
       fontFamily: 'Courier New',
-      fontSize: '16px',
+      fontSize: isMobile ? '14px' : '16px',
       color: '#ff6666',
     }).setOrigin(0.5).setName('statusText')
     this.joinOverlay.add(statusText)
 
     // Cancel button
-    const cancelBtn = this.add.rectangle(centerX, centerY + 150, 200, 50, 0x4a2a2a)
+    const cancelBtn = this.add.rectangle(centerX, cancelY, 200, 50, 0x4a2a2a)
       .setStrokeStyle(2, 0xff6666)
       .setInteractive({ useHandCursor: true })
     this.joinOverlay.add(cancelBtn)
 
-    const cancelText = this.add.text(centerX, centerY + 150, 'CANCEL', {
+    const cancelText = this.add.text(centerX, cancelY, 'CANCEL', {
       fontFamily: 'Courier New',
       fontSize: '20px',
       color: '#ff6666',
@@ -1069,16 +1083,71 @@ export default class MainMenuScene extends Phaser.Scene {
       this.closeJoinOverlay()
     })
 
-    // Help text at bottom
-    const helpText = this.add.text(centerX, this.cameras.main.height - 80, 'Press ESC to cancel', {
-      fontFamily: 'Courier New',
-      fontSize: '12px',
-      color: '#666666',
-    }).setOrigin(0.5)
-    this.joinOverlay.add(helpText)
+    // Help text at bottom (hide on mobile since keyboard covers it)
+    if (!isMobile) {
+      const helpText = this.add.text(centerX, this.cameras.main.height - 80, 'Press ESC to cancel', {
+        fontFamily: 'Courier New',
+        fontSize: '12px',
+        color: '#666666',
+      }).setOrigin(0.5)
+      this.joinOverlay.add(helpText)
+    }
 
-    // Keyboard input
+    // Keyboard input for desktop
     this.input.keyboard?.on('keydown', this.handleJoinKeyInput, this)
+
+    // Create hidden input for mobile keyboard
+    if (isMobile) {
+      this.mobileInput = document.createElement('input')
+      this.mobileInput.type = 'text'
+      this.mobileInput.inputMode = 'numeric'
+      this.mobileInput.pattern = '[0-9]*'
+      this.mobileInput.maxLength = 6
+      this.mobileInput.autocomplete = 'off'
+      this.mobileInput.style.position = 'absolute'
+      this.mobileInput.style.top = '50%'
+      this.mobileInput.style.left = '50%'
+      this.mobileInput.style.transform = 'translate(-50%, -50%)'
+      this.mobileInput.style.opacity = '0'
+      this.mobileInput.style.width = '1px'
+      this.mobileInput.style.height = '1px'
+      this.mobileInput.style.border = 'none'
+      this.mobileInput.style.outline = 'none'
+      this.mobileInput.style.background = 'transparent'
+      this.mobileInput.style.caretColor = 'transparent'
+      document.body.appendChild(this.mobileInput)
+
+      // Handle input from mobile keyboard
+      this.mobileInput.addEventListener('input', () => {
+        if (!this.mobileInput) return
+        const value = this.mobileInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
+        this.mobileInput.value = value
+        this.joinInput = value
+
+        // Update display
+        const display = this.joinOverlay?.getByName('inputDisplay') as Phaser.GameObjects.Text
+        if (display) {
+          display.setText(this.joinInput.padEnd(6, '_'))
+        }
+
+        // Clear any error
+        this.setJoinStatus('', '#888888')
+
+        // Auto-submit when 6 characters
+        if (this.joinInput.length === 6) {
+          this.submitJoinCode()
+        }
+      })
+
+      // Focus to bring up keyboard
+      this.mobileInput.focus()
+
+      // Re-focus if user taps the input display area
+      inputDisplay.setInteractive()
+      inputDisplay.on('pointerdown', () => {
+        this.mobileInput?.focus()
+      })
+    }
   }
 
   private handleJoinKeyInput(event: KeyboardEvent) {
@@ -1172,6 +1241,13 @@ export default class MainMenuScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown', this.handleJoinKeyInput, this)
       this.joinOverlay.destroy()
       this.joinOverlay = undefined
+    }
+
+    // Clean up mobile input element
+    if (this.mobileInput) {
+      this.mobileInput.blur() // Close keyboard
+      this.mobileInput.remove()
+      this.mobileInput = undefined
     }
   }
 
