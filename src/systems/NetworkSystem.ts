@@ -144,8 +144,9 @@ export class NetworkSystem {
       // Generate a short invite code
       this.sessionId = this.generateInviteCode()
 
-      // Create peer with session ID as the peer ID
-      this.peer = new Peer(this.sessionId, this.getPeerConfig())
+      // Create peer with prefixed ID to avoid collisions on public PeerJS server
+      const peerId = this.getPeerId(this.sessionId)
+      this.peer = new Peer(peerId, this.getPeerConfig())
 
       this.peer.on('open', (id) => {
         console.log('[Network] Hosting game with ID:', id)
@@ -182,16 +183,19 @@ export class NetworkSystem {
     return new Promise((resolve, reject) => {
       this.sessionId = inviteCode
 
+      // Get the prefixed peer ID for the host
+      const hostPeerId = this.getPeerId(inviteCode)
+
       // Create peer with random ID
       this.peer = new Peer(undefined, this.getPeerConfig())
 
       this.peer.on('open', (id) => {
         console.log('[Network] Local peer ID:', id)
         this.localPlayerId = id
-        this.hostId = inviteCode
+        this.hostId = hostPeerId
 
-        // Connect to host
-        const conn = this.peer!.connect(inviteCode, {
+        // Connect to host using prefixed peer ID
+        const conn = this.peer!.connect(hostPeerId, {
           reliable: true,
           metadata: {
             name: playerName,
@@ -203,7 +207,7 @@ export class NetworkSystem {
           console.log('[Network] Connected to host')
           this.isConnected = true
           this.isHost = false
-          this.connections.set(inviteCode, conn)
+          this.connections.set(hostPeerId, conn)
 
           // Send join message
           this.send(MessageType.PLAYER_JOINED, {
@@ -442,6 +446,13 @@ export class NetworkSystem {
       code += Math.floor(Math.random() * 10).toString()
     }
     return code
+  }
+
+  /**
+   * Get full peer ID with prefix (to avoid collisions on public PeerJS server)
+   */
+  private getPeerId(code: string): string {
+    return `acecraft-${code}`
   }
 
   /**
