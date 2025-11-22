@@ -102,7 +102,7 @@ export class NetworkSystem {
 
   /**
    * Get PeerJS configuration based on environment
-   * - Localhost: Uses default PeerJS cloud server (or local server if running)
+   * - Localhost: Uses local PeerJS server
    * - Production: Uses default PeerJS cloud server
    */
   private getPeerConfig(): any {
@@ -110,16 +110,20 @@ export class NetworkSystem {
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
 
     // ICE servers for WebRTC connection establishment
+    // Multiple STUN servers for redundancy on mobile networks
     const iceServers = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
+      // Additional STUN servers for better mobile connectivity
+      { urls: 'stun:stun.services.mozilla.com' },
+      { urls: 'stun:stun.stunprotocol.org:3478' },
     ]
 
     const config: any = {
-      debug: isLocalhost ? 2 : 0, // More verbose logging in dev
+      debug: isLocalhost ? 2 : 1, // Show errors in production for debugging
       config: {
         iceServers: iceServers
       }
@@ -186,6 +190,16 @@ export class NetworkSystem {
       // Get the prefixed peer ID for the host
       const hostPeerId = this.getPeerId(inviteCode)
 
+      // Connection timeout for mobile networks (15 seconds)
+      const connectionTimeout = setTimeout(() => {
+        console.error('[Network] Connection timeout - could not reach host')
+        if (this.peer) {
+          this.peer.destroy()
+          this.peer = null
+        }
+        reject(new Error('Connection timeout - could not reach host'))
+      }, 15000)
+
       // Create peer with random ID
       this.peer = new Peer(undefined, this.getPeerConfig())
 
@@ -204,6 +218,7 @@ export class NetworkSystem {
         })
 
         conn.on('open', () => {
+          clearTimeout(connectionTimeout)
           console.log('[Network] Connected to host')
           this.isConnected = true
           this.isHost = false
@@ -228,12 +243,14 @@ export class NetworkSystem {
         })
 
         conn.on('error', (err) => {
+          clearTimeout(connectionTimeout)
           console.error('[Network] Connection error:', err)
           reject(err)
         })
       })
 
       this.peer.on('error', (err) => {
+        clearTimeout(connectionTimeout)
         console.error('[Network] Peer error:', err)
         reject(err)
       })
@@ -450,9 +467,11 @@ export class NetworkSystem {
 
   /**
    * Get full peer ID with prefix (to avoid collisions on public PeerJS server)
+   * Localhost uses plain code since local server has no collision risk
    */
   private getPeerId(code: string): string {
-    return `acecraft-${code}`
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    return isLocalhost ? code : `acecraft-${code}`
   }
 
   /**
