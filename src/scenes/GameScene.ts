@@ -13,7 +13,8 @@ import { EvolutionManager, EVOLUTION_RECIPES, EvolvedWeapon, SuperEvolvedWeapon,
 import { GameState } from '../game/GameState'
 import { CampaignManager } from '../game/Campaign'
 import { soundManager, SoundType } from '../game/SoundManager'
-import { WaveSystem } from '../game/WaveSystem'
+import { WaveSystem, WaveFormation } from '../game/WaveSystem'
+import { resolveEntryAnimation, resolveExitAnimation, EntryAnimation, ExitAnimation } from '../game/AnimationPatterns'
 import { gameProgression } from '../game/GameProgression'
 import { MobileDetection } from '../utils/MobileDetection'
 import { RunStatistics, WeaponDPSData } from '../game/RunStatistics'
@@ -105,6 +106,7 @@ export default class GameScene extends Phaser.Scene {
   private xpBarBackground!: Phaser.GameObjects.Rectangle
   private xpBarFill!: Phaser.GameObjects.Rectangle
   private isPaused: boolean = false
+  private isMenuConfirmationOpen: boolean = false // Prevent double-opening pause menu
   private upgradeContainer!: Phaser.GameObjects.Container
   private pendingLevelUps: number = 0 // Queue of pending level ups to show
   private isShowingUpgradeOptions: boolean = false // Prevent multiple upgrade screens
@@ -160,6 +162,7 @@ export default class GameScene extends Phaser.Scene {
   private lastPoolLogTime: number = 0 // Track last pool status log
   private consecutiveFailedWaves: number = 0 // Track consecutive waves that failed to spawn enemies
   private pendingDelayedSpawns: number = 0 // Track formations queued to spawn with delays
+  private pendingStaggeredSpawns: number = 0 // Track individual enemies queued with staggered entry animations
   private highScore: number = 0
 
   // Character stats tracking
@@ -322,6 +325,7 @@ export default class GameScene extends Phaser.Scene {
     this.maxHealth = PLAYER.DEFAULT_HEALTH
     this.pendingHealAmount = 0 // Reset fractional healing accumulator
     this.isPaused = false
+    this.isMenuConfirmationOpen = false
     this.playerSpeed = PLAYER.DEFAULT_MOVE_SPEED
     this.enemySpawnRate = WAVE_SPAWNING.BASE_SPAWN_RATE
     this.baseEnemySpawnRate = WAVE_SPAWNING.BASE_SPAWN_RATE
@@ -365,6 +369,7 @@ export default class GameScene extends Phaser.Scene {
     this.currentWaveEnemyCount = 0
     this.waveStartTime = 0
     this.pendingDelayedSpawns = 0
+    this.pendingStaggeredSpawns = 0
 
     // Clear buff displays map to ensure clean state on restart
     // IMPORTANT: Destroy visual elements before clearing to prevent memory leak
@@ -610,11 +615,16 @@ export default class GameScene extends Phaser.Scene {
 
     // Click handler for menu button
     menuButton.on('pointerdown', () => {
+      // Prevent double-opening the menu
+      if (this.isMenuConfirmationOpen || this.isPaused) return
+
       // Pause the game
       this.isPaused = true
+      this.isMenuConfirmationOpen = true
       this.pauseStartTime = this.time.now
       this.physics.pause()
       this.starFieldTweens.forEach(tween => tween.pause())
+      this.enemies.pauseAnimations()
 
       // In coop mode, sync pause to partner
       if (this.isCoopMode) {
@@ -2394,6 +2404,7 @@ export default class GameScene extends Phaser.Scene {
     this.waveInProgress = true
     this.currentWaveEnemyCount = 0
     this.pendingDelayedSpawns = 0 // Reset delayed spawn counter for new wave
+    this.pendingStaggeredSpawns = 0 // Reset staggered spawn counter for new wave
     this.waveStartTime = this.time.now // Track when wave started for failsafe
     this.waveStartPausedTime = this.totalPausedTime // Track paused time at wave start
 
@@ -2477,7 +2488,7 @@ export default class GameScene extends Phaser.Scene {
           // Track that we have a pending delayed spawn
           this.pendingDelayedSpawns++
 
-          this.time.delayedCall(delay, () => {
+          this.pauseAwareDelayedCall(delay, () => {
             const actualSpawned = this.spawnWaveFormation(formation, enemyType)
             this.currentWaveEnemyCount += actualSpawned
 
@@ -2513,7 +2524,7 @@ export default class GameScene extends Phaser.Scene {
       // Try next wave with a longer delay to allow pool cleanup
       this.waveInProgress = false
       this.waveStartPending = true
-      this.time.delayedCall(2000, () => {
+      this.pauseAwareDelayedCall(2000, () => {
         this.startNextWave()
       })
       return
@@ -2557,7 +2568,22 @@ export default class GameScene extends Phaser.Scene {
     return Phaser.Math.Clamp(x, padding, this.cameras.main.width - padding)
   }
 
-  private spawnWaveFormation(formation: any, enemyType: EnemyType): number {
+  /**
+   * Schedule a delayed call that respects game pause state.
+   * If paused when callback should fire, it will retry after a short delay.
+   */
+  private pauseAwareDelayedCall(delay: number, callback: () => void): void {
+    this.time.delayedCall(delay, () => {
+      if (this.isPaused) {
+        // Retry after 100ms if still paused
+        this.pauseAwareDelayedCall(100, callback)
+      } else {
+        callback()
+      }
+    })
+  }
+
+  private spawnWaveFormation(formation: WaveFormation, enemyType: EnemyType): number {
     // In coop mode, only host spawns enemies
     if (this.isCoopMode && !networkSystem.isHost) {
       return 0
@@ -2568,15 +2594,24 @@ export default class GameScene extends Phaser.Scene {
     const yOffset = Phaser.Math.Between(-30, 30) // Random vertical offset
 
     const centerX = this.cameras.main.centerX + centerXOffset
-    const y = -150 + yOffset // Spawn above the screen with variation (moved higher to prevent pop-in)
+    const baseY = 120 + yOffset // Formation target Y position (visible on screen for holding)
     const spacing = formation.spacing || 60
     const currentWave = this.waveSystem.getCurrentWave()
     let spawnedCount = 0
 
+    // Resolve animation configs from presets or direct objects
+    const entryConfig = resolveEntryAnimation(formation.entryAnimation)
+    const exitConfig = resolveExitAnimation(formation.exitAnimation)
+    const holdDuration = formation.holdDuration || 0
+    const entryStagger = formation.entryStagger || 100
+
+    // Check if this is a boss/mini-boss type (they shouldn't hold or exit via animation)
+    const isBossFormation = this.isBossType(enemyType) || this.isMiniBossType(enemyType)
+
     // Helper function to apply Salvage Unit passive (chance to spawn golden enemy, but not bosses/mini-bosses)
     const checkGoldenChance = (): boolean => {
       // Don't make bosses or mini-bosses golden
-      if (this.isBossType(enemyType) || this.isMiniBossType(enemyType)) {
+      if (isBossFormation) {
         return false
       }
 
@@ -2591,70 +2626,226 @@ export default class GameScene extends Phaser.Scene {
       return false
     }
 
-    // Helper function to spawn enemy and broadcast to clients
-    const spawnAndBroadcast = (spawnX: number, spawnY: number, isGolden: boolean): boolean => {
-      const enemy = this.enemies.spawnEnemy(spawnX, spawnY, enemyType, currentWave)
-      if (enemy) {
-        if (isGolden) enemy.setGolden(true)
-        spawnedCount++
-        this.cachedActiveEnemyCount++
-        if (this.isCoopMode && networkSystem.isHost) {
-          networkSystem.send(MessageType.SPAWN_ENEMY, {
-            x: spawnX, y: spawnY, type: enemyType, wave: currentWave, isGolden
-          })
-        }
-        return true
+    // Calculate all formation positions first
+    const formationPositions = this.calculateFormationPositions(formation.type, centerX, baseY, spacing, formation.count)
+
+    // Helper to spawn single enemy with animation support
+    const spawnWithAnimation = (targetX: number, targetY: number, staggerIndex: number, isGolden: boolean): void => {
+      // Determine spawn position based on entry animation
+      let spawnX = targetX
+      let spawnY = -150 // Default: above screen
+
+      if (entryConfig) {
+        // Calculate off-screen spawn position based on entry direction
+        const offscreenPos = this.calculateOffscreenSpawnPosition(entryConfig.direction, targetX, targetY)
+        spawnX = offscreenPos.x
+        spawnY = offscreenPos.y
       }
-      return false
+
+      // Helper function to do the actual spawn
+      const doSpawn = () => {
+        const enemy = this.enemies.spawnEnemy(spawnX, spawnY, enemyType, currentWave)
+        if (enemy) {
+          if (isGolden) enemy.setGolden(true)
+          spawnedCount++
+          this.cachedActiveEnemyCount++
+
+          // Start entry animation if configured
+          if (entryConfig) {
+            // Bosses never hold or exit via animation
+            const actualHoldDuration = isBossFormation ? 0 : holdDuration
+            const actualExitConfig = isBossFormation ? null : exitConfig
+            enemy.startEntryAnimation(targetX, targetY, entryConfig, actualHoldDuration, actualExitConfig)
+          }
+
+          // Send spawn message to client with animation data
+          if (this.isCoopMode && networkSystem.isHost) {
+            networkSystem.send(MessageType.SPAWN_ENEMY, {
+              x: spawnX,
+              y: spawnY,
+              type: enemyType,
+              wave: currentWave,
+              isGolden,
+              // Animation sync data
+              targetX: entryConfig ? targetX : undefined,
+              targetY: entryConfig ? targetY : undefined,
+              entryAnimation: entryConfig || undefined,
+              holdDuration: isBossFormation ? 0 : holdDuration,
+              exitAnimation: isBossFormation ? undefined : (exitConfig || undefined)
+            })
+          }
+        }
+      }
+
+      // Use staggered delay for animated entries, spawn synchronously otherwise
+      if (entryConfig) {
+        const delay = staggerIndex * entryStagger
+        if (delay > 0) {
+          // Track pending staggered spawn for progress bar accuracy
+          this.pendingStaggeredSpawns++
+          this.pauseAwareDelayedCall(delay, () => {
+            this.pendingStaggeredSpawns--
+            doSpawn()
+          })
+        } else {
+          doSpawn()
+        }
+      } else {
+        // No animation - spawn synchronously
+        doSpawn()
+      }
     }
 
-    switch (formation.type) {
-      case 'single':
-        const count = formation.count || 1
-        const spawnedEnemies: Enemy[] = []
+    // Handle 'single' formation specially for boss spawning
+    if (formation.type === 'single') {
+      const count = formation.count || 1
+      const spawnedEnemies: Enemy[] = []
 
-        for (let i = 0; i < count; i++) {
-          const offsetX = (i - (count - 1) / 2) * 100
-          const spawnX = this.clampSpawnX(centerX + offsetX)
-          const isGoldenVariant = checkGoldenChance()
-          const enemy = this.enemies.spawnEnemy(spawnX, y, enemyType, currentWave)
+      for (let i = 0; i < formationPositions.length; i++) {
+        const pos = formationPositions[i]
+        const isGoldenVariant = checkGoldenChance()
+
+        if (entryConfig) {
+          // For animated spawns, we can't return enemies for boss handling immediately
+          // So for bosses with animations, spawn and start animation
+          const offscreenPos = this.calculateOffscreenSpawnPosition(entryConfig.direction, pos.x, pos.y)
+          const delay = i * entryStagger
+
+          if (delay > 0) {
+            // Track pending staggered spawn for progress bar accuracy
+            this.pendingStaggeredSpawns++
+          }
+
+          const doSingleSpawn = () => {
+            if (delay > 0) {
+              this.pendingStaggeredSpawns--
+            }
+            const enemy = this.enemies.spawnEnemy(offscreenPos.x, offscreenPos.y, enemyType, currentWave)
+            if (enemy) {
+              if (isGoldenVariant) enemy.setGolden(true)
+              spawnedCount++
+              this.cachedActiveEnemyCount++
+
+              const actualHoldDuration = isBossFormation ? 0 : holdDuration
+              const actualExitConfig = isBossFormation ? null : exitConfig
+              enemy.startEntryAnimation(pos.x, pos.y, entryConfig, actualHoldDuration, actualExitConfig)
+
+              if (this.isCoopMode && networkSystem.isHost) {
+                networkSystem.send(MessageType.SPAWN_ENEMY, {
+                  x: offscreenPos.x, y: offscreenPos.y, type: enemyType, wave: currentWave, isGolden: isGoldenVariant,
+                  targetX: pos.x, targetY: pos.y, entryAnimation: entryConfig,
+                  holdDuration: actualHoldDuration, exitAnimation: actualExitConfig || undefined
+                })
+              }
+            }
+          }
+
+          if (delay > 0) {
+            this.pauseAwareDelayedCall(delay, doSingleSpawn)
+          } else {
+            doSingleSpawn()
+          }
+        } else {
+          // Non-animated spawn (legacy behavior)
+          const enemy = this.enemies.spawnEnemy(pos.x, -150, enemyType, currentWave)
           if (enemy) {
             if (isGoldenVariant) enemy.setGolden(true)
             spawnedCount++
             spawnedEnemies.push(enemy)
             this.cachedActiveEnemyCount++
-            // Send spawn message to client
             if (this.isCoopMode) {
               networkSystem.send(MessageType.SPAWN_ENEMY, {
-                x: spawnX, y, type: enemyType, wave: currentWave, isGolden: isGoldenVariant
+                x: pos.x, y: -150, type: enemyType, wave: currentWave, isGolden: isGoldenVariant
               })
             }
           }
         }
+      }
 
-        // Handle boss-specific spawning logic
-        this.handleBossSpawn(enemyType, spawnedEnemies, centerX, y)
+      // Handle boss-specific spawning logic (only for non-animated spawns)
+      if (!entryConfig && spawnedEnemies.length > 0) {
+        this.handleBossSpawn(enemyType, spawnedEnemies, centerX, -150)
+      }
+
+      return entryConfig ? formationPositions.length : spawnedCount
+    }
+
+    // For all other formation types, spawn enemies at calculated positions
+    for (let i = 0; i < formationPositions.length; i++) {
+      const pos = formationPositions[i]
+      spawnWithAnimation(pos.x, pos.y, i, checkGoldenChance())
+    }
+
+    // Return expected count for animated spawns (actual spawning is delayed)
+    return entryConfig ? formationPositions.length : spawnedCount
+  }
+
+  /**
+   * Calculate off-screen spawn position based on entry direction
+   */
+  private calculateOffscreenSpawnPosition(
+    direction: string,
+    targetX: number,
+    targetY: number
+  ): { x: number, y: number } {
+    const screenWidth = this.cameras.main.width
+    const margin = 100 // How far off-screen to spawn
+
+    switch (direction) {
+      case 'top':
+        return { x: targetX, y: -margin }
+      case 'left':
+        return { x: -margin, y: targetY }
+      case 'right':
+        return { x: screenWidth + margin, y: targetY }
+      case 'top-left':
+        return { x: -margin, y: -margin }
+      case 'top-right':
+        return { x: screenWidth + margin, y: -margin }
+      default:
+        return { x: targetX, y: -margin }
+    }
+  }
+
+  /**
+   * Calculate all formation positions for a given formation type
+   */
+  private calculateFormationPositions(
+    type: string,
+    centerX: number,
+    baseY: number,
+    spacing: number,
+    count?: number
+  ): Array<{ x: number, y: number }> {
+    const positions: Array<{ x: number, y: number }> = []
+
+    switch (type) {
+      case 'single':
+        const singleCount = count || 1
+        for (let i = 0; i < singleCount; i++) {
+          const offsetX = (i - (singleCount - 1) / 2) * 100
+          positions.push({ x: this.clampSpawnX(centerX + offsetX), y: baseY })
+        }
         break
 
       case 'line':
         for (let i = -4; i <= 4; i++) {
-          const spawnX = this.clampSpawnX(centerX + i * spacing)
-          spawnAndBroadcast(spawnX, y, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing), y: baseY })
         }
         break
 
       case 'v':
         for (let i = -2; i <= 2; i++) {
-          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing), y: baseY })
         }
         for (let i = -3; i <= 3; i++) {
-          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y - 40, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing), y: baseY - 40 })
         }
         for (let i = -2; i <= 2; i++) {
-          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y - 80, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing), y: baseY - 80 })
         }
         for (let i = -1; i <= 1; i++) {
-          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y - 120, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing), y: baseY - 120 })
         }
         break
 
@@ -2663,138 +2854,230 @@ export default class GameScene extends Phaser.Scene {
           const angle = (i / 10) * Math.PI * 2
           const offsetX = Math.cos(angle) * 80
           const offsetY = Math.sin(angle) * 40
-          spawnAndBroadcast(this.clampSpawnX(centerX + offsetX), y + offsetY, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + offsetX), y: baseY + offsetY })
         }
         break
 
       case 'wave':
         for (let i = -5; i <= 5; i++) {
           const waveOffset = Math.sin((i / 5) * Math.PI) * 30
-          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y + waveOffset, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing), y: baseY + waveOffset })
         }
         break
 
       case 'diamond':
-        // Diamond formation (4 corners + 4 sides + 1 center = 9 enemies)
         const diamondPoints = [
-          { x: 0, y: -spacing * 1.5 },     // Top
-          { x: -spacing, y: -spacing * 0.75 },  // Top-left
-          { x: spacing, y: -spacing * 0.75 },   // Top-right
-          { x: -spacing * 1.5, y: 0 },     // Left
-          { x: 0, y: 0 },                  // Center
-          { x: spacing * 1.5, y: 0 },      // Right
-          { x: -spacing, y: spacing * 0.75 },   // Bottom-left
-          { x: spacing, y: spacing * 0.75 },    // Bottom-right
-          { x: 0, y: spacing * 1.5 },      // Bottom
+          { x: 0, y: -spacing * 1.5 },
+          { x: -spacing, y: -spacing * 0.75 },
+          { x: spacing, y: -spacing * 0.75 },
+          { x: -spacing * 1.5, y: 0 },
+          { x: 0, y: 0 },
+          { x: spacing * 1.5, y: 0 },
+          { x: -spacing, y: spacing * 0.75 },
+          { x: spacing, y: spacing * 0.75 },
+          { x: 0, y: spacing * 1.5 },
         ]
         for (const point of diamondPoints) {
-          spawnAndBroadcast(this.clampSpawnX(centerX + point.x), y + point.y, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + point.x), y: baseY + point.y })
         }
         break
 
       case 'x':
-        // X formation (two diagonal lines)
         for (let i = -3; i <= 3; i++) {
-          // Top-left to bottom-right diagonal
-          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing * 0.7), y + i * spacing * 0.7, checkGoldenChance())
-          // Top-right to bottom-left diagonal
-          spawnAndBroadcast(this.clampSpawnX(centerX - i * spacing * 0.7), y + i * spacing * 0.7, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing * 0.7), y: baseY + i * spacing * 0.7 })
+          positions.push({ x: this.clampSpawnX(centerX - i * spacing * 0.7), y: baseY + i * spacing * 0.7 })
         }
         break
 
       case 'arc':
-        // Arc formation (curved line across top)
         for (let i = 0; i < 9; i++) {
-          const t = i / 8 // 0 to 1
-          const angle = (t - 0.5) * Math.PI * 0.8 // -72 to +72 degrees
+          const t = i / 8
+          const angle = (t - 0.5) * Math.PI * 0.8
           const radius = spacing * 2
           const offsetX = Math.sin(angle) * radius
           const offsetY = -Math.cos(angle) * radius * 0.3
-          spawnAndBroadcast(this.clampSpawnX(centerX + offsetX), y + offsetY, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + offsetX), y: baseY + offsetY })
         }
         break
 
       case 'cross':
-        // Cross/Plus formation (horizontal + vertical lines)
-        // Horizontal line
         for (let i = -3; i <= 3; i++) {
-          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing), y: baseY })
         }
-        // Vertical line (skip center since it's already spawned)
         for (let i = -2; i <= 2; i++) {
           if (i !== 0) {
-            spawnAndBroadcast(this.clampSpawnX(centerX), y + i * spacing, checkGoldenChance())
+            positions.push({ x: this.clampSpawnX(centerX), y: baseY + i * spacing })
           }
         }
         break
 
       case 'wedge':
-        // Wedge formation (inverted triangle pointing down)
         for (let row = 0; row < 4; row++) {
           const rowWidth = row + 1
           for (let i = 0; i < rowWidth; i++) {
             const offsetX = (i - (rowWidth - 1) / 2) * spacing
-            spawnAndBroadcast(this.clampSpawnX(centerX + offsetX), y + row * spacing * 0.8, checkGoldenChance())
+            positions.push({ x: this.clampSpawnX(centerX + offsetX), y: baseY + row * spacing * 0.8 })
           }
         }
         break
 
       case 'inverted-v':
-        // Inverted V formation (upside down V)
         for (let i = -2; i <= 2; i++) {
           const offsetY = Math.abs(i) * spacing * 0.6
-          spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y + offsetY, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing), y: baseY + offsetY })
         }
         for (let i = -3; i <= 3; i++) {
           if (Math.abs(i) >= 2) {
             const offsetY = (Math.abs(i) - 1) * spacing * 0.6
-            spawnAndBroadcast(this.clampSpawnX(centerX + i * spacing), y + offsetY, checkGoldenChance())
+            positions.push({ x: this.clampSpawnX(centerX + i * spacing), y: baseY + offsetY })
           }
         }
         break
 
       case 'column':
-        // Vertical column formation
         for (let i = 0; i < 7; i++) {
-          spawnAndBroadcast(this.clampSpawnX(centerX), y + i * spacing * 0.8, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX), y: baseY + i * spacing * 0.8 })
         }
         break
 
       case 'scattered':
-        // Scattered random formation
         const scatterCount = 8
         for (let i = 0; i < scatterCount; i++) {
           const randomX = Phaser.Math.Between(-spacing * 2, spacing * 2)
           const randomY = Phaser.Math.Between(-spacing, spacing)
-          spawnAndBroadcast(this.clampSpawnX(centerX + randomX), y + randomY, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + randomX), y: baseY + randomY })
         }
         break
 
       case 'grid':
-        // Grid formation (3x3)
         for (let row = 0; row < 3; row++) {
           for (let col = 0; col < 3; col++) {
             const offsetX = (col - 1) * spacing
             const offsetY = (row - 1) * spacing * 0.8
-            spawnAndBroadcast(this.clampSpawnX(centerX + offsetX), y + offsetY, checkGoldenChance())
+            positions.push({ x: this.clampSpawnX(centerX + offsetX), y: baseY + offsetY })
           }
         }
         break
 
       case 'spiral':
-        // Spiral formation
         const spiralPoints = 12
         for (let i = 0; i < spiralPoints; i++) {
-          const angle = (i / spiralPoints) * Math.PI * 3 // 1.5 rotations
+          const angle = (i / spiralPoints) * Math.PI * 3
           const radius = (i / spiralPoints) * spacing * 2
           const offsetX = Math.cos(angle) * radius
           const offsetY = Math.sin(angle) * radius * 0.5
-          spawnAndBroadcast(this.clampSpawnX(centerX + offsetX), y + offsetY, checkGoldenChance())
+          positions.push({ x: this.clampSpawnX(centerX + offsetX), y: baseY + offsetY })
+        }
+        break
+
+      // NEW FORMATIONS
+
+      case 'chevron':
+        // Pointed arrow formation (like geese flying)
+        // Center point, then angled lines going back
+        positions.push({ x: centerX, y: baseY })  // Point
+        for (let i = 1; i <= 4; i++) {
+          positions.push({ x: this.clampSpawnX(centerX - i * spacing * 0.7), y: baseY + i * spacing * 0.6 })
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing * 0.7), y: baseY + i * spacing * 0.6 })
+        }
+        break
+
+      case 'double-line':
+        // Two parallel horizontal lines
+        for (let i = -3; i <= 3; i++) {
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing), y: baseY - spacing * 0.5 })
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing), y: baseY + spacing * 0.5 })
+        }
+        break
+
+      case 'staggered':
+        // Offset rows like a brick pattern
+        for (let row = 0; row < 3; row++) {
+          const rowOffset = row % 2 === 0 ? 0 : spacing * 0.5
+          for (let col = -2; col <= 2; col++) {
+            positions.push({
+              x: this.clampSpawnX(centerX + col * spacing + rowOffset),
+              y: baseY + row * spacing * 0.7
+            })
+          }
+        }
+        break
+
+      case 'pinwheel':
+        // Rotated arms extending from center
+        const pinwheelArms = 4
+        const pinwheelPerArm = 3
+        for (let arm = 0; arm < pinwheelArms; arm++) {
+          const armAngle = (arm / pinwheelArms) * Math.PI * 2
+          for (let point = 1; point <= pinwheelPerArm; point++) {
+            // Each point is slightly rotated from the arm angle
+            const pointAngle = armAngle + point * 0.2
+            const radius = point * spacing * 0.8
+            positions.push({
+              x: this.clampSpawnX(centerX + Math.cos(pointAngle) * radius),
+              y: baseY + Math.sin(pointAngle) * radius * 0.5
+            })
+          }
+        }
+        break
+
+      case 'corners':
+        // Enemies positioned in the four corners
+        const cornerOffset = spacing * 2
+        // Top-left cluster
+        positions.push({ x: this.clampSpawnX(centerX - cornerOffset), y: baseY - spacing * 0.8 })
+        positions.push({ x: this.clampSpawnX(centerX - cornerOffset - spacing * 0.5), y: baseY - spacing * 0.4 })
+        // Top-right cluster
+        positions.push({ x: this.clampSpawnX(centerX + cornerOffset), y: baseY - spacing * 0.8 })
+        positions.push({ x: this.clampSpawnX(centerX + cornerOffset + spacing * 0.5), y: baseY - spacing * 0.4 })
+        // Bottom-left cluster
+        positions.push({ x: this.clampSpawnX(centerX - cornerOffset), y: baseY + spacing * 0.8 })
+        positions.push({ x: this.clampSpawnX(centerX - cornerOffset - spacing * 0.5), y: baseY + spacing * 0.4 })
+        // Bottom-right cluster
+        positions.push({ x: this.clampSpawnX(centerX + cornerOffset), y: baseY + spacing * 0.8 })
+        positions.push({ x: this.clampSpawnX(centerX + cornerOffset + spacing * 0.5), y: baseY + spacing * 0.4 })
+        break
+
+      case 'ring':
+        // Hollow circle - enemies only on the perimeter
+        const ringPoints = 10
+        const ringRadius = spacing * 1.5
+        for (let i = 0; i < ringPoints; i++) {
+          const angle = (i / ringPoints) * Math.PI * 2
+          positions.push({
+            x: this.clampSpawnX(centerX + Math.cos(angle) * ringRadius),
+            y: baseY + Math.sin(angle) * ringRadius * 0.5
+          })
+        }
+        break
+
+      case 'arrow':
+        // Filled arrow/triangle pointing down at player
+        // Row 1: 1 enemy (tip)
+        positions.push({ x: centerX, y: baseY + spacing * 1.5 })
+        // Row 2: 3 enemies
+        for (let i = -1; i <= 1; i++) {
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing * 0.6), y: baseY + spacing * 0.5 })
+        }
+        // Row 3: 5 enemies (base)
+        for (let i = -2; i <= 2; i++) {
+          positions.push({ x: this.clampSpawnX(centerX + i * spacing * 0.6), y: baseY - spacing * 0.5 })
+        }
+        break
+
+      case 'echelon':
+        // Military diagonal line formation
+        const echelonCount = 7
+        for (let i = 0; i < echelonCount; i++) {
+          positions.push({
+            x: this.clampSpawnX(centerX - (echelonCount / 2 - i) * spacing * 0.7),
+            y: baseY + i * spacing * 0.4
+          })
         }
         break
     }
 
-    return spawnedCount
+    return positions
   }
 
   private getFormationSize(formation: any): number {
@@ -2829,6 +3112,23 @@ export default class GameScene extends Phaser.Scene {
         return 9 // 3x3
       case 'spiral':
         return 12
+      // New formations
+      case 'chevron':
+        return 9  // 1 + 4*2
+      case 'double-line':
+        return 14 // 7*2
+      case 'staggered':
+        return 15 // 3 rows * 5
+      case 'pinwheel':
+        return 12 // 4 arms * 3 points
+      case 'corners':
+        return 8  // 2 per corner
+      case 'ring':
+        return 10
+      case 'arrow':
+        return 9  // 1 + 3 + 5
+      case 'echelon':
+        return 7
       default:
         return 1
     }
@@ -2940,8 +3240,10 @@ export default class GameScene extends Phaser.Scene {
     this.waveText.setText(`Wave ${currentWave}/${totalWaves}`)
 
     // Update progress bar based on remaining enemies (use cached count for performance)
+    // Include pending staggered spawns to prevent progress bar from appearing complete during entry animations
     if (this.currentWaveEnemyCount > 0) {
-      const progress = 1 - (this.cachedActiveEnemyCount / this.currentWaveEnemyCount)
+      const totalRemaining = this.cachedActiveEnemyCount + this.pendingStaggeredSpawns
+      const progress = 1 - (totalRemaining / this.currentWaveEnemyCount)
       const progressBarWidth = 200
       this.waveProgressBar.width = progressBarWidth * Math.max(0, Math.min(1, progress))
     } else {
@@ -3245,12 +3547,12 @@ export default class GameScene extends Phaser.Scene {
 
       // Check if all enemies are cleared and wave is in progress
       // Add grace period: don't check for completion until at least 2 seconds after wave starts
-      // Also ensure all delayed formations have been spawned before completing the wave
+      // Also ensure all delayed formations AND staggered entry animations have been spawned before completing
       // In coop mode, only host advances waves - client receives via WAVE_START
       const pausedDuringWave = this.totalPausedTime - this.waveStartPausedTime
       const timeSinceWaveStart = time - this.waveStartTime - pausedDuringWave
       const shouldCheckWaveCompletion = !this.isCoopMode || networkSystem.isHost
-      if (shouldCheckWaveCompletion && this.waveInProgress && activeEnemyCount === 0 && this.currentWaveEnemyCount > 0 && timeSinceWaveStart > 2000 && this.pendingDelayedSpawns === 0) {
+      if (shouldCheckWaveCompletion && this.waveInProgress && activeEnemyCount === 0 && this.currentWaveEnemyCount > 0 && timeSinceWaveStart > 2000 && this.pendingDelayedSpawns === 0 && this.pendingStaggeredSpawns === 0) {
         console.log(`Wave ${this.waveSystem.getCurrentWave()} complete! Time: ${timeSinceWaveStart}ms, Enemies spawned: ${this.currentWaveEnemyCount}`)
         // Wave cleared! Apply wave heal bonus
         const bonuses = this.gameState.getTotalBonuses()
@@ -3295,6 +3597,7 @@ export default class GameScene extends Phaser.Scene {
         this.waveInProgress = false
         this.currentWaveEnemyCount = 0
         this.pendingDelayedSpawns = 0 // Reset delayed spawn counter
+        this.pendingStaggeredSpawns = 0 // Reset staggered spawn counter
         this.consecutiveFailedWaves = 0 // Reset failure counter on successful wave completion
 
         // Broadcast wave complete to client in coop mode
@@ -3330,6 +3633,7 @@ export default class GameScene extends Phaser.Scene {
           this.waveInProgress = false
           this.currentWaveEnemyCount = 0
           this.pendingDelayedSpawns = 0 // Reset delayed spawn counter
+          this.pendingStaggeredSpawns = 0 // Reset staggered spawn counter
           this.waveStartPending = true
           this.time.delayedCall(1000, () => {
             this.startNextWave()
@@ -3561,7 +3865,7 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  private handleEnemyDied(data: { x: number; y: number; xpValue: number; reachedBottom?: boolean; type?: EnemyType; isGolden?: boolean }) {
+  private handleEnemyDied(data: { x: number; y: number; xpValue: number; reachedBottom?: boolean; exitedViaAnimation?: boolean; type?: EnemyType; isGolden?: boolean }) {
     // Update cached active enemy count for performance
     this.cachedActiveEnemyCount = Math.max(0, this.cachedActiveEnemyCount - 1)
 
@@ -3571,12 +3875,13 @@ export default class GameScene extends Phaser.Scene {
         x: data.x,
         y: data.y,
         type: data.type,
-        reachedBottom: data.reachedBottom
+        reachedBottom: data.reachedBottom,
+        exitedViaAnimation: data.exitedViaAnimation
       })
     }
 
-    // If enemy reached bottom naturally, don't play sounds or spawn drops
-    if (data.reachedBottom) {
+    // If enemy reached bottom naturally OR exited via animation, don't give rewards
+    if (data.reachedBottom || data.exitedViaAnimation) {
       return
     }
 
@@ -4101,6 +4406,7 @@ export default class GameScene extends Phaser.Scene {
       this.physics.pause()
       // Pause star field
       this.starFieldTweens.forEach(tween => tween.pause())
+      this.enemies.pauseAnimations()
       this.showUpgradeOptions()
     }
   }
@@ -4158,6 +4464,7 @@ export default class GameScene extends Phaser.Scene {
       this.isPaused = false
       this.physics.resume()
       this.starFieldTweens.forEach(tween => tween.resume())
+      this.enemies.resumeAnimations()
     }
   }
 
@@ -5568,6 +5875,7 @@ export default class GameScene extends Phaser.Scene {
     this.pauseStartTime = this.time.now
     this.physics.pause()
     this.starFieldTweens.forEach(tween => tween.pause())
+    this.enemies.pauseAnimations()
 
     // Create dark overlay (make it interactive for click handling)
     const overlay = this.add.rectangle(
@@ -6234,6 +6542,7 @@ export default class GameScene extends Phaser.Scene {
     this.pauseStartTime = this.time.now
     this.physics.pause()
     this.starFieldTweens.forEach(tween => tween.pause())
+    this.enemies.pauseAnimations()
 
     // Create overlay
     const overlay = this.add.rectangle(
@@ -8170,6 +8479,7 @@ export default class GameScene extends Phaser.Scene {
     this.physics.pause()
     // Pause star field
     this.starFieldTweens.forEach(tween => tween.pause())
+    this.enemies.pauseAnimations()
 
     // Record run stats
     const enemyKills = this.killCount
@@ -8310,55 +8620,56 @@ export default class GameScene extends Phaser.Scene {
     const creditBreakdownElements = this.createCreditBreakdownDisplay(this.cameras.main.centerY + 150)
     this.gameOverUI.push(...creditBreakdownElements)
 
-    // Revive button - positioned after credits breakdown
+    // Revive button - positioned after credits breakdown (hide in multiplayer)
     const reviveButtonY = this.cameras.main.centerY + 280
-    const reviveButton = this.add.rectangle(
-      this.cameras.main.centerX,
-      reviveButtonY,
-      300,
-      70,
-      0x4a2a4a
-    ).setDepth(201).setInteractive({ useHandCursor: true })
-    this.gameOverUI.push(reviveButton)
-
-    const reviveText = this.add.text(
-      this.cameras.main.centerX,
-      reviveButtonY,
-      'Revive Watch Ad',
-      {
-        fontFamily: 'Courier New',
-        fontSize: '28px',
-        color: '#ffaa00',
-      }
-    ).setOrigin(0.5).setDepth(202)
-    this.gameOverUI.push(reviveText)
-
-    // Revive hover effects
-    reviveButton.on('pointerover', () => {
-      reviveButton.setFillStyle(0x6a3a6a)
-    })
-
-    reviveButton.on('pointerout', () => {
-      reviveButton.setFillStyle(0x4a2a4a)
-    })
-
-    // Revive handler - Coming Soon
-    reviveButton.on('pointerdown', () => {
-      // Show floating "Coming Soon" text
-      const comingSoonText = this.add.text(
+    if (!this.isCoopMode) {
+      const reviveButton = this.add.rectangle(
         this.cameras.main.centerX,
-        this.cameras.main.centerY + 240,
-        'Revive Feature Coming Soon!',
+        reviveButtonY,
+        300,
+        70,
+        0x4a2a4a
+      ).setDepth(201).setInteractive({ useHandCursor: true })
+      this.gameOverUI.push(reviveButton)
+
+      const reviveText = this.add.text(
+        this.cameras.main.centerX,
+        reviveButtonY,
+        'Revive Watch Ad',
         {
           fontFamily: 'Courier New',
-          fontSize: '18px',
-          color: '#ffff00',
-          fontStyle: 'bold',
+          fontSize: '28px',
+          color: '#ffaa00',
         }
-      ).setOrigin(0.5).setDepth(1000)
+      ).setOrigin(0.5).setDepth(202)
+      this.gameOverUI.push(reviveText)
 
-      // Animate it floating up and fading out
-      this.tweens.add({
+      // Revive hover effects
+      reviveButton.on('pointerover', () => {
+        reviveButton.setFillStyle(0x6a3a6a)
+      })
+
+      reviveButton.on('pointerout', () => {
+        reviveButton.setFillStyle(0x4a2a4a)
+      })
+
+      // Revive handler - Coming Soon
+      reviveButton.on('pointerdown', () => {
+        // Show floating "Coming Soon" text
+        const comingSoonText = this.add.text(
+          this.cameras.main.centerX,
+          this.cameras.main.centerY + 240,
+          'Revive Feature Coming Soon!',
+          {
+            fontFamily: 'Courier New',
+            fontSize: '18px',
+            color: '#ffff00',
+            fontStyle: 'bold',
+          }
+        ).setOrigin(0.5).setDepth(1000)
+
+        // Animate it floating up and fading out
+        this.tweens.add({
         targets: comingSoonText,
         y: this.cameras.main.centerY + 140,
         alpha: 0,
@@ -8369,9 +8680,12 @@ export default class GameScene extends Phaser.Scene {
         }
       })
     })
+    }
 
-    // Main menu button (positioned lower)
-    const mainMenuButtonY = this.cameras.main.centerY + 380
+    // Main menu button (positioned lower - move up if revive button is hidden in multiplayer)
+    const mainMenuButtonY = this.isCoopMode
+      ? this.cameras.main.centerY + 280  // Same position as revive button would be
+      : this.cameras.main.centerY + 380
     const mainMenuButton = this.add.rectangle(
       this.cameras.main.centerX,
       mainMenuButtonY,
@@ -8489,6 +8803,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Resume star field
     this.starFieldTweens.forEach(tween => tween.resume())
+    this.enemies.resumeAnimations()
   }
 
   private levelWon() {
@@ -8497,6 +8812,7 @@ export default class GameScene extends Phaser.Scene {
     this.physics.pause()
     // Pause star field
     this.starFieldTweens.forEach(tween => tween.pause())
+    this.enemies.pauseAnimations()
 
     // Award credits with building bonus
     let creditsReward = this.campaignManager.getCreditsReward()
@@ -9021,14 +9337,14 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private showMenuConfirmation() {
-    // Create overlay
+    // Create overlay - make it interactive to block clicks to game behind
     const overlay = this.add.rectangle(
       0, 0,
       this.cameras.main.width,
       this.cameras.main.height,
       0x000000,
       0.7
-    ).setOrigin(0, 0).setDepth(300)
+    ).setOrigin(0, 0).setDepth(300).setInteractive()
 
     // Title
     const title = this.add.text(
@@ -9112,6 +9428,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Yes - go to menu
     yesButton.on('pointerdown', () => {
+      this.isMenuConfirmationOpen = false
       overlay.destroy()
       title.destroy()
       subtitle.destroy()
@@ -9125,6 +9442,7 @@ export default class GameScene extends Phaser.Scene {
 
     // No - resume game
     noButton.on('pointerdown', () => {
+      this.isMenuConfirmationOpen = false
       overlay.destroy()
       title.destroy()
       subtitle.destroy()
@@ -9929,6 +10247,7 @@ export default class GameScene extends Phaser.Scene {
         this.pauseStartTime = this.time.now
         this.physics.pause()
         this.starFieldTweens.forEach(tween => tween.pause())
+        this.enemies.pauseAnimations()
         this.showMenuConfirmation()
       } else if (data.type === 'resume' && this.isPaused) {
         // Partner resumed the game
@@ -10070,6 +10389,17 @@ export default class GameScene extends Phaser.Scene {
         }
         if (enemy) {
           this.cachedActiveEnemyCount++
+
+          // Handle animation sync from host
+          if (data.entryAnimation && data.targetX !== undefined && data.targetY !== undefined) {
+            enemy.startEntryAnimation(
+              data.targetX,
+              data.targetY,
+              data.entryAnimation,
+              data.holdDuration || 0,
+              data.exitAnimation || null
+            )
+          }
         }
       }
     })
@@ -10257,6 +10587,7 @@ export default class GameScene extends Phaser.Scene {
     this.isPaused = false
     this.physics.resume()
     this.starFieldTweens.forEach(tween => tween.resume())
+    this.enemies.resumeAnimations()
   }
 
   private syncPlayerPosition() {

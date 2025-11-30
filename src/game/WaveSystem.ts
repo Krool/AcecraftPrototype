@@ -1,11 +1,20 @@
 import { EnemyType } from './Enemy'
+import { EntryAnimation, ExitAnimation } from './AnimationPatterns'
 
 export interface WaveFormation {
   type: 'single' | 'line' | 'v' | 'circle' | 'wave' | 'diamond' | 'x' | 'arc' | 'cross' | 'wedge' | 'inverted-v' | 'column' | 'scattered' | 'grid' | 'spiral'
+    // New formations
+    | 'chevron' | 'double-line' | 'staggered' | 'pinwheel' | 'corners' | 'ring' | 'arrow' | 'echelon'
   enemyTypes: EnemyType[] // Pool of enemy types to pick from
   count?: number // For single spawns
   spacing?: number
   delay?: number // Delay in milliseconds before this formation spawns (for visual staggering)
+
+  // Animation fields for Galaga-style entry/exit
+  entryAnimation?: EntryAnimation | string  // Animation config or preset name (e.g., 'sweep-left')
+  holdDuration?: number                      // ms enemies stay at formation position (0 = no hold, go active immediately)
+  exitAnimation?: ExitAnimation | string     // Animation config or preset name (e.g., 'dive')
+  entryStagger?: number                      // ms delay between each enemy starting their entry animation (default: 100)
 }
 
 export interface WaveBucket {
@@ -147,91 +156,91 @@ export class WaveSystem {
     const allEnemies = [EnemyType.DRONE, EnemyType.WASP, EnemyType.SWARMER]
 
     const waveConfigs = [
-      // Wave 1: Tutorial - Only DRONES in simple line formation
+      // Wave 1: Tutorial - Only DRONES in simple line formation (no animations yet)
       { wave: 1, min: 2, max: 3, enemies: [EnemyType.DRONE],
         formations: [
-          { type: 'line' as const, enemyTypes: [EnemyType.DRONE], spacing: 50 },
+          { type: 'line' as const, enemyTypes: [EnemyType.DRONE], spacing: 50, entryAnimation: 'dive-top' },
           { type: 'scattered' as const, enemyTypes: [EnemyType.DRONE], spacing: 60 },
         ]
       },
-      // Wave 2: Still mostly DRONES
+      // Wave 2: Still mostly DRONES - simple entries
       { wave: 2, min: 4, max: 6, enemies: [EnemyType.DRONE],
         formations: [
-          { type: 'line' as const, enemyTypes: [EnemyType.DRONE], spacing: 45 },
-          { type: 'arc' as const, enemyTypes: [EnemyType.DRONE], spacing: 50 },
+          { type: 'line' as const, enemyTypes: [EnemyType.DRONE], spacing: 45, entryAnimation: 'dive-top', holdDuration: 1500, exitAnimation: 'none' },
+          { type: 'arc' as const, enemyTypes: [EnemyType.DRONE], spacing: 50, entryAnimation: 'sweep-left', entryStagger: 80 },
           { type: 'scattered' as const, enemyTypes: [EnemyType.DRONE], spacing: 55 },
         ]
       },
-      // Wave 3: Introduce WASP
+      // Wave 3: Introduce WASP - more dynamic entries
       { wave: 3, min: 8, max: 10, enemies: [EnemyType.DRONE, EnemyType.WASP],
         formations: [
-          { type: 'v' as const, enemyTypes: [EnemyType.WASP], spacing: 50 },
-          { type: 'line' as const, enemyTypes: [EnemyType.DRONE], spacing: 45 },
-          { type: 'wave' as const, enemyTypes: [EnemyType.DRONE, EnemyType.WASP], spacing: 50 },
+          { type: 'v' as const, enemyTypes: [EnemyType.WASP], spacing: 50, entryAnimation: 'sweep-left', holdDuration: 2000, exitAnimation: 'dive', entryStagger: 100 },
+          { type: 'line' as const, enemyTypes: [EnemyType.DRONE], spacing: 45, entryAnimation: 'arc-top' },
+          { type: 'wave' as const, enemyTypes: [EnemyType.DRONE, EnemyType.WASP], spacing: 50, entryAnimation: 'sweep-right', entryStagger: 120 },
         ]
       },
-      // Wave 4: Mix DRONE and WASP
+      // Wave 4: Mix DRONE and WASP - Galaga-style attack patterns
       { wave: 4, min: 10, max: 12, enemies: [EnemyType.DRONE, EnemyType.WASP],
         formations: [
-          { type: 'diamond' as const, enemyTypes: [EnemyType.WASP], spacing: 55 },
-          { type: 'line' as const, enemyTypes: [EnemyType.DRONE], spacing: 45 },
-          { type: 'inverted-v' as const, enemyTypes: [EnemyType.DRONE, EnemyType.WASP], spacing: 50 },
+          { type: 'diamond' as const, enemyTypes: [EnemyType.WASP], spacing: 55, entryAnimation: 'loop-top', holdDuration: 2500, exitAnimation: 'dive', entryStagger: 150 },
+          { type: 'line' as const, enemyTypes: [EnemyType.DRONE], spacing: 45, entryAnimation: 'zigzag-top' },
+          { type: 'inverted-v' as const, enemyTypes: [EnemyType.DRONE, EnemyType.WASP], spacing: 50, entryAnimation: 'arc-left', holdDuration: 2000, exitAnimation: 'swoop-right' },
           { type: 'scattered' as const, enemyTypes: [EnemyType.DRONE], spacing: 60 },
         ]
       },
-      // Wave 5: Ramp up before mini-boss
+      // Wave 5: Ramp up before mini-boss - intense patterns
       { wave: 5, min: 14, max: 16, enemies: [EnemyType.DRONE, EnemyType.WASP],
         formations: [
-          { type: 'circle' as const, enemyTypes: [EnemyType.WASP], spacing: 60 },
-          { type: 'x' as const, enemyTypes: [EnemyType.DRONE], spacing: 50 },
-          { type: 'wave' as const, enemyTypes: [EnemyType.DRONE, EnemyType.WASP], spacing: 45 },
+          { type: 'circle' as const, enemyTypes: [EnemyType.WASP], spacing: 60, entryAnimation: 'spiral-center', holdDuration: 3000, exitAnimation: 'scatter', entryStagger: 100 },
+          { type: 'x' as const, enemyTypes: [EnemyType.DRONE], spacing: 50, entryAnimation: 'swoop-left', holdDuration: 2000, exitAnimation: 'dive-fast' },
+          { type: 'wave' as const, enemyTypes: [EnemyType.DRONE, EnemyType.WASP], spacing: 45, entryAnimation: 'bounce-top' },
         ]
       },
       // Wave 7: Introduce SWARMER after mini-boss
       { wave: 7, min: 18, max: 22, enemies: [EnemyType.DRONE, EnemyType.WASP, EnemyType.SWARMER],
         formations: [
-          { type: 'wedge' as const, enemyTypes: [EnemyType.SWARMER], spacing: 50 },
-          { type: 'arc' as const, enemyTypes: [EnemyType.WASP], spacing: 55 },
-          { type: 'line' as const, enemyTypes: [EnemyType.DRONE], spacing: 45 },
+          { type: 'wedge' as const, enemyTypes: [EnemyType.SWARMER], spacing: 50, entryAnimation: 'sweep-right-wide', holdDuration: 2500, exitAnimation: 'dive', entryStagger: 80 },
+          { type: 'arc' as const, enemyTypes: [EnemyType.WASP], spacing: 55, entryAnimation: 'arc-right', holdDuration: 2000, exitAnimation: 'swoop-left' },
+          { type: 'line' as const, enemyTypes: [EnemyType.DRONE], spacing: 45, entryAnimation: 'zigzag-left' },
           { type: 'scattered' as const, enemyTypes: allEnemies, spacing: 60 },
         ]
       },
-      // Wave 8: All three enemy types
+      // Wave 8: All three enemy types - varied animations
       { wave: 8, min: 22, max: 26, enemies: allEnemies,
         formations: [
-          { type: 'grid' as const, enemyTypes: [EnemyType.DRONE, EnemyType.SWARMER], spacing: 55 },
-          { type: 'v' as const, enemyTypes: [EnemyType.WASP], spacing: 50 },
-          { type: 'cross' as const, enemyTypes: allEnemies, spacing: 50 },
-          { type: 'wave' as const, enemyTypes: [EnemyType.DRONE], spacing: 45 },
+          { type: 'grid' as const, enemyTypes: [EnemyType.DRONE, EnemyType.SWARMER], spacing: 55, entryAnimation: 'loop-left', holdDuration: 3000, exitAnimation: 'scatter', entryStagger: 120 },
+          { type: 'v' as const, enemyTypes: [EnemyType.WASP], spacing: 50, entryAnimation: 'swoop-right', holdDuration: 2500, exitAnimation: 'dive' },
+          { type: 'cross' as const, enemyTypes: allEnemies, spacing: 50, entryAnimation: 'spiral-tight' },
+          { type: 'wave' as const, enemyTypes: [EnemyType.DRONE], spacing: 45, entryAnimation: 'bounce-left' },
         ]
       },
-      // Wave 9: Escalation
+      // Wave 9: Escalation - faster, more chaotic
       { wave: 9, min: 26, max: 30, enemies: allEnemies,
         formations: [
-          { type: 'spiral' as const, enemyTypes: [EnemyType.SWARMER], spacing: 50 },
-          { type: 'diamond' as const, enemyTypes: [EnemyType.WASP], spacing: 55 },
-          { type: 'line' as const, enemyTypes: allEnemies, spacing: 45 },
-          { type: 'inverted-v' as const, enemyTypes: [EnemyType.DRONE], spacing: 50 },
+          { type: 'spiral' as const, enemyTypes: [EnemyType.SWARMER], spacing: 50, entryAnimation: 'loop-right', holdDuration: 2000, exitAnimation: 'dive-fast', entryStagger: 60 },
+          { type: 'diamond' as const, enemyTypes: [EnemyType.WASP], spacing: 55, entryAnimation: 'arc-left', holdDuration: 2500, exitAnimation: 'swoop-right' },
+          { type: 'line' as const, enemyTypes: allEnemies, spacing: 45, entryAnimation: 'zigzag-right' },
+          { type: 'inverted-v' as const, enemyTypes: [EnemyType.DRONE], spacing: 50, entryAnimation: 'sweep-left-wide', holdDuration: 2000, exitAnimation: 'scatter' },
         ]
       },
-      // Wave 10: High intensity
+      // Wave 10: High intensity - dramatic patterns
       { wave: 10, min: 30, max: 35, enemies: allEnemies,
         formations: [
-          { type: 'circle' as const, enemyTypes: [EnemyType.WASP, EnemyType.SWARMER], spacing: 60 },
-          { type: 'x' as const, enemyTypes: [EnemyType.DRONE], spacing: 50 },
-          { type: 'arc' as const, enemyTypes: allEnemies, spacing: 55 },
-          { type: 'grid' as const, enemyTypes: [EnemyType.SWARMER], spacing: 50 },
+          { type: 'circle' as const, enemyTypes: [EnemyType.WASP, EnemyType.SWARMER], spacing: 60, entryAnimation: 'spiral-center', holdDuration: 3500, exitAnimation: 'dive', entryStagger: 80 },
+          { type: 'x' as const, enemyTypes: [EnemyType.DRONE], spacing: 50, entryAnimation: 'swoop-left', holdDuration: 2000, exitAnimation: 'swoop-right' },
+          { type: 'arc' as const, enemyTypes: allEnemies, spacing: 55, entryAnimation: 'loop-top', holdDuration: 2500, exitAnimation: 'scatter' },
+          { type: 'grid' as const, enemyTypes: [EnemyType.SWARMER], spacing: 50, entryAnimation: 'bounce-right' },
           { type: 'scattered' as const, enemyTypes: allEnemies, spacing: 60 },
         ]
       },
-      // Wave 11: Maximum pressure before boss
+      // Wave 11: Maximum pressure before boss - all-out assault
       { wave: 11, min: 35, max: 40, enemies: allEnemies,
         formations: [
-          { type: 'wedge' as const, enemyTypes: [EnemyType.DRONE, EnemyType.SWARMER], spacing: 50 },
-          { type: 'spiral' as const, enemyTypes: [EnemyType.WASP], spacing: 55 },
-          { type: 'cross' as const, enemyTypes: allEnemies, spacing: 50 },
-          { type: 'wave' as const, enemyTypes: [EnemyType.DRONE], spacing: 45 },
-          { type: 'diamond' as const, enemyTypes: allEnemies, spacing: 55 },
+          { type: 'wedge' as const, enemyTypes: [EnemyType.DRONE, EnemyType.SWARMER], spacing: 50, entryAnimation: 'sweep-right-wide', holdDuration: 2000, exitAnimation: 'dive-fast', entryStagger: 50 },
+          { type: 'spiral' as const, enemyTypes: [EnemyType.WASP], spacing: 55, entryAnimation: 'spiral-center', holdDuration: 3000, exitAnimation: 'scatter' },
+          { type: 'cross' as const, enemyTypes: allEnemies, spacing: 50, entryAnimation: 'loop-left', holdDuration: 2500, exitAnimation: 'dive' },
+          { type: 'wave' as const, enemyTypes: [EnemyType.DRONE], spacing: 45, entryAnimation: 'zigzag-top' },
+          { type: 'diamond' as const, enemyTypes: allEnemies, spacing: 55, entryAnimation: 'arc-right', holdDuration: 2000, exitAnimation: 'swoop-left' },
         ]
       },
     ]
@@ -255,8 +264,8 @@ export class WaveSystem {
       waveNumber: 6,
       buckets: [{
         formations: [
-          { type: 'single', enemyTypes: [EnemyType.PROTOTYPE_BOMBER], count: 1 },
-          { type: 'arc', enemyTypes: [EnemyType.DRONE, EnemyType.WASP], spacing: 50 },
+          { type: 'single', enemyTypes: [EnemyType.PROTOTYPE_BOMBER], count: 1, entryAnimation: 'boss-descent' },
+          { type: 'arc', enemyTypes: [EnemyType.DRONE, EnemyType.WASP], spacing: 50, entryAnimation: 'sweep-left', holdDuration: 2000, exitAnimation: 'dive' },
           { type: 'scattered', enemyTypes: [EnemyType.DRONE], spacing: 60 }
         ],
         minEnemies: 15,
@@ -272,10 +281,10 @@ export class WaveSystem {
       waveNumber: 12,
       buckets: [{
         formations: [
-          { type: 'single', enemyTypes: [EnemyType.SCOUT_COMMANDER], count: 1 },
-          { type: 'circle', enemyTypes: allEnemies, spacing: 65 },
-          { type: 'spiral', enemyTypes: [EnemyType.SWARMER], spacing: 50 },
-          { type: 'diamond', enemyTypes: [EnemyType.WASP], spacing: 55 }
+          { type: 'single', enemyTypes: [EnemyType.SCOUT_COMMANDER], count: 1, entryAnimation: 'boss-dramatic-loop' },
+          { type: 'circle', enemyTypes: allEnemies, spacing: 65, entryAnimation: 'spiral-center', holdDuration: 3000, exitAnimation: 'scatter' },
+          { type: 'spiral', enemyTypes: [EnemyType.SWARMER], spacing: 50, entryAnimation: 'loop-top', holdDuration: 2500, exitAnimation: 'dive' },
+          { type: 'diamond', enemyTypes: [EnemyType.WASP], spacing: 55, entryAnimation: 'arc-left', holdDuration: 2000, exitAnimation: 'swoop-right' }
         ],
         minEnemies: 20,
         maxEnemies: 30,

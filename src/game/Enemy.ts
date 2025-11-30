@@ -1,6 +1,25 @@
 import Phaser from 'phaser'
 import { EnemyProjectileGroup } from './EnemyProjectile'
 import { soundManager, SoundType } from './SoundManager'
+import {
+  EntryAnimation,
+  ExitAnimation,
+  EntryPatternType,
+  ExitPatternType,
+  EntryDirection,
+} from './AnimationPatterns'
+
+// ============================================================================
+// ENEMY PHASE SYSTEM
+// ============================================================================
+
+export enum EnemyPhase {
+  ENTERING = 'entering',    // Playing entry animation (can still shoot)
+  HOLDING = 'holding',      // Stationary at formation position (can shoot)
+  ACTIVE = 'active',        // Normal gameplay movement
+  EXITING = 'exiting',      // Playing exit animation (can still shoot)
+  INACTIVE = 'inactive'     // Dead/pooled
+}
 
 export enum EnemyType {
   // Basic enemies
@@ -766,6 +785,17 @@ export class Enemy extends Phaser.GameObjects.Text {
   private phaseChangeTriggered: boolean = false
   private isGolden: boolean = false // Track if this enemy is a golden variant
 
+  // Animation phase system properties
+  private phase: EnemyPhase = EnemyPhase.INACTIVE
+  private formationPosition: { x: number, y: number } | null = null
+  private holdEndTime: number = 0
+  private holdDuration: number = 0
+  private entryTween: Phaser.Tweens.Tween | null = null
+  private exitTween: Phaser.Tweens.Tween | null = null
+  private entryConfig: EntryAnimation | null = null
+  private exitConfig: ExitAnimation | null = null
+  private animationProgress: { t: number } = { t: 0 } // Reusable progress object for tweens
+
   declare body: Phaser.Physics.Arcade.Body
 
   constructor(
@@ -931,6 +961,24 @@ export class Enemy extends Phaser.GameObjects.Text {
     this.patrolStartX = x
     this.patrolDirection = 1
     this.isGolden = false // Reset golden status
+
+    // Reset animation phase system
+    this.phase = EnemyPhase.ACTIVE  // Default to active (backwards compatible)
+    this.formationPosition = null
+    this.holdEndTime = 0
+    this.holdDuration = 0
+    this.entryConfig = null
+    this.exitConfig = null
+    this.animationProgress.t = 0
+    // Cancel any running animation tweens
+    if (this.entryTween) {
+      this.entryTween.stop()
+      this.entryTween = null
+    }
+    if (this.exitTween) {
+      this.exitTween.stop()
+      this.exitTween = null
+    }
 
     // Reset status effects
     this.statusEffects.isBurning = false
@@ -1562,6 +1610,56 @@ export class Enemy extends Phaser.GameObjects.Text {
       this.statusEffects.bleedStacks = 0
     }
 
+    // ==================== PHASE-BASED UPDATE ====================
+    // Handle different phases of the animation lifecycle
+    switch (this.phase) {
+      case EnemyPhase.ENTERING:
+      case EnemyPhase.EXITING:
+        // Tween handles position movement
+        // Still update shield position and allow shooting during animations
+        if (this.shield && this.active) {
+          this.shield.setPosition(this.x, this.y + 25)
+        }
+        // Allow shooting during entry/exit (more chaotic gameplay)
+        if (this.behavior.shootsBack && this.behavior.shootInterval) {
+          if (now - this.lastShotTime > this.behavior.shootInterval && this.enemyProjectiles && this.playerRef) {
+            this.shoot()
+            this.lastShotTime = now
+          }
+        }
+        return  // Skip normal movement update
+
+      case EnemyPhase.HOLDING:
+        // Check if hold time expired → trigger exit
+        if (now >= this.holdEndTime) {
+          this.triggerExit()
+          return
+        }
+        // Stay stationary during hold but can shoot
+        if (this.body) {
+          this.body.setVelocity(0, 0)
+        }
+        // Update shield position
+        if (this.shield && this.active) {
+          this.shield.setPosition(this.x, this.y + 25)
+        }
+        // Allow shooting during hold
+        if (this.behavior.shootsBack && this.behavior.shootInterval) {
+          if (now - this.lastShotTime > this.behavior.shootInterval && this.enemyProjectiles && this.playerRef) {
+            this.shoot()
+            this.lastShotTime = now
+          }
+        }
+        return  // Skip normal movement update
+
+      case EnemyPhase.INACTIVE:
+        return  // Dead/pooled - do nothing
+
+      case EnemyPhase.ACTIVE:
+        // Continue with normal movement logic below
+        break
+    }
+
     // Helper to check if this is a boss enemy
     const isBossEnemy = this.enemyType === EnemyType.BOSS ||
                         this.enemyType === EnemyType.MINI_BOSS ||
@@ -2105,7 +2203,1272 @@ export class Enemy extends Phaser.GameObjects.Text {
     return this.scene.time.now >= this.teleportCooldown
   }
 
+  // ==================== ANIMATION PHASE METHODS ====================
+
+  /**
+   * Get the current animation phase
+   */
+  getPhase(): EnemyPhase {
+    return this.phase
+  }
+
+  /**
+   * Check if this is a boss enemy (used for animation restrictions)
+   */
+  private isBossEnemy(): boolean {
+    return this.enemyType === EnemyType.BOSS ||
+           this.enemyType === EnemyType.MINI_BOSS ||
+           this.enemyType === EnemyType.SCOUT_COMMANDER ||
+           this.enemyType === EnemyType.TANK_TWIN ||
+           this.enemyType === EnemyType.HIVE_QUEEN ||
+           this.enemyType === EnemyType.ORBITAL_DEVASTATOR ||
+           this.enemyType === EnemyType.FRACTURED_TITAN ||
+           this.enemyType === EnemyType.SHIELD_WARDEN ||
+           this.enemyType === EnemyType.ACE_BOMBER ||
+           this.enemyType === EnemyType.VOID_NEXUS ||
+           this.enemyType === EnemyType.SIEGE_ENGINE ||
+           this.enemyType === EnemyType.MOTHERSHIP_OMEGA
+  }
+
+  /**
+   * Start an entry animation to fly the enemy to a target formation position
+   */
+  startEntryAnimation(
+    targetX: number,
+    targetY: number,
+    config: EntryAnimation,
+    holdDuration: number = 0,
+    exitConfig: ExitAnimation | null = null
+  ): void {
+    this.phase = EnemyPhase.ENTERING
+    this.formationPosition = { x: targetX, y: targetY }
+    this.entryConfig = config
+    this.holdDuration = holdDuration
+    this.exitConfig = exitConfig
+
+    // Disable physics movement during animation
+    if (this.body) {
+      this.body.setVelocity(0, 0)
+    }
+
+    // Calculate start position based on entry direction
+    const startPos = this.calculateEntryStart(config.direction, targetX, targetY)
+    this.setPosition(startPos.x, startPos.y)
+
+    // Execute the entry path animation
+    this.executeEntryPath(config, startPos, { x: targetX, y: targetY })
+  }
+
+  /**
+   * Calculate the starting position for entry based on direction
+   */
+  private calculateEntryStart(
+    direction: EntryDirection,
+    targetX: number,
+    targetY: number
+  ): { x: number, y: number } {
+    const margin = 150
+    const screenWidth = 600
+    const screenHeight = 980
+
+    switch (direction) {
+      case 'top':
+        return { x: targetX, y: -margin }
+      case 'left':
+        return { x: -margin, y: Math.min(targetY + 100, screenHeight * 0.4) }
+      case 'right':
+        return { x: screenWidth + margin, y: Math.min(targetY + 100, screenHeight * 0.4) }
+      case 'top-left':
+        return { x: -margin, y: -margin * 0.5 }
+      case 'top-right':
+        return { x: screenWidth + margin, y: -margin * 0.5 }
+      default:
+        return { x: targetX, y: -margin }
+    }
+  }
+
+  /**
+   * Execute the appropriate entry path based on pattern type
+   */
+  private executeEntryPath(
+    config: EntryAnimation,
+    start: { x: number, y: number },
+    end: { x: number, y: number }
+  ): void {
+    const amplitude = config.amplitude || 100
+    const duration = config.duration
+    const ease = config.easeFunction || 'Sine.easeInOut'
+
+    switch (config.pattern) {
+      case 'straight':
+        this.animateStraightPath(start, end, duration, ease)
+        break
+      case 'curve-in':
+        this.animateBezierPath(start, end, amplitude, duration, ease, config.direction)
+        break
+      case 'dive-arc':
+        this.animateDiveArcPath(start, end, amplitude, duration, ease)
+        break
+      case 'loop':
+        this.animateLoopPath(start, end, amplitude, duration)
+        break
+      case 'spiral-in':
+        this.animateSpiralPath(start, end, amplitude, duration)
+        break
+      case 'swoop':
+        this.animateSwoopPath(start, end, amplitude, duration, ease, config.direction)
+        break
+      case 'zigzag-in':
+        this.animateZigzagPath(start, end, amplitude, duration)
+        break
+      case 'bounce-in':
+        this.animateBouncePath(start, end, amplitude, duration)
+        break
+      // New patterns
+      case 'figure-8':
+        this.animateFigure8Path(start, end, amplitude, duration)
+        break
+      case 'pendulum':
+        this.animatePendulumPath(start, end, amplitude, duration)
+        break
+      case 'corkscrew':
+        this.animateCorkscrewPath(start, end, amplitude, duration)
+        break
+      case 's-curve':
+        this.animateSCurvePath(start, end, amplitude, duration, config.direction)
+        break
+      case 'split-entry':
+        this.animateSplitEntryPath(start, end, amplitude, duration, config.direction)
+        break
+      case 'delayed-drop':
+        this.animateDelayedDropPath(start, end, amplitude, duration)
+        break
+      case 'wave-ride':
+        this.animateWaveRidePath(start, end, amplitude, duration)
+        break
+      case 'pincer':
+        this.animatePincerPath(start, end, amplitude, duration, config.direction)
+        break
+      default:
+        // Fallback to straight
+        this.animateStraightPath(start, end, duration, ease)
+    }
+  }
+
+  // ---- ENTRY ANIMATION PATTERNS ----
+
+  /**
+   * Simple straight line movement
+   */
+  private animateStraightPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    duration: number,
+    ease: string
+  ): void {
+    this.entryTween = this.scene.tweens.add({
+      targets: this,
+      x: end.x,
+      y: end.y,
+      duration,
+      ease,
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Bezier curve from side to position
+   */
+  private animateBezierPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number,
+    ease: string,
+    direction: EntryDirection
+  ): void {
+    this.animationProgress.t = 0
+
+    // Control point positioned to create a nice curve
+    let controlX: number
+    let controlY: number
+
+    if (direction === 'left' || direction === 'top-left') {
+      // Coming from left - curve outward right then in
+      controlX = end.x + amplitude
+      controlY = (start.y + end.y) / 2
+    } else if (direction === 'right' || direction === 'top-right') {
+      // Coming from right - curve outward left then in
+      controlX = end.x - amplitude
+      controlY = (start.y + end.y) / 2
+    } else {
+      // Coming from top - curve based on target position
+      controlX = start.x + (end.x > start.x ? amplitude : -amplitude)
+      controlY = (start.y + end.y) / 2
+    }
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease,
+      onUpdate: () => {
+        const t = this.animationProgress.t
+        const oneMinusT = 1 - t
+        // Quadratic bezier: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
+        this.x = oneMinusT * oneMinusT * start.x +
+                 2 * oneMinusT * t * controlX +
+                 t * t * end.x
+        this.y = oneMinusT * oneMinusT * start.y +
+                 2 * oneMinusT * t * controlY +
+                 t * t * end.y
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Dive arc - goes below target then curves up
+   */
+  private animateDiveArcPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number,
+    ease: string
+  ): void {
+    this.animationProgress.t = 0
+
+    // Mid-point is below the target position
+    const midX = (start.x + end.x) / 2
+    const midY = end.y + amplitude // Go below target
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease,
+      onUpdate: () => {
+        const t = this.animationProgress.t
+        const oneMinusT = 1 - t
+        // Quadratic bezier through: start -> below -> end
+        this.x = oneMinusT * oneMinusT * start.x +
+                 2 * oneMinusT * t * midX +
+                 t * t * end.x
+        this.y = oneMinusT * oneMinusT * start.y +
+                 2 * oneMinusT * t * midY +
+                 t * t * end.y
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Loop-de-loop then settle into position
+   */
+  private animateLoopPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        // Base interpolation from start to end
+        const baseX = start.x + (end.x - start.x) * t
+        const baseY = start.y + (end.y - start.y) * t
+
+        // Add loop offset - one full loop that shrinks as we approach target
+        const loopPhase = t * Math.PI * 2  // Full loop
+        const loopScale = Math.sin(t * Math.PI) * amplitude  // Shrinks at start/end
+        const loopX = Math.sin(loopPhase) * loopScale
+        const loopY = -Math.cos(loopPhase) * loopScale * 0.5  // Flattened vertically
+
+        this.x = baseX + loopX
+        this.y = baseY + loopY
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Spiral inward to position
+   */
+  private animateSpiralPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+
+    const maxRadius = amplitude * 2
+    const rotations = 2  // Number of spiral rotations
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+        const angle = t * Math.PI * 2 * rotations
+        const radius = maxRadius * (1 - t)  // Radius shrinks to 0
+
+        // Interpolate base position from start to end
+        const baseX = start.x + (end.x - start.x) * t
+        const baseY = start.y + (end.y - start.y) * t
+
+        // Add spiral offset
+        this.x = baseX + Math.cos(angle) * radius
+        this.y = baseY + Math.sin(angle) * radius * 0.4  // Flatten vertically
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Swoop in - curve up then settle down
+   */
+  private animateSwoopPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number,
+    ease: string,
+    direction: EntryDirection
+  ): void {
+    this.animationProgress.t = 0
+
+    // Three control points: start, high point, end
+    const peakY = end.y - amplitude  // Goes above target then down
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease,
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        // X moves linearly
+        this.x = start.x + (end.x - start.x) * t
+
+        // Y follows a parabola: starts at start.y, peaks at peakY, ends at end.y
+        // Using smoothstep-like curve
+        const yProgress = t < 0.5
+          ? 2 * t * t  // Ease in for first half
+          : 1 - Math.pow(-2 * t + 2, 2) / 2  // Ease out for second half
+
+        if (t < 0.4) {
+          // First 40%: move to peak
+          const subT = t / 0.4
+          this.y = start.y + (peakY - start.y) * subT
+        } else {
+          // Last 60%: move from peak to end
+          const subT = (t - 0.4) / 0.6
+          this.y = peakY + (end.y - peakY) * subT
+        }
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Zigzag approach with dampening
+   */
+  private animateZigzagPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+
+    const zigzagFrequency = 4  // Number of zig-zags
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        // Base linear interpolation
+        const baseX = start.x + (end.x - start.x) * t
+        const baseY = start.y + (end.y - start.y) * t
+
+        // Dampening zigzag - amplitude decreases as we approach target
+        const dampen = 1 - t
+        const zigOffset = Math.sin(t * Math.PI * 2 * zigzagFrequency) * amplitude * dampen
+
+        this.x = baseX + zigOffset
+        this.y = baseY
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Overshoot then bounce back to position
+   */
+  private animateBouncePath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+
+    // Calculate overshoot direction
+    const dx = end.x - start.x
+    const dy = end.y - start.y
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    const overshootX = end.x + (dx / dist) * amplitude
+    const overshootY = end.y + (dy / dist) * amplitude
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        if (t < 0.6) {
+          // First 60%: move to overshoot point
+          const subT = t / 0.6
+          const eased = 1 - Math.pow(1 - subT, 2)  // Ease out
+          this.x = start.x + (overshootX - start.x) * eased
+          this.y = start.y + (overshootY - start.y) * eased
+        } else {
+          // Last 40%: bounce back to end
+          const subT = (t - 0.6) / 0.4
+          // Elastic bounce effect
+          const bounce = Math.sin(subT * Math.PI * 1.5) * (1 - subT) * 0.3
+          this.x = overshootX + (end.x - overshootX) * subT + bounce * amplitude * 0.3
+          this.y = overshootY + (end.y - overshootY) * subT
+        }
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  // ---- NEW ENTRY ANIMATION PATTERNS ----
+
+  /**
+   * Figure-8 pattern - looping entry inspired by classic Galaga
+   */
+  private animateFigure8Path(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        // Base interpolation from start to end
+        const baseX = start.x + (end.x - start.x) * t
+        const baseY = start.y + (end.y - start.y) * t
+
+        // Figure-8 uses a Lissajous curve: x=sin(a), y=sin(2a)
+        // Creates smooth infinity loop that shrinks as we approach target
+        const phase = t * Math.PI * 2  // One full figure-8
+        const scale = Math.sin(t * Math.PI) * amplitude  // Shrinks at start/end
+        const offsetX = Math.sin(phase) * scale
+        const offsetY = Math.sin(phase * 2) * scale * 0.4  // Flatten vertically
+
+        this.x = baseX + offsetX
+        this.y = baseY + offsetY
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Pendulum swing entry - swings side to side while descending
+   */
+  private animatePendulumPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+
+    const swings = 3  // Number of pendulum swings
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Sine.easeOut',  // Slow down as approaching target
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        // Y moves steadily toward target
+        this.y = start.y + (end.y - start.y) * t
+
+        // X swings like a pendulum with dampening
+        const dampen = 1 - t  // Reduces swing as we approach
+        const swing = Math.sin(t * Math.PI * 2 * swings) * amplitude * dampen
+
+        // Base X interpolation plus swing
+        const baseX = start.x + (end.x - start.x) * t
+        this.x = baseX + swing
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Corkscrew - tight rotating descent like a drill
+   */
+  private animateCorkscrewPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+
+    const rotations = 4  // Number of corkscrew rotations
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+        const angle = t * Math.PI * 2 * rotations
+
+        // Radius shrinks as we approach target (tight at end)
+        const radius = amplitude * (1 - t * 0.8)  // Keep some spiral at end
+
+        // Base interpolation toward target
+        const baseX = start.x + (end.x - start.x) * t
+        const baseY = start.y + (end.y - start.y) * t
+
+        // Add circular offset for corkscrew effect
+        this.x = baseX + Math.cos(angle) * radius
+        this.y = baseY + Math.sin(angle) * radius * 0.3  // Flatten vertically
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * S-Curve - elegant serpentine approach
+   */
+  private animateSCurvePath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number,
+    direction: EntryDirection
+  ): void {
+    this.animationProgress.t = 0
+
+    // Determine initial curve direction based on entry direction
+    const curveSign = (direction === 'left' || direction === 'top-left') ? 1 : -1
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        // Y moves steadily
+        this.y = start.y + (end.y - start.y) * t
+
+        // X follows an S-curve using smooth sine
+        // First half curves one way, second half curves the other
+        const sOffset = Math.sin(t * Math.PI * 2) * amplitude * curveSign * (1 - t * 0.5)
+
+        const baseX = start.x + (end.x - start.x) * t
+        this.x = baseX + sOffset
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Split entry - veers away from target then curves back
+   */
+  private animateSplitEntryPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number,
+    direction: EntryDirection
+  ): void {
+    this.animationProgress.t = 0
+
+    // Determine split direction (opposite of entry side)
+    const splitSign = (direction === 'left' || direction === 'top-left') ? 1 : -1
+
+    // Split point - veers away before curving back
+    const splitX = end.x + (amplitude * 2 * splitSign)
+    const splitY = (start.y + end.y) * 0.5
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        if (t < 0.5) {
+          // First half: veer away toward split point
+          const subT = t / 0.5
+          const eased = subT * subT  // Ease in
+          this.x = start.x + (splitX - start.x) * eased
+          this.y = start.y + (splitY - start.y) * eased
+        } else {
+          // Second half: curve back to target
+          const subT = (t - 0.5) / 0.5
+          const eased = 1 - (1 - subT) * (1 - subT)  // Ease out
+          this.x = splitX + (end.x - splitX) * eased
+          this.y = splitY + (end.y - splitY) * eased
+        }
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Delayed drop - hovers briefly at top then drops to position
+   */
+  private animateDelayedDropPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+
+    // Hover point near the top
+    const hoverY = start.y + 50
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        // X moves linearly toward target
+        this.x = start.x + (end.x - start.x) * t
+
+        if (t < 0.3) {
+          // First 30%: quick move to hover point
+          const subT = t / 0.3
+          this.y = start.y + (hoverY - start.y) * subT
+        } else if (t < 0.5) {
+          // 30-50%: hover with slight wobble
+          const subT = (t - 0.3) / 0.2
+          this.y = hoverY + Math.sin(subT * Math.PI * 4) * 5  // Small wobble
+        } else {
+          // 50-100%: drop to final position
+          const subT = (t - 0.5) / 0.5
+          const eased = subT * subT  // Accelerate downward
+          this.y = hoverY + (end.y - hoverY) * eased
+        }
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Wave ride - rides a sine wave down to position
+   */
+  private animateWaveRidePath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+
+    const waves = 2.5  // Number of wave oscillations
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        // Y moves linearly
+        this.y = start.y + (end.y - start.y) * t
+
+        // X oscillates in waves with gradual dampening
+        const dampen = 1 - t * 0.7  // Slight dampening toward end
+        const waveOffset = Math.sin(t * Math.PI * 2 * waves) * amplitude * dampen
+
+        const baseX = start.x + (end.x - start.x) * t
+        this.x = baseX + waveOffset
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Pincer - sharp military-style approach, straight then quick turn
+   */
+  private animatePincerPath(
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    amplitude: number,
+    duration: number,
+    direction: EntryDirection
+  ): void {
+    this.animationProgress.t = 0
+
+    // Determine approach angle based on direction
+    const approachSign = (direction === 'left' || direction === 'top-left') ? -1 : 1
+
+    // First waypoint - fly past target horizontally
+    const waypointX = end.x + (amplitude * 1.5 * approachSign)
+    const waypointY = end.y - 20  // Slightly above final position
+
+    this.entryTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        if (t < 0.7) {
+          // First 70%: straight diagonal approach to waypoint
+          const subT = t / 0.7
+          const eased = subT  // Linear for military precision
+          this.x = start.x + (waypointX - start.x) * eased
+          this.y = start.y + (waypointY - start.y) * eased
+        } else {
+          // Last 30%: sharp turn to final position
+          const subT = (t - 0.7) / 0.3
+          const eased = 1 - Math.pow(1 - subT, 2)  // Ease out for snap
+          this.x = waypointX + (end.x - waypointX) * eased
+          this.y = waypointY + (end.y - waypointY) * eased
+        }
+      },
+      onComplete: () => this.onEntryComplete()
+    })
+  }
+
+  /**
+   * Called when entry animation completes
+   */
+  private onEntryComplete(): void {
+    this.entryTween = null
+
+    // Snap to exact formation position
+    if (this.formationPosition) {
+      this.setPosition(this.formationPosition.x, this.formationPosition.y)
+    }
+
+    // Bosses skip hold phase - go directly to active
+    if (this.isBossEnemy()) {
+      this.phase = EnemyPhase.ACTIVE
+      this.updateMovementPattern()
+      return
+    }
+
+    // Check for hold phase
+    if (this.holdDuration > 0) {
+      this.phase = EnemyPhase.HOLDING
+      this.holdEndTime = this.scene.time.now + this.holdDuration
+      // Stay stationary during hold
+      if (this.body) {
+        this.body.setVelocity(0, 0)
+      }
+    } else {
+      // No hold - immediately active
+      this.phase = EnemyPhase.ACTIVE
+      this.updateMovementPattern()
+    }
+  }
+
+  /**
+   * Trigger exit animation (called when hold time expires)
+   */
+  triggerExit(): void {
+    // Prevent double-exits or exiting bosses
+    if (this.phase === EnemyPhase.EXITING ||
+        this.phase === EnemyPhase.INACTIVE ||
+        this.isBossEnemy()) {
+      // Bosses go to active instead
+      if (this.isBossEnemy() && this.phase === EnemyPhase.HOLDING) {
+        this.phase = EnemyPhase.ACTIVE
+        this.updateMovementPattern()
+      }
+      return
+    }
+
+    // No exit config or 'none' = continue with normal movement (drift off)
+    if (!this.exitConfig || this.exitConfig.pattern === 'none') {
+      this.phase = EnemyPhase.ACTIVE
+      this.updateMovementPattern()
+      return
+    }
+
+    this.phase = EnemyPhase.EXITING
+
+    // Stop physics
+    if (this.body) {
+      this.body.setVelocity(0, 0)
+    }
+
+    // Cancel entry tween if still running
+    if (this.entryTween) {
+      this.entryTween.stop()
+      this.entryTween = null
+    }
+
+    this.executeExitAnimation()
+  }
+
+  /**
+   * Execute the exit animation based on pattern
+   */
+  private executeExitAnimation(): void {
+    if (!this.exitConfig) return
+
+    const config = this.exitConfig
+    const screenWidth = 600
+    const screenHeight = 980
+
+    switch (config.pattern) {
+      case 'dive-attack':
+        this.animateExitDive(screenHeight, config.duration, config.easeFunction)
+        break
+      case 'swoop-left':
+        this.animateExitSwoop(-100, config.duration, config.easeFunction)
+        break
+      case 'swoop-right':
+        this.animateExitSwoop(screenWidth + 100, config.duration, config.easeFunction)
+        break
+      case 'scatter':
+        this.animateExitScatter(config.duration, config.easeFunction)
+        break
+      case 'spiral-out':
+        this.animateExitSpiral(screenHeight, config.duration)
+        break
+      // New exit patterns
+      case 'loop-out':
+        this.animateExitLoop(screenHeight, config.duration)
+        break
+      case 'zigzag-out':
+        this.animateExitZigzag(screenHeight, config.duration)
+        break
+      case 'boomerang':
+        this.animateExitBoomerang(screenHeight, config.duration)
+        break
+      case 'kamikaze':
+        this.animateExitKamikaze(screenHeight, config.duration)
+        break
+      case 'retreat-top':
+        this.animateExitRetreat(config.duration)
+        break
+      case 'strafe-exit':
+        this.animateExitStrafe(screenWidth, config.duration)
+        break
+      default:
+        // Fallback - just move down
+        this.phase = EnemyPhase.ACTIVE
+        this.updateMovementPattern()
+    }
+  }
+
+  /**
+   * Dive attack toward player then off screen
+   */
+  private animateExitDive(
+    screenHeight: number,
+    duration: number,
+    ease: string = 'Quad.easeIn'
+  ): void {
+    const player = this.getNearestPlayer()
+    const targetX = player ? player.x : this.x
+    const targetY = screenHeight + 100
+
+    this.exitTween = this.scene.tweens.add({
+      targets: this,
+      x: targetX,
+      y: targetY,
+      duration,
+      ease,
+      onComplete: () => this.onExitComplete()
+    })
+  }
+
+  /**
+   * Swoop off to a side
+   */
+  private animateExitSwoop(
+    targetX: number,
+    duration: number,
+    ease: string = 'Sine.easeIn'
+  ): void {
+    this.exitTween = this.scene.tweens.add({
+      targets: this,
+      x: targetX,
+      y: this.y + 200,  // Also move down a bit
+      duration,
+      ease,
+      onComplete: () => this.onExitComplete()
+    })
+  }
+
+  /**
+   * Scatter in a random direction
+   */
+  private animateExitScatter(
+    duration: number,
+    ease: string = 'Quad.easeIn'
+  ): void {
+    const angle = Math.random() * Math.PI * 2
+    const distance = 600
+
+    this.exitTween = this.scene.tweens.add({
+      targets: this,
+      x: this.x + Math.cos(angle) * distance,
+      y: this.y + Math.sin(angle) * distance,
+      duration,
+      ease,
+      onComplete: () => this.onExitComplete()
+    })
+  }
+
+  /**
+   * Spiral outward off screen
+   */
+  private animateExitSpiral(
+    screenHeight: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+    const startX = this.x
+    const startY = this.y
+
+    this.exitTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+        const spiralAngle = t * Math.PI * 4  // 2 full rotations
+        const radius = t * 300  // Expanding radius
+
+        this.x = startX + Math.cos(spiralAngle) * radius
+        this.y = startY + Math.sin(spiralAngle) * radius + t * 200  // Also drift down
+      },
+      onComplete: () => this.onExitComplete()
+    })
+  }
+
+  // ---- NEW EXIT ANIMATION PATTERNS ----
+
+  /**
+   * Loop-out - does a loop before exiting off bottom
+   */
+  private animateExitLoop(
+    screenHeight: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+    const startX = this.x
+    const startY = this.y
+    const loopRadius = 80
+
+    this.exitTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        if (t < 0.4) {
+          // First 40%: do a loop
+          const loopT = t / 0.4
+          const angle = loopT * Math.PI * 2
+          this.x = startX + Math.sin(angle) * loopRadius
+          this.y = startY - Math.cos(angle) * loopRadius + loopRadius  // Loop goes up first
+        } else {
+          // Last 60%: dive off screen
+          const exitT = (t - 0.4) / 0.6
+          const eased = exitT * exitT  // Accelerate
+          this.x = startX
+          this.y = startY + (screenHeight + 100 - startY) * eased
+        }
+      },
+      onComplete: () => this.onExitComplete()
+    })
+  }
+
+  /**
+   * Zigzag-out - zigzag pattern while exiting
+   */
+  private animateExitZigzag(
+    screenHeight: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+    const startX = this.x
+    const startY = this.y
+    const amplitude = 100
+    const zigzags = 4
+
+    this.exitTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Linear',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        // Y moves steadily down
+        this.y = startY + (screenHeight + 100 - startY) * t
+
+        // X zigzags
+        const zigOffset = Math.sin(t * Math.PI * 2 * zigzags) * amplitude
+        this.x = startX + zigOffset
+      },
+      onComplete: () => this.onExitComplete()
+    })
+  }
+
+  /**
+   * Boomerang - curves away then comes back past player
+   */
+  private animateExitBoomerang(
+    screenHeight: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+    const startX = this.x
+    const startY = this.y
+    const player = this.getNearestPlayer()
+    const targetX = player ? player.x : 300
+
+    // Curve away first (opposite of player direction)
+    const curveDirection = startX > targetX ? 1 : -1
+    const curvePoint = { x: startX + curveDirection * 200, y: startY - 100 }
+
+    this.exitTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        if (t < 0.4) {
+          // First 40%: curve away
+          const subT = t / 0.4
+          this.x = startX + (curvePoint.x - startX) * subT
+          this.y = startY + (curvePoint.y - startY) * subT
+        } else {
+          // Last 60%: swoop back toward player and off screen
+          const subT = (t - 0.4) / 0.6
+          const eased = subT * subT
+          this.x = curvePoint.x + (targetX - curvePoint.x) * subT
+          this.y = curvePoint.y + (screenHeight + 100 - curvePoint.y) * eased
+        }
+      },
+      onComplete: () => this.onExitComplete()
+    })
+  }
+
+  /**
+   * Kamikaze - aggressive dive directly at player position
+   */
+  private animateExitKamikaze(
+    screenHeight: number,
+    duration: number
+  ): void {
+    const player = this.getNearestPlayer()
+    const targetX = player ? player.x : this.x
+    const targetY = player ? player.y : screenHeight
+
+    // Calculate a point past the player
+    const overshootY = screenHeight + 100
+
+    this.exitTween = this.scene.tweens.add({
+      targets: this,
+      x: targetX,
+      y: overshootY,
+      duration,
+      ease: 'Quad.easeIn',  // Accelerate into the dive
+      onComplete: () => this.onExitComplete()
+    })
+  }
+
+  /**
+   * Retreat-top - retreat back up off the top of the screen
+   */
+  private animateExitRetreat(
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+    const startX = this.x
+    const startY = this.y
+
+    this.exitTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Quad.easeIn',  // Accelerate away
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        // Move up and slightly back toward center of screen
+        this.y = startY - (startY + 100) * t
+        // Subtle horizontal drift toward center
+        const centerX = 300
+        this.x = startX + (centerX - startX) * t * 0.3
+      },
+      onComplete: () => this.onExitComplete()
+    })
+  }
+
+  /**
+   * Strafe-exit - strafe horizontally while moving off screen
+   */
+  private animateExitStrafe(
+    screenWidth: number,
+    duration: number
+  ): void {
+    this.animationProgress.t = 0
+    const startX = this.x
+    const startY = this.y
+
+    // Determine strafe direction - move away from center
+    const strafeDirection = startX > 300 ? 1 : -1
+    const targetX = strafeDirection > 0 ? screenWidth + 100 : -100
+
+    this.exitTween = this.scene.tweens.add({
+      targets: this.animationProgress,
+      t: 1,
+      duration,
+      ease: 'Sine.easeIn',
+      onUpdate: () => {
+        const t = this.animationProgress.t
+
+        // Strafe horizontally with slight downward drift
+        this.x = startX + (targetX - startX) * t
+        this.y = startY + t * 150  // Slight drift down
+      },
+      onComplete: () => this.onExitComplete()
+    })
+  }
+
+  /**
+   * Called when exit animation completes - clean up and emit death
+   */
+  private onExitComplete(): void {
+    this.exitTween = null
+
+    const deathX = this.x
+    const deathY = this.y
+
+    // Clean up
+    this.phase = EnemyPhase.INACTIVE
+
+    // Destroy shield if present
+    if (this.shield) {
+      this.shield.destroy()
+      this.shield = null
+    }
+
+    // Stop undulation animation
+    this.scene.tweens.killTweensOf(this)
+    this.setScale(1)
+
+    this.setActive(false)
+    this.setVisible(false)
+    this.setPosition(-1000, -1000)
+
+    if (this.body) {
+      this.body.setVelocity(0, 0)
+      this.body.setSize(1, 1)
+      this.body.enable = false
+    }
+
+    // Emit death event with exitedViaAnimation flag (no rewards)
+    this.scene.events.emit('enemyDied', {
+      x: Math.max(50, Math.min(550, deathX)),
+      y: Math.max(50, Math.min(930, deathY)),
+      xpValue: this.xpValue,
+      scoreValue: this.scoreValue,
+      type: this.enemyType,
+      reachedBottom: false,
+      exitedViaAnimation: true  // New flag - no rewards for animated exits
+    })
+  }
+
+  /**
+   * Pause animation tweens (for game pause, level up menus, etc.)
+   */
+  pauseAnimations(): void {
+    if (this.entryTween && this.entryTween.isPlaying()) {
+      this.entryTween.pause()
+    }
+    if (this.exitTween && this.exitTween.isPlaying()) {
+      this.exitTween.pause()
+    }
+  }
+
+  /**
+   * Resume animation tweens after pause
+   */
+  resumeAnimations(): void {
+    if (this.entryTween && this.entryTween.isPaused()) {
+      this.entryTween.resume()
+    }
+    if (this.exitTween && this.exitTween.isPaused()) {
+      this.exitTween.resume()
+    }
+  }
+
   preDestroy() {
+    // Clean up animation tweens
+    if (this.entryTween) {
+      this.entryTween.stop()
+      this.entryTween = null
+    }
+    if (this.exitTween) {
+      this.exitTween.stop()
+      this.exitTween = null
+    }
+
     // Clean up timer to prevent memory leak
     if (this.colorResetTimer) {
       this.colorResetTimer.remove()
@@ -2319,6 +3682,30 @@ export class EnemyGroup extends Phaser.Physics.Arcade.Group {
           enemy.body.setSize(1, 1)
           enemy.body.enable = false
         }
+      }
+    })
+  }
+
+  /**
+   * Pause all entry/exit animation tweens on active enemies
+   * Called when game pauses (menu, level up, etc.)
+   */
+  pauseAnimations() {
+    this.pool.forEach(enemy => {
+      if (enemy.active) {
+        enemy.pauseAnimations()
+      }
+    })
+  }
+
+  /**
+   * Resume all entry/exit animation tweens on active enemies
+   * Called when game resumes
+   */
+  resumeAnimations() {
+    this.pool.forEach(enemy => {
+      if (enemy.active) {
+        enemy.resumeAnimations()
       }
     })
   }
