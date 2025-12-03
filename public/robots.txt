@@ -1,0 +1,5 @@
+# Robots.txt for Roguecraft (AcecraftPrototype)
+User-agent: *
+Allow: /
+
+Sitemap: https://krool.github.io/AcecraftPrototype/sitemap.xml
