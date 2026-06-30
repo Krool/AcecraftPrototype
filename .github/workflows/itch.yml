@@ -1,0 +1,41 @@
+# Publish Roguecraft to itch.io (https://krool.itch.io/roguecraft) via butler.
+#
+# Mirrors itch on every deploy: runs on push to master (like Pages) plus a manual Run-workflow option.
+# Gated on the BUTLER_API_KEY repo secret, so if that secret is ever removed the job no-ops and can
+# NEVER publish. Builds with a RELATIVE asset base (--base=./) because itch serves the game from an
+# iframe subpath; the committed vite base is '/AcecraftPrototype/' (absolute, for GitHub Pages) and
+# would 404 every asset on itch. --if-changed skips the push when the build is byte-identical to the
+# current itch build, so untouched commits don't create empty itch versions.
+name: Publish to itch.io
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+
+jobs:
+  itch:
+    runs-on: ubuntu-latest
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - if: env.BUTLER_API_KEY == ''
+        run: echo "::notice::BUTLER_API_KEY not set — itch publish skipped. Add the secret to enable."
+      - uses: actions/setup-node@v5
+        if: env.BUTLER_API_KEY != ''
+        with:
+          node-version: 20
+          cache: npm
+      - if: env.BUTLER_API_KEY != ''
+        run: npm ci
+      - name: Build with relative base (itch serves from an iframe subpath)
+        if: env.BUTLER_API_KEY != ''
+        run: npm run build -- --base=./
+      - name: Push to itch.io
+        if: env.BUTLER_API_KEY != ''
+        run: |
+          curl -sL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip
+          chmod +x butler
+          ./butler push dist krool/roguecraft:html5 --userversion "${{ github.sha }}" --if-changed
