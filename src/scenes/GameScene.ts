@@ -21,6 +21,7 @@ import { RunStatistics, WeaponDPSData } from '../game/RunStatistics'
 import { PLAYER, WAVE_SPAWNING, COMBAT, ALLIES, FROST_HASTE, CHESTS, LAYOUT } from '../constants'
 import { networkSystem, MessageType } from '../systems/NetworkSystem'
 import { partySystem, PartySlot } from '../systems/PartySystem'
+import { Analytics } from '../analytics'
 
 // XP requirements for each level (index 0 = level 1→2, index 1 = level 2→3, etc.)
 // Curve accelerates significantly starting at level 6, much steeper in late game
@@ -795,6 +796,9 @@ export default class GameScene extends Phaser.Scene {
     // Initialize run statistics tracking
     this.runStatistics = RunStatistics.getInstance()
     this.runStatistics.startRun(selectedCharacterType)
+
+    // Track run start
+    Analytics.gameStarted(selectedCharacterType)
 
     // Create player with character's symbol and color
     const characterConfig = this.character.getConfig()
@@ -1651,6 +1655,7 @@ export default class GameScene extends Phaser.Scene {
           )
           this.weapons.push(evolvedWeapon)
           this.runStatistics.addEvolution(availableEvolution.evolution)
+          Analytics.weaponEvolved(availableEvolution.evolution)
           this.initializeWeaponTracking(evolvedWeapon.getConfig().name)
           this.modifiersNeedRecalculation = true
 
@@ -3946,6 +3951,11 @@ export default class GameScene extends Phaser.Scene {
         const offsetY = Math.sin(angle) * radius
         const creditAmount = isBoss ? 5 : 3 // Boss credits worth more
         this.spawnCreditWithSync(data.x + offsetX, data.y + offsetY, creditAmount)
+      }
+
+      // Track boss/mini-boss defeat
+      if (data.type) {
+        Analytics.bossDefeated(data.type, this.level)
       }
 
       // Always spawn health pack at boss center
@@ -8485,6 +8495,9 @@ export default class GameScene extends Phaser.Scene {
     const enemyKills = this.killCount
     this.gameState.recordRun(this.score, this.survivalTime, enemyKills)
 
+    // Track run end
+    Analytics.gameOver(this.score, this.level, this.survivalTime)
+
     // Record character-specific stats
     const timePlayed = this.time.now - this.runStartTime
     this.gameState.recordCharacterRun(
@@ -8858,8 +8871,14 @@ export default class GameScene extends Phaser.Scene {
     const shipsAfter = gameProgression.getUnlockedUnpurchasedShips()
     const newlyUnlockedShips = shipsAfter.filter(ship => !shipsBefore.includes(ship))
 
+    // Track character unlocks
+    newlyUnlockedShips.forEach(ship => Analytics.characterUnlocked(ship))
+
     // Record stats
     this.gameState.recordRun(this.score, this.survivalTime, this.killCount)
+
+    // Track run end
+    Analytics.gameOver(this.score, this.level, this.survivalTime)
 
     // Record character-specific stats
     const timePlayed = this.time.now - this.runStartTime
