@@ -25,10 +25,16 @@ jobs:
       - uses: actions/setup-node@v5
         if: env.BUTLER_API_KEY != ''
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
       - if: env.BUTLER_API_KEY != ''
         run: npm ci
+      - name: Lint
+        if: env.BUTLER_API_KEY != ''
+        run: npm run lint
+      - name: Typecheck
+        if: env.BUTLER_API_KEY != ''
+        run: npm run typecheck
       - name: Build with relative base (itch serves from an iframe subpath)
         if: env.BUTLER_API_KEY != ''
         run: npm run build -- --base=./

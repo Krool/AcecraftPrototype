@@ -7642,7 +7642,7 @@ export default class GameScene extends Phaser.Scene {
           ; (projectile as Phaser.GameObjects.Text).setColor('#ffff00')
         this.time.delayedCall(50, () => {
           if (projectile.active) {
-            ; (projectile as Phaser.GameObjects.Text).setColor(originalColor)
+            (projectile as Phaser.GameObjects.Text).setColor(originalColor)
           }
         })
 
