@@ -19,7 +19,7 @@ jobs:
     env:
       BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - if: env.BUTLER_API_KEY == ''
         run: echo "::notice::BUTLER_API_KEY not set — itch publish skipped. Add the secret to enable."
       - uses: actions/setup-node@v7
