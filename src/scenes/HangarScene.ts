@@ -30,6 +30,9 @@ export default class HangarScene extends Phaser.Scene {
   }
 
   create() {
+    // Phaser does not auto-invoke a `shutdown` method on the Scene subclass;
+    // bind it to the SHUTDOWN event so per-run cleanup actually runs.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this)
     this.gameState = GameState.getInstance()
     this.selectedCharacter = this.gameState.getSelectedCharacter()
     this.viewingCharacter = this.selectedCharacter // Start by viewing the selected ship
@@ -1047,7 +1050,8 @@ export default class HangarScene extends Phaser.Scene {
     })
     this.inputListeners = []
 
-    // Extra safety: remove all scene event listeners to prevent leaks
-    this.events.removeAllListeners()
+    // NOTE: no blanket this.events.removeAllListeners() here - that emitter
+    // also carries Phaser's own per-plugin lifecycle hooks, which are bound
+    // once at boot. Clearing them leaves the scene unable to restart cleanly.
   }
 }

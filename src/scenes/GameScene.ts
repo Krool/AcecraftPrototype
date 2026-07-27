@@ -77,6 +77,7 @@ export default class GameScene extends Phaser.Scene {
   private creditDrops!: CreditDropGroup
   private powerUps!: PowerUpGroup
   private damageZones: DamageZone[] = []
+  private coopNetworkHandlers: { eventType: string; handler: (data: any, senderId?: string) => void }[] = []
   private campaignManager!: CampaignManager
   private campaignLevelText!: Phaser.GameObjects.Text
   private enemySpawnRate: number = WAVE_SPAWNING.BASE_SPAWN_RATE // Time between enemy spawns in milliseconds
@@ -292,6 +293,12 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create(data?: { levelIndex?: number }) {
+    // Phaser only auto-invokes init/preload/create/update - a `shutdown` method
+    // on the Scene subclass is never called on its own, and Systems.shutdown()
+    // does not clear listeners registered on this.events (only destroy() does).
+    // Hook it up explicitly so per-run state is actually torn down.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this)
+
     // Fade in from black
     this.cameras.main.fadeIn(500, 0, 0, 0)
 
@@ -306,9 +313,12 @@ export default class GameScene extends Phaser.Scene {
       console.log('[GameScene] Starting in coop mode, isHost:', this.isHost)
     }
 
-    // Start random background music (lazy loaded on-demand)
+    // Start random background music (lazy loaded on-demand).
+    // Destroy rather than stop - a stopped Sound stays registered with the
+    // game-global sound manager and would accumulate one entry per run.
     if (this.bgMusic) {
-      this.bgMusic.stop()
+      this.bgMusic.destroy()
+      this.bgMusic = undefined
     }
 
     // In coop mode, music sync happens after network handlers are set up
@@ -363,6 +373,11 @@ export default class GameScene extends Phaser.Scene {
     this.chestsSpawnedThisRun = 0
     this.discoveredEvolutions = new Set()
     this.starFieldTweens = []
+    // Per-run state that previously only got cleared in the dead shutdown(),
+    // so it survived into the next run (stale zones ticked in update(), and
+    // last run's DPS bled into this run's combat summary).
+    this.damageZones = []
+    this.weaponDamageTracking.clear()
 
     // Reset wave state flags (CRITICAL for scene restart)
     this.waveInProgress = false
@@ -9964,6 +9979,49 @@ export default class GameScene extends Phaser.Scene {
     return trackNames[trackNumber - 1]
   }
 
+  /**
+   * Tear down the current background music track and free its decoded audio.
+   *
+   * A single track decodes to roughly 70-80MB of PCM in the audio cache (a 4
+   * minute stereo mp3 at 44.1kHz), so holding on to more than the one that is
+   * actually playing is what pushes the tab over its memory budget. Sounds must
+   * be destroyed before the cache entry is removed, otherwise they keep the
+   * AudioBuffer alive.
+   */
+  private releaseMusic(exceptKey?: string) {
+    // destroy() stops the sound and unregisters it from the global sound
+    // manager - stop() alone leaves it there for the lifetime of the page.
+    if (this.bgMusic) {
+      this.bgMusic.destroy()
+      this.bgMusic = undefined
+    }
+
+    for (let i = 1; i <= 20; i++) {
+      const key = `bgm-${i}`
+      if (key === exceptKey) continue
+
+      this.sound.removeByKey(key)
+      if (this.cache.audio.exists(key)) {
+        this.cache.audio.remove(key)
+      }
+    }
+  }
+
+  private startMusic(trackKey: string, trackName: string) {
+    // Drop every other track before adding the new one so at most one decoded
+    // track is resident at a time.
+    this.releaseMusic(trackKey)
+
+    this.bgMusic = this.sound.add(trackKey, {
+      loop: true,
+      volume: soundManager.getMusicVolume() * soundManager.getMasterVolume()
+    })
+    if (!soundManager.isMuted()) {
+      this.bgMusic.play()
+    }
+    this.showTrackName(trackName)
+  }
+
   private loadAndPlayMusic(trackNumber: number) {
     const trackNumberStr = trackNumber.toString().padStart(3, '0')
     const trackName = this.getTrackName(trackNumber)
@@ -9972,42 +10030,24 @@ export default class GameScene extends Phaser.Scene {
     // Check if track is already loaded
     if (this.cache.audio.exists(trackKey)) {
       // Already loaded, play immediately
-      this.bgMusic = this.sound.add(trackKey, {
-        loop: true,
-        volume: soundManager.getMusicVolume() * soundManager.getMasterVolume()
-      })
-      if (!soundManager.isMuted()) {
-        this.bgMusic.play()
-      }
-      this.showTrackName(trackName)
-
-      // Start lazy loading other tracks in background
-      this.lazyLoadRemainingTracks(trackNumber)
+      this.startMusic(trackKey, trackName)
     } else {
       // Need to load this track first
       console.log(`[Music] Loading track ${trackNumber}: ${trackName}`)
+
+      // Free the previous track up front - decoding the incoming one while the
+      // old buffer is still cached would briefly double music memory.
+      this.releaseMusic()
 
       this.load.audio(trackKey, `assets/audio/8 Bit atmosphere/8 Bit atmosphere - ${trackNumberStr} - ${trackName}.mp3`)
 
       this.load.once('complete', () => {
         console.log(`[Music] Track ${trackNumber} loaded, playing now`)
-        this.bgMusic = this.sound.add(trackKey, {
-          loop: true,
-          volume: soundManager.getMusicVolume() * soundManager.getMasterVolume()
-        })
-        if (!soundManager.isMuted()) {
-          this.bgMusic.play()
-        }
-        this.showTrackName(trackName)
-
-        // Start lazy loading other tracks in background
-        this.lazyLoadRemainingTracks(trackNumber)
+        this.startMusic(trackKey, trackName)
       })
 
       this.load.once('loaderror', (file: any) => {
         console.error(`[Music] Failed to load track ${trackNumber}:`, file)
-        // Try to load other tracks anyway so we might have music later
-        this.lazyLoadRemainingTracks(trackNumber)
       })
 
       this.load.start()
@@ -10039,52 +10079,14 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
-  private lazyLoadRemainingTracks(excludeTrack: number) {
-    // Lazy load the remaining 19 tracks in the background
-    // This allows the game to start immediately while music loads progressively
-    console.log('[Music] Starting background lazy load of remaining tracks')
-
-    let tracksToLoad: number[] = []
-    for (let i = 1; i <= 20; i++) {
-      if (i !== excludeTrack && !this.cache.audio.exists(`bgm-${i}`)) {
-        tracksToLoad.push(i)
-      }
-    }
-
-    // Load tracks one at a time to avoid overwhelming the network
-    const loadNextTrack = () => {
-      if (tracksToLoad.length === 0) {
-        console.log('[Music] All tracks loaded')
-        return
-      }
-
-      const trackNumber = tracksToLoad.shift()!
-      const trackNumberStr = trackNumber.toString().padStart(3, '0')
-      const trackName = this.getTrackName(trackNumber)
-      const trackKey = `bgm-${trackNumber}`
-
-      this.load.audio(trackKey, `assets/audio/8 Bit atmosphere/8 Bit atmosphere - ${trackNumberStr} - ${trackName}.mp3`)
-
-      this.load.once('filecomplete', () => {
-        console.log(`[Music] Background loaded: track ${trackNumber}`)
-        // Load next track after a short delay to avoid blocking
-        this.time.delayedCall(500, loadNextTrack)
-      })
-
-      this.load.once('loaderror', () => {
-        console.warn(`[Music] Failed to load track ${trackNumber}, skipping`)
-        // Continue with next track
-        this.time.delayedCall(500, loadNextTrack)
-      })
-
-      this.load.start()
-    }
-
-    // Start loading after a 2 second delay to let the game settle
-    this.time.delayedCall(2000, loadNextTrack)
-  }
-
   shutdown() {
+    // Release background music: the sound manager and audio cache are
+    // game-global, so nothing here is freed by the scene shutting down.
+    this.releaseMusic()
+
+    // Drop coop handlers registered on the networkSystem singleton
+    this.removeCoopNetworkHandlers()
+
     // Clean up event listeners
     this.events.off('enemyDied', this.handleEnemyDied, this)
     this.events.off('xpCollected', this.handleXPCollected, this)
@@ -10172,17 +10174,41 @@ export default class GameScene extends Phaser.Scene {
     this.damageZones.forEach(zone => zone.destroy())
     this.damageZones = []
 
-    // Clean up event listeners
-    this.events.off('shutdown')
-    this.events.off('pause')
-    this.events.off('resume')
+    // NOTE: do not call this.events.off('shutdown'/'pause'/'resume') here.
+    // this.events is the Scene's Systems emitter, and Phaser's own plugins
+    // (tweens, time, input, display list, loader) hang their lifecycle hooks
+    // off those same event names. Removing them by name strips Phaser's
+    // internal handlers and the scene stops resetting on subsequent starts.
     this.input.off('pointerdown')
   }
 
   // Coop network methods
+
+  /**
+   * Register a networkSystem handler and remember it so it can be removed when
+   * the scene shuts down. networkSystem is a module-level singleton that
+   * outlives the scene, and these handlers are anonymous closures capturing
+   * `this` - without tracking them, every coop run would leave another full set
+   * behind, each holding its dead scene alive.
+   */
+  private onNetwork(eventType: string, handler: (data: any, senderId?: string) => void) {
+    this.coopNetworkHandlers.push({ eventType, handler })
+    networkSystem.on(eventType, handler)
+  }
+
+  private removeCoopNetworkHandlers() {
+    this.coopNetworkHandlers.forEach(({ eventType, handler }) => {
+      networkSystem.off(eventType, handler)
+    })
+    this.coopNetworkHandlers = []
+  }
+
   private setupCoopNetworkHandlers() {
+    // Guard against double registration if create() runs again
+    this.removeCoopNetworkHandlers()
+
     // Handle incoming player input updates
-    networkSystem.on(MessageType.INPUT, (data: any, senderId?: string) => {
+    this.onNetwork(MessageType.INPUT, (data: any, senderId?: string) => {
       if (senderId === networkSystem.localPlayerId) return
 
       // Update partner's velocity based on their input (use partner's character speed)
@@ -10198,7 +10224,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle state sync from partner
-    networkSystem.on(MessageType.STATE_SYNC, (data: any) => {
+    this.onNetwork(MessageType.STATE_SYNC, (data: any) => {
       if (data.type === 'player_position' && this.player2 && this.player2Body) {
         // Smoothly interpolate to the synced position
         const dx = data.x - this.player2.x
@@ -10279,21 +10305,21 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle game over menu action from host
-    networkSystem.on(MessageType.GAME_OVER_MENU, () => {
+    this.onNetwork(MessageType.GAME_OVER_MENU, () => {
       // Host clicked main menu - follow them
       this.scene.stop('GameScene')
       this.scene.start('MainMenuScene')
     })
 
     // Handle victory continue action from host
-    networkSystem.on(MessageType.VICTORY_CONTINUE, () => {
+    this.onNetwork(MessageType.VICTORY_CONTINUE, () => {
       // Host clicked continue - follow them
       this.scene.stop('GameScene')
       this.scene.start('MainMenuScene')
     })
 
     // Handle weapon acquired from partner
-    networkSystem.on(MessageType.WEAPON_ACQUIRED, (data: any) => {
+    this.onNetwork(MessageType.WEAPON_ACQUIRED, (data: any) => {
       const newWeapon = WeaponFactory.create(this, data.weaponType, this.projectiles)
       this.player2Weapons.push(newWeapon)
       console.log('[Coop] Partner acquired weapon:', data.weaponType)
@@ -10304,7 +10330,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle weapon level-up from partner
-    networkSystem.on(MessageType.WEAPON_LEVELED, (data: any) => {
+    this.onNetwork(MessageType.WEAPON_LEVELED, (data: any) => {
       const weapon = this.player2Weapons.find(w => w.getConfig().name === data.weaponName)
       if (weapon) {
         weapon.levelUp()
@@ -10317,7 +10343,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle passive acquired from partner
-    networkSystem.on(MessageType.PASSIVE_ACQUIRED, (data: any) => {
+    this.onNetwork(MessageType.PASSIVE_ACQUIRED, (data: any) => {
       const newPassive = PassiveFactory.create(this, data.passiveType)
       this.player2Passives.push(newPassive)
       console.log('[Coop] Partner acquired passive:', data.passiveType)
@@ -10328,7 +10354,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle passive level-up from partner
-    networkSystem.on(MessageType.PASSIVE_LEVELED, (data: any) => {
+    this.onNetwork(MessageType.PASSIVE_LEVELED, (data: any) => {
       const passive = this.player2Passives.find(p => p.getConfig().type === data.passiveType)
       if (passive) {
         passive.levelUp()
@@ -10341,7 +10367,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle evolution triggered from partner
-    networkSystem.on(MessageType.EVOLUTION_TRIGGERED, (data: any) => {
+    this.onNetwork(MessageType.EVOLUTION_TRIGGERED, (data: any) => {
       // Remove base weapon from player2Weapons
       const weaponIndex = this.player2Weapons.findIndex(w => w.getConfig().type === data.baseWeaponType)
       if (weaponIndex !== -1) {
@@ -10358,7 +10384,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle level-up from partner - show own upgrade options
-    networkSystem.on(MessageType.LEVEL_UP, (data: any) => {
+    this.onNetwork(MessageType.LEVEL_UP, (data: any) => {
       console.log('[Coop] Partner leveled up to:', data.newLevel)
       // When partner levels up, we also level up and get to pick upgrades
       // This creates a shared progression system
@@ -10380,7 +10406,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle chest opened by partner - apply rewards to self
-    networkSystem.on(MessageType.CHEST_OPENED, (data: any) => {
+    this.onNetwork(MessageType.CHEST_OPENED, (data: any) => {
       console.log('[Coop] Partner opened chest:', data.tierName)
 
       // Award gold
@@ -10399,7 +10425,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle enemy spawn from host (client only)
-    networkSystem.on(MessageType.SPAWN_ENEMY, (data: any) => {
+    this.onNetwork(MessageType.SPAWN_ENEMY, (data: any) => {
       if (!networkSystem.isHost) {
         const currentWave = this.waveSystem.getCurrentWave()
         const enemy = this.enemies.spawnEnemy(data.x, data.y, data.type, data.wave || currentWave)
@@ -10424,7 +10450,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle pickup collected by partner
-    networkSystem.on(MessageType.PICKUP_COLLECTED, (data: any) => {
+    this.onNetwork(MessageType.PICKUP_COLLECTED, (data: any) => {
       // Power-up collection needs to work both ways (host↔client)
       // XP/credits only flow host→client
       if (data.pickupType === 'powerup') {
@@ -10514,7 +10540,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle wave start from host (client only)
-    networkSystem.on(MessageType.WAVE_START, (data: any) => {
+    this.onNetwork(MessageType.WAVE_START, (data: any) => {
       if (!networkSystem.isHost) {
         console.log(`[Coop] Wave ${data.waveNumber}/${data.totalWaves} started`)
         // Sync wave system state
@@ -10539,7 +10565,7 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle enemy death from host (client only)
-    networkSystem.on(MessageType.ENEMY_DIED, (data: any) => {
+    this.onNetwork(MessageType.ENEMY_DIED, (data: any) => {
       if (!networkSystem.isHost) {
         // Find the closest enemy at this position and type, then deactivate it
         const enemies = this.enemies.getChildren() as Enemy[]
@@ -10576,21 +10602,21 @@ export default class GameScene extends Phaser.Scene {
     })
 
     // Handle XP spawned from host (client only)
-    networkSystem.on(MessageType.XP_SPAWNED, (data: any) => {
+    this.onNetwork(MessageType.XP_SPAWNED, (data: any) => {
       if (!networkSystem.isHost) {
         this.xpDrops.spawnXP(data.x, data.y, data.value)
       }
     })
 
     // Handle credit spawned from host (client only)
-    networkSystem.on(MessageType.CREDIT_SPAWNED, (data: any) => {
+    this.onNetwork(MessageType.CREDIT_SPAWNED, (data: any) => {
       if (!networkSystem.isHost) {
         this.creditDrops.spawnCredit(data.x, data.y, data.amount)
       }
     })
 
     // Handle power-up spawned from host (client only)
-    networkSystem.on(MessageType.POWERUP_SPAWNED, (data: any) => {
+    this.onNetwork(MessageType.POWERUP_SPAWNED, (data: any) => {
       if (!networkSystem.isHost) {
         this.powerUps.spawnPowerUp(data.x, data.y, data.type)
       }

@@ -139,6 +139,9 @@ export default class BuildingMenuScene extends Phaser.Scene {
   }
 
   create() {
+    // Phaser does not auto-invoke a `shutdown` method on the Scene subclass;
+    // bind it to the SHUTDOWN event so per-run cleanup actually runs.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this)
     this.gameState = GameState.getInstance()
 
     // Background

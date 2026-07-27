@@ -109,6 +109,9 @@ export default class BootScene extends Phaser.Scene {
   }
 
   create() {
+    // Phaser does not auto-invoke a `shutdown` method on the Scene subclass;
+    // bind it to the SHUTDOWN event so per-run cleanup actually runs.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this)
     // Update text to show we're in create phase
     if (this.loadingText) {
       this.loadingText.setText('Initializing...')
@@ -138,7 +141,9 @@ export default class BootScene extends Phaser.Scene {
   shutdown(): void {
     // Clean up camera event listeners
     // Note: Loader events are automatically cleaned up by Phaser after loading completes,
-    // but we clean up camera events explicitly
-    this.cameras.main.removeAllListeners()
+    // but we clean up camera events explicitly.
+    // Phaser's own CameraManager handles SHUTDOWN before this runs and clears
+    // `main`, so guard rather than assuming a camera is still there.
+    this.cameras?.main?.removeAllListeners()
   }
 }
