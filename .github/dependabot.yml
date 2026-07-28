@@ -8,6 +8,21 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: "development"
+    ignore:
+      # Every devDependency is bumped as one grouped PR, so a single
+      # unsatisfiable version sinks the whole group at `npm ci`.
+      #
+      # typescript-eslint 8.65.0 (currently the latest; there is no 9.x) peers
+      # typescript ">=4.8.4 <6.1.0". Dependabot proposing typescript 7 therefore
+      # deadlocks the group with ERESOLVE before lint/typecheck/build ever run,
+      # blocking ~20 unrelated dev-dependency bumps. Verified: TS 7 + plugin
+      # 8.65 fails to resolve, TS 5.x + plugin 8.65 resolves cleanly.
+      #
+      # REMOVE THIS once typescript-eslint's peer range covers typescript 7:
+      #   npm view @typescript-eslint/parser peerDependencies.typescript
+      # Until then TypeScript stays on 5.x and major bumps are not proposed.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
