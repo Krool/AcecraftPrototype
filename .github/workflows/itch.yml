@@ -35,6 +35,9 @@ jobs:
       - name: Typecheck
         if: env.BUTLER_API_KEY != ''
         run: npm run typecheck
+      - name: Audio memory guard
+        if: env.BUTLER_API_KEY != ''
+        run: npm run check:audio
       - name: Build with relative base (itch serves from an iframe subpath)
         if: env.BUTLER_API_KEY != ''
         run: npm run build -- --base=./

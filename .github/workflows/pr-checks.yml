@@ -22,4 +22,6 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # Guards the music-streaming fix; see tools/README.md
+      - run: npm run check:audio
       - run: npm run build

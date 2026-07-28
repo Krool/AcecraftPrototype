@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "deploy": "npm run build && gh-pages -d dist",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:audio": "node tools/check-audio-streaming.mjs"
   },
   "dependencies": {
     "peerjs": "^1.5.5",

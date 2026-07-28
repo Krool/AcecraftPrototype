@@ -1,0 +1,76 @@
+# Publish Roguecraft to GitHub Pages (https://krool.github.io/AcecraftPrototype/).
+#
+# Exists because Pages had no automation at all: the only path was running
+# `npm run deploy` (gh-pages -d dist) by hand from a local checkout, so the
+# published site silently drifted behind master. Builds with the committed vite
+# base ('/AcecraftPrototype/', absolute) which is what Pages serves from - the
+# itch workflow overrides it to './' because itch serves from an iframe subpath.
+#
+# Publishes by committing dist/ onto the existing gh-pages branch, matching how
+# the site is already served, so no change to the repo's Pages settings is
+# needed. History on that branch is preserved (no force push), and a build that
+# produces an identical tree is a no-op rather than an empty commit.
+name: Deploy to GitHub Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+
+# Needed to push the built site to the gh-pages branch.
+permissions:
+  contents: write
+
+# Never let two deploys race for the same branch.
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Same gates as pr-checks/itch - never publish something that fails them.
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run check:audio
+      - run: npm run build
+
+      - name: Publish dist/ to the gh-pages branch
+        run: |
+          set -euo pipefail
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Check out the published branch into a worktree so its history is
+          # kept. Fall back to creating it if it has never existed.
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages:gh-pages --depth=1
+            git worktree add out gh-pages
+          else
+            git worktree add -b gh-pages out
+          fi
+
+          # Replace the published tree wholesale with the fresh build. `git rm`
+          # clears tracked dotfiles too, which a glob would miss.
+          git -C out rm -rq --ignore-unmatch .
+          cp -R dist/. out/
+
+          git -C out add -A
+          if git -C out diff --cached --quiet; then
+            echo "::notice::Build is identical to the published site - nothing to deploy."
+          else
+            git -C out commit -q -m "Deploy ${GITHUB_SHA}"
+            git -C out push origin gh-pages
+            echo "::notice::Published ${GITHUB_SHA} to gh-pages."
+          fi
