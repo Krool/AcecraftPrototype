@@ -13,6 +13,8 @@ import { EvolutionManager, EVOLUTION_RECIPES, EvolvedWeapon, SuperEvolvedWeapon,
 import { GameState } from '../game/GameState'
 import { CampaignManager } from '../game/Campaign'
 import { soundManager, SoundType } from '../game/SoundManager'
+// @ts-ignore - zzfx doesn't have types; ZZFX.audioContext is reused for music
+import { ZZFX } from 'zzfx'
 import { WaveSystem, WaveFormation } from '../game/WaveSystem'
 import { resolveEntryAnimation, resolveExitAnimation, EntryAnimation, ExitAnimation } from '../game/AnimationPatterns'
 import { gameProgression } from '../game/GameProgression'
@@ -272,7 +274,11 @@ export default class GameScene extends Phaser.Scene {
   private evolutionManager!: EvolutionManager
   private discoveredEvolutions: Set<string> = new Set() // Track discovered evolutions
   private starFieldTweens: Phaser.Tweens.Tween[] = [] // Track tweens for pausing
-  private bgMusic?: Phaser.Sound.BaseSound
+  // Background music is streamed via a media element rather than decoded into
+  // memory by Phaser's loader - see startMusic() for why.
+  private bgMusicEl?: HTMLAudioElement
+  private bgMusicSource?: MediaElementAudioSourceNode
+  private bgMusicGain?: GainNode
   private runStatistics!: RunStatistics
 
   // Performance monitoring
@@ -313,13 +319,8 @@ export default class GameScene extends Phaser.Scene {
       console.log('[GameScene] Starting in coop mode, isHost:', this.isHost)
     }
 
-    // Start random background music (lazy loaded on-demand).
-    // Destroy rather than stop - a stopped Sound stays registered with the
-    // game-global sound manager and would accumulate one entry per run.
-    if (this.bgMusic) {
-      this.bgMusic.destroy()
-      this.bgMusic = undefined
-    }
+    // Stop any music left over from a previous run before starting a new one.
+    this.releaseMusic()
 
     // In coop mode, music sync happens after network handlers are set up
     // In solo mode, just pick random track now
@@ -9980,78 +9981,99 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Tear down the current background music track and free its decoded audio.
-   *
-   * A single track decodes to roughly 70-80MB of PCM in the audio cache (a 4
-   * minute stereo mp3 at 44.1kHz), so holding on to more than the one that is
-   * actually playing is what pushes the tab over its memory budget. Sounds must
-   * be destroyed before the cache entry is removed, otherwise they keep the
-   * AudioBuffer alive.
+   * Stop the background music and release the streaming element.
    */
-  private releaseMusic(exceptKey?: string) {
-    // destroy() stops the sound and unregisters it from the global sound
-    // manager - stop() alone leaves it there for the lifetime of the page.
-    if (this.bgMusic) {
-      this.bgMusic.destroy()
-      this.bgMusic = undefined
+  private releaseMusic() {
+    if (this.bgMusicSource) {
+      this.bgMusicSource.disconnect()
+      this.bgMusicSource = undefined
     }
-
-    for (let i = 1; i <= 20; i++) {
-      const key = `bgm-${i}`
-      if (key === exceptKey) continue
-
-      this.sound.removeByKey(key)
-      if (this.cache.audio.exists(key)) {
-        this.cache.audio.remove(key)
-      }
+    if (this.bgMusicGain) {
+      this.bgMusicGain.disconnect()
+      this.bgMusicGain = undefined
+    }
+    if (this.bgMusicEl) {
+      this.bgMusicEl.pause()
+      // Clearing src and re-loading drops the element's buffered data;
+      // pause() alone leaves it holding on to what it has downloaded.
+      this.bgMusicEl.removeAttribute('src')
+      this.bgMusicEl.load()
+      this.bgMusicEl = undefined
     }
   }
 
-  private startMusic(trackKey: string, trackName: string) {
-    // Drop every other track before adding the new one so at most one decoded
-    // track is resident at a time.
-    this.releaseMusic(trackKey)
+  /**
+   * Play a background track by streaming it, rather than decoding it up front.
+   *
+   * Music used to go through Phaser's loader, which means Web Audio
+   * decodeAudioData and a fully decoded PCM copy in RAM. Decoded size is
+   * duration * sampleRate * channels * 4 bytes and has nothing to do with the
+   * mp3 bitrate, so these 3-7 minute 44.1kHz stereo tracks cost 54-152MB each
+   * (~1.8GB for all 20). A media element streams instead: it decodes a small
+   * rolling window, so the cost is a few MB regardless of track length.
+   *
+   * Volume is applied with a GainNode rather than element.volume because
+   * HTMLMediaElement.volume is read-only on iOS Safari - assigning it there is
+   * silently ignored, which would play music at ~13x the intended level. Falls
+   * back to element.volume if Web Audio is unavailable.
+   */
+  private startMusic(trackNumber: number, trackName: string) {
+    this.releaseMusic()
 
-    this.bgMusic = this.sound.add(trackKey, {
-      loop: true,
-      volume: soundManager.getMusicVolume() * soundManager.getMasterVolume()
-    })
-    if (!soundManager.isMuted()) {
-      this.bgMusic.play()
+    const trackNumberStr = trackNumber.toString().padStart(3, '0')
+    const path = `${import.meta.env.BASE_URL}assets/audio/8 Bit atmosphere/8 Bit atmosphere - ${trackNumberStr} - ${trackName}.mp3`
+
+    const el = new Audio()
+    el.src = encodeURI(path)
+    el.loop = true
+    el.preload = 'auto'
+    this.bgMusicEl = el
+
+    const volume = soundManager.isMuted()
+      ? 0
+      : soundManager.getMusicVolume() * soundManager.getMasterVolume()
+
+    // Reuse ZzFX's AudioContext so music and SFX share one context.
+    const ctx: AudioContext | undefined = (ZZFX as any)?.audioContext
+    if (ctx && typeof ctx.createMediaElementSource === 'function') {
+      try {
+        const source = ctx.createMediaElementSource(el)
+        const gain = ctx.createGain()
+        gain.gain.value = volume
+        source.connect(gain)
+        gain.connect(ctx.destination)
+        this.bgMusicSource = source
+        this.bgMusicGain = gain
+
+        // A context created outside a user gesture starts suspended (iOS).
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {})
+        }
+      } catch (e) {
+        console.warn('[Music] Web Audio routing unavailable, using element volume', e)
+        el.volume = volume
+      }
+    } else {
+      el.volume = volume
     }
+
+    el.play().catch((e) => {
+      // Autoplay can be refused until the player interacts; retry on next tap.
+      console.warn('[Music] Playback deferred until user interaction:', e?.message ?? e)
+      this.input.once('pointerdown', () => {
+        const c: AudioContext | undefined = (ZZFX as any)?.audioContext
+        if (c && c.state === 'suspended') c.resume().catch(() => {})
+        el.play().catch(() => {})
+      })
+    })
+
     this.showTrackName(trackName)
   }
 
   private loadAndPlayMusic(trackNumber: number) {
-    const trackNumberStr = trackNumber.toString().padStart(3, '0')
     const trackName = this.getTrackName(trackNumber)
-    const trackKey = `bgm-${trackNumber}`
-
-    // Check if track is already loaded
-    if (this.cache.audio.exists(trackKey)) {
-      // Already loaded, play immediately
-      this.startMusic(trackKey, trackName)
-    } else {
-      // Need to load this track first
-      console.log(`[Music] Loading track ${trackNumber}: ${trackName}`)
-
-      // Free the previous track up front - decoding the incoming one while the
-      // old buffer is still cached would briefly double music memory.
-      this.releaseMusic()
-
-      this.load.audio(trackKey, `assets/audio/8 Bit atmosphere/8 Bit atmosphere - ${trackNumberStr} - ${trackName}.mp3`)
-
-      this.load.once('complete', () => {
-        console.log(`[Music] Track ${trackNumber} loaded, playing now`)
-        this.startMusic(trackKey, trackName)
-      })
-
-      this.load.once('loaderror', (file: any) => {
-        console.error(`[Music] Failed to load track ${trackNumber}:`, file)
-      })
-
-      this.load.start()
-    }
+    console.log(`[Music] Streaming track ${trackNumber}: ${trackName}`)
+    this.startMusic(trackNumber, trackName)
   }
 
   private showTrackName(trackName: string) {
