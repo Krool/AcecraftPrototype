@@ -8649,72 +8649,8 @@ export default class GameScene extends Phaser.Scene {
     const creditBreakdownElements = this.createCreditBreakdownDisplay(this.cameras.main.centerY + 150)
     this.gameOverUI.push(...creditBreakdownElements)
 
-    // Revive button - positioned after credits breakdown (hide in multiplayer)
-    const reviveButtonY = this.cameras.main.centerY + 280
-    if (!this.isCoopMode) {
-      const reviveButton = this.add.rectangle(
-        this.cameras.main.centerX,
-        reviveButtonY,
-        300,
-        70,
-        0x4a2a4a
-      ).setDepth(201).setInteractive({ useHandCursor: true })
-      this.gameOverUI.push(reviveButton)
-
-      const reviveText = this.add.text(
-        this.cameras.main.centerX,
-        reviveButtonY,
-        'Revive Watch Ad',
-        {
-          fontFamily: 'Courier New',
-          fontSize: '28px',
-          color: '#ffaa00',
-        }
-      ).setOrigin(0.5).setDepth(202)
-      this.gameOverUI.push(reviveText)
-
-      // Revive hover effects
-      reviveButton.on('pointerover', () => {
-        reviveButton.setFillStyle(0x6a3a6a)
-      })
-
-      reviveButton.on('pointerout', () => {
-        reviveButton.setFillStyle(0x4a2a4a)
-      })
-
-      // Revive handler - Coming Soon
-      reviveButton.on('pointerdown', () => {
-        // Show floating "Coming Soon" text
-        const comingSoonText = this.add.text(
-          this.cameras.main.centerX,
-          this.cameras.main.centerY + 240,
-          'Revive Feature Coming Soon!',
-          {
-            fontFamily: 'Courier New',
-            fontSize: '18px',
-            color: '#ffff00',
-            fontStyle: 'bold',
-          }
-        ).setOrigin(0.5).setDepth(1000)
-
-        // Animate it floating up and fading out
-        this.tweens.add({
-        targets: comingSoonText,
-        y: this.cameras.main.centerY + 140,
-        alpha: 0,
-        duration: 2000,
-        ease: 'Cubic.easeOut',
-        onComplete: () => {
-          comingSoonText.destroy()
-        }
-      })
-    })
-    }
-
-    // Main menu button (positioned lower - move up if revive button is hidden in multiplayer)
-    const mainMenuButtonY = this.isCoopMode
-      ? this.cameras.main.centerY + 280  // Same position as revive button would be
-      : this.cameras.main.centerY + 380
+    // Main menu button - positioned after credits breakdown
+    const mainMenuButtonY = this.cameras.main.centerY + 280
     const mainMenuButton = this.add.rectangle(
       this.cameras.main.centerX,
       mainMenuButtonY,
