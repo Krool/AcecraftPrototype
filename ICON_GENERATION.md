@@ -6,7 +6,7 @@
 2. You'll see two canvases with the game's ASCII ship: `/█\`
 3. Right-click the first canvas → "Save image as..." → save as `icon-192.png` in this folder
 4. Right-click the second canvas → "Save image as..." → save as `icon-512.png` in this folder
-5. Rebuild and deploy: `npm run deploy`
+5. Rebuild and push to master; the Pages and itch workflows deploy it
 
 ## Alternative Method (Node.js)
 
