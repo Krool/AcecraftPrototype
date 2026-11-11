@@ -1,9 +1,5 @@
 // @ts-ignore - zzfx doesn't have types
-import * as zzfxModule from 'zzfx'
-
-// Handle different export formats (CommonJS, ESM, etc.)
-// @ts-ignore
-const zzfx = zzfxModule.zzfx || zzfxModule.default || zzfxModule
+import { zzfx } from 'zzfx'
 
 /**
  * Sound Manager for Roguecraft
