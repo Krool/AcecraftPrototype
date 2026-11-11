@@ -6,6 +6,14 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     groups:
+      # react, react-dom and their @types peer each other; split PRs fail
+      # `npm ci` with ERESOLVE, so they have to arrive as one.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
       dev-dependencies:
         dependency-type: "development"
     ignore:

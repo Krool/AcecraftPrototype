@@ -25,6 +25,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Editor directories and files
+.vs/
+.claude/settings.local.json
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -39,3 +41,4 @@ lerna-debug.log*
 
 # OS
 Thumbs.db
+.claude/claims/

@@ -2,9 +2,13 @@
 
 A roguelike space shooter prototype built with Phaser 3, React, and Vite. Designed as a case study for vertical shooter design refinement, optimized for mobile web view with desktop support.
 
+**Play:** https://krool.github.io/AcecraftPrototype/ or https://krool.itch.io/roguecraft
+
+Pushing to `master` deploys to GitHub Pages and itch.io (see `.github/workflows`).
+
 ## 🎮 Current Implementation Status
 
-### ✅ Completed Features (v0.2+)
+### ✅ Completed Features
 
 **Core Gameplay**
 - ✅ Portrait mode (540x960 - phone aspect ratio)
@@ -87,15 +91,11 @@ A roguelike space shooter prototype built with Phaser 3, React, and Vite. Design
 - 🔨 Boss fight mechanics need polish
 - 🔨 Boss health bars need integration
 
-**Audio**
-- 🔨 Background music system ready (needs music files)
-
 ### 📋 Future Enhancements
 
 **Extended Content**
 - Training Simulator (weapon testing)
 - Archive (achievements)
-- Co-op multiplayer
 - Additional visual polish
 
 ---
@@ -103,7 +103,7 @@ A roguelike space shooter prototype built with Phaser 3, React, and Vite. Design
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v18 or higher recommended)
+- Node.js 20 or newer
 - npm or yarn
 
 ### Installation
@@ -142,7 +142,6 @@ roguecraft/
 │   ├── scenes/            # Phaser scenes
 │   │   ├── GameScene.ts   # Main gameplay scene
 │   │   └── LoadingScene.ts
-│   ├── components/        # React UI components
 │   ├── App.tsx            # React app wrapper
 │   └── main.tsx           # Entry point
 ├── public/                # Static assets
@@ -175,7 +174,7 @@ roguecraft/
 
 - [DESIGN.md](./DESIGN.md) - Complete design document
 - [IMPLEMENTATION.md](./IMPLEMENTATION.md) - Development roadmap
-- [Roguecraft_Design_Document_v6.docx](./Roguecraft_Design_Document_v6.docx) - Original design case study
+- [Roguecraft_Design_Document_v10.docx](./Roguecraft_Design_Document_v10.docx) - Original design case study
 
 ---
 
@@ -185,7 +184,8 @@ roguecraft/
 - **UI**: React 18 + TypeScript
 - **Build**: Vite
 - **Art**: ASCII characters
-- **Audio**: Multi-channel support (planned)
+- **Audio**: zzfx generated SFX, streamed background music
+- **Multiplayer**: 2-player co-op over PeerJS (WebRTC)
 - **Input**: Touch + mouse with invisible joystick
 - **Target**: Web view (mobile-first), standalone app capable
 
