@@ -16,6 +16,14 @@ function App() {
           >
             Start
           </button>
+          <a
+            className="privacy-link"
+            href={`${import.meta.env.BASE_URL}privacy.html`}
+            target="_blank"
+            rel="noopener"
+          >
+            Privacy
+          </a>
         </div>
       ) : (
         <PhaserGame />

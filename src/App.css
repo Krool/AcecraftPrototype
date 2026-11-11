@@ -63,3 +63,15 @@
 .start-button:active {
   transform: scale(0.95);
 }
+
+.privacy-link {
+  display: block;
+  margin-top: 2rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.privacy-link:hover {
+  color: #0f0;
+}

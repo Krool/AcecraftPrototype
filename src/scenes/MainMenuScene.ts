@@ -527,6 +527,30 @@ export default class MainMenuScene extends Phaser.Scene {
       }
     ).setOrigin(0, 1)
 
+    // Privacy policy link (static page in public/, opens in a new tab)
+    const privacyLink = this.add.text(
+      70,
+      this.cameras.main.height - 10,
+      'Privacy',
+      {
+        fontFamily: 'Courier New',
+        fontSize: '12px',
+        color: '#888888',
+      }
+    ).setOrigin(0, 1).setInteractive({ useHandCursor: true })
+
+    privacyLink.on('pointerover', () => {
+      privacyLink.setColor('#ffffff')
+    })
+
+    privacyLink.on('pointerout', () => {
+      privacyLink.setColor('#888888')
+    })
+
+    privacyLink.on('pointerdown', () => {
+      window.open(`${import.meta.env.BASE_URL}privacy.html`, '_blank', 'noopener')
+    })
+
     // Reset button (bottom right)
     const resetButton = this.add.text(
       this.cameras.main.width - 10,
