@@ -31,6 +31,13 @@ updates:
       # Until then TypeScript stays on 5.x and major bumps are not proposed.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # Phaser 4 was tried on 2026-11-10 and deferred. It typechecks and the
+      # menu and a run render, but GeometryMask is Canvas-only in v4, so the
+      # Hangar list mask (HangarScene.ts, createGeometryMask) needs a rewrite
+      # to the filter mask API, and the 8,800-line GameScene needs a full
+      # playthrough before it can ship. Remove this entry to try again.
+      - dependency-name: "phaser"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

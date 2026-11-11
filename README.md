@@ -181,7 +181,7 @@ roguecraft/
 ## 🛠️ Tech Stack
 
 - **Framework**: Phaser 3 (game engine)
-- **UI**: React 18 + TypeScript
+- **UI**: React 19 + TypeScript
 - **Build**: Vite
 - **Art**: ASCII characters
 - **Audio**: zzfx generated SFX, streamed background music
