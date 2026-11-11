@@ -103,7 +103,7 @@ Pushing to `master` deploys to GitHub Pages and itch.io (see `.github/workflows`
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 20 or newer
+- Node.js 22 or newer
 - npm or yarn
 
 ### Installation

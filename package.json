@@ -4,13 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && gh-pages -d dist",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "check:audio": "node tools/check-audio-streaming.mjs"
@@ -32,7 +31,6 @@
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.6",
-    "gh-pages": "^6.3.0",
     "globals": "^13.24.0",
     "typescript": "^5.2.2",
     "vite": "^5.2.0"
